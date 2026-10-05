@@ -178,3 +178,19 @@ introducing explicitly separate SoftFloat state.
 
 See [HANDOFF.md](HANDOFF.md) for the port's status and
 [THIRD_PARTY.md](THIRD_PARTY.md) for SDK dependency references.
+
+## vitaGL renderer (`--gpu-gl`, experimental)
+
+`scripts/build_vita.py --gpu-gl` builds `main_gpu.cpp` + `gpu_gl.cpp` against vitaGL
+instead of libvita2d (`--gpu-fast`). The two flags are mutually exclusive because both
+initialise sceGxm. Without either flag the CPU-exact build is produced as before.
+
+* Build requirements: vitaGL (built with `HAVE_SHARK=1`), vitaShaRK, mathneon, and
+  `libshacccg.suprx` installed on the console (runtime shader compiler).
+* Polygons are resolved by a classic depth buffer (`GL_LEQUAL`, perspective depth from
+  the vertex distance `pz`, near/far set by `kDepthNear`/`kDepthFar` in `gpu_gl.cpp`).
+  They are submitted in raw list order with **no sorting**. Compile `gpu_gl.cpp` with
+  `-DDAYTONA_GL_PAINTER=1` to draw in the CPU painter order (still depth tested), or
+  `-DDAYTONA_GL_DEPTH=0 -DDAYTONA_GL_PAINTER=1` for the pure painter order.
+* System 24 layers, the HUD layers and the menu font never use the depth buffer.
+* Planned v2: replace `depth_from_q()` with a Model 2 specific depth.

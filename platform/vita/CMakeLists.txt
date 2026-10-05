@@ -23,10 +23,39 @@ add_compile_options(-Wall -Wextra -fno-fast-math -ffp-contract=off -ffunction-se
 
 option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-derived code; produces no VPK" OFF)
 option(DAYTONA_VITA_GPU_FAST "Experimental vita2d/GXM 3D path" OFF)
+option(DAYTONA_VITA_GPU_GL "Experimental vitaGL (OpenGL ES style) 3D path; alternative to GPU_FAST" OFF)
+if(DAYTONA_VITA_GPU_FAST AND DAYTONA_VITA_GPU_GL)
+    message(FATAL_ERROR "DAYTONA_VITA_GPU_FAST (vita2d) and DAYTONA_VITA_GPU_GL (vitaGL) are mutually exclusive: both initialise sceGxm")
+endif()
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
+# Geometrizer placement (GPU builds): 0 = single core, exact image;
+# 1 = two cores, 3D one frame behind the 2D layers (fastest, default).
+# This is the default of the GEOMETRY option, which vita.cfg then remembers.
+set(DAYTONA_VITA_GEO_MODE 1 CACHE STRING "Default geometrizer mode: 0 single core (exact image), 1 two cores (+1 frame)")
+# Application cores (0-2) of the main and geometry threads; -1 = unpinned.
+# The sound worker keeps its own policy (any application core).
+set(DAYTONA_VITA_MAIN_CORE 0 CACHE STRING "Core of the main thread (i960, TGP, video, GPU submission)")
+set(DAYTONA_VITA_GEO_CORE 1 CACHE STRING "Core of the geometry thread")
+
+# vitaGL renderer variants (see gpu_gl.cpp). Always passed to the GL build.
+set(DAYTONA_VITA_GL_DEPTH        1 CACHE STRING "GL: hardware depth test (0 = painter order, no depth)")
+set(DAYTONA_VITA_GL_PAINTER      0 CACHE STRING "GL: 1 = CPU painter order (+ depth if enabled)")
+set(DAYTONA_VITA_GL_BATCH        1 CACHE STRING "GL: regroup polygons by material")
+set(DAYTONA_VITA_GL_FULL_RANGE   1 CACHE STRING "GL: glDepthRangef(-1,1)")
+set(DAYTONA_VITA_GL_BINARY_ALPHA 1 CACHE STRING "GL: alpha-test the 2D layers")
+set(DAYTONA_GL_DEFS
+    DAYTONA_GL_DEPTH=${DAYTONA_VITA_GL_DEPTH}
+    DAYTONA_GL_PAINTER=${DAYTONA_VITA_GL_PAINTER}
+    DAYTONA_GL_BATCH=${DAYTONA_VITA_GL_BATCH}
+    DAYTONA_GL_FULL_RANGE=${DAYTONA_VITA_GL_FULL_RANGE}
+    DAYTONA_GL_BINARY_ALPHA=${DAYTONA_VITA_GL_BINARY_ALPHA})
 # Keep the switch frontend-only; audio/render/game code is identical in both builds.
-set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
+# DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
+# vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
+set_source_files_properties(gpu_gl.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>")
+set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
+    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_GEO_MODE=${DAYTONA_VITA_GEO_MODE};DAYTONA_VITA_MAIN_CORE=${DAYTONA_VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${DAYTONA_VITA_GEO_CORE}")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
 set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID")
 if(NOT DAYTONA_VITA_COMPILE_CHECK)
@@ -66,15 +95,21 @@ target_include_directories(vita_ymfm SYSTEM PUBLIC "${YMFM_DIR}")
 target_compile_options(vita_ymfm PRIVATE -w)
 
 # The same native runtime as the desktop; no refcore or interpreter is linked.
-set(RUNTIME_FILES cpu tgp m2_tgp_board geo raster video m2_board game_loop zip rom_import
+# geo.cpp is replaced by its Vita version (platform/vita/src/runtime/geo.cpp),
+# which compiles the original unchanged and runs it on its own core.
+set(RUNTIME_FILES cpu tgp m2_tgp_board raster video m2_board game_loop zip rom_import
     archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
-    comm_board)
+    enhance comm_board)
 set(RUNTIME_SOURCES)
 foreach(name IN LISTS RUNTIME_FILES)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
 endforeach()
-add_library(vita_runtime STATIC ${RUNTIME_SOURCES})
-target_include_directories(vita_runtime PUBLIC "${DAYTONA_ROOT}/src")
+# Vita replacement of the geometrizer (platform/vita/src/runtime/geo.h/.cpp).
+# Nothing in src/ is modified: platform/vita/src comes FIRST on the include
+# path, so the shared runtime's "runtime/geo.h" resolves to the Vita one.
+add_library(vita_runtime STATIC ${RUNTIME_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/geo.cpp")
+target_compile_options(vita_runtime PRIVATE -fno-math-errno)
+target_include_directories(vita_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" "${DAYTONA_ROOT}/src")
 target_link_libraries(vita_runtime PUBLIC vita_trace vita_i960 vita_ymfm)
 target_compile_definitions(vita_runtime PUBLIC M2_ROMSET="daytona93") # the set the Vita build is made from
 option(DAYTONA_VITA_RENDER_OPT "Exact tile/layer caching and optimized CPU rasterizer" ON)
@@ -100,8 +135,40 @@ if(DAYTONA_VITA_GPU_FAST)
     endif()
 endif()
 
+if(DAYTONA_VITA_GPU_GL)
+    # vitaGL + runtime shader compiler (vitashark). Needs libshacccg.suprx on the console.
+    find_path(VITAGL_INCLUDE_DIR vitaGL.h PATHS "${VITASDK}/arm-vita-eabi/include" NO_DEFAULT_PATH)
+    # libvitaGL is mandatory. Its helper libraries changed between vitaGL versions
+    # (vitaShaRK was merged into recent vitaGL), so they are linked only when installed.
+    set(VITAGL_LIBRARIES)
+    find_library(VITAGL_LIB_vitaGL vitaGL PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
+    if(NOT VITAGL_LIB_vitaGL OR NOT VITAGL_INCLUDE_DIR)
+        message(FATAL_ERROR "GPU GL: libvitaGL.a / vitaGL.h not found in ${VITASDK}/arm-vita-eabi. "
+                "Clone https://github.com/Rinnegatamante/vitaGL, run 'make install' with VITASDK set, "
+                "then delete the build directory (CMake caches failed lookups).")
+    endif()
+    list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_vitaGL}")
+    foreach(lib vitashark mathneon SceShaccCgExt taihen_stub)
+        find_library(VITAGL_LIB_${lib} ${lib} PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
+        if(VITAGL_LIB_${lib})
+            list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_${lib}}")
+        else()
+            message(STATUS "GPU GL: optional lib${lib}.a not found (skipped)")
+        endif()
+    endforeach()
+    # Link order matters for static archives: vitaGL first, its dependencies after.
+    set(VITAGL_LINK_LIBS ${VITAGL_LIBRARIES}
+        SceShaccCg_stub SceKernelDmacMgr_stub SceGxm_stub SceDisplay_stub SceSysmodule_stub
+        SceCtrl_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
+        SceLibKernel_stub pthread m)
+endif()
+
 if(DAYTONA_VITA_COMPILE_CHECK)
-    if(DAYTONA_VITA_GPU_FAST)
+    if(DAYTONA_VITA_GPU_GL)
+        add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_gl.cpp)
+        target_include_directories(daytona_vita_frontend PRIVATE "${VITAGL_INCLUDE_DIR}")
+        target_compile_definitions(daytona_vita_frontend PRIVATE DAYTONA_VITA_GPU_GL=1 ${DAYTONA_GL_DEFS})
+    elseif(DAYTONA_VITA_GPU_FAST)
         add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_fast.cpp)
         target_include_directories(daytona_vita_frontend PRIVATE "${VITA2D_INCLUDE_DIR}")
     else()
@@ -112,7 +179,13 @@ if(DAYTONA_VITA_COMPILE_CHECK)
 else()
     file(GLOB GEN_SOURCES CONFIGURE_DEPENDS "${DAYTONA_GEN_ROOT}/daytona93/*.cpp")
     list(APPEND GEN_SOURCES "${DAYTONA_GEN_ROOT}/daytona93_tgp/tgp_gen.cpp" "${DAYTONA_GEN_ROOT}/daytona93_snd/snd_gen.cpp")
-    if(DAYTONA_VITA_GPU_FAST)
+    if(DAYTONA_VITA_GPU_GL)
+        add_executable(daytona_vita main_gpu.cpp gpu_gl.cpp ${GEN_SOURCES})
+        target_include_directories(daytona_vita PRIVATE "${VITAGL_INCLUDE_DIR}")
+        target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_GL=1 ${DAYTONA_GL_DEFS})
+        target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
+        set(VITA_APP_NAME "Daytona Recomp GL")
+    elseif(DAYTONA_VITA_GPU_FAST)
         add_executable(daytona_vita main_gpu.cpp gpu_fast.cpp ${GEN_SOURCES})
         target_include_directories(daytona_vita PRIVATE "${VITA2D_INCLUDE_DIR}")
         target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_FAST=1)
@@ -130,7 +203,7 @@ else()
     set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wno-unused-label")
     vita_create_self(eboot.bin daytona_vita UNSAFE)
     vita_create_vpk(daytona_vita.vpk ${DAYTONA_VITA_TITLEID} eboot.bin
-        VERSION "01.23" NAME "${VITA_APP_NAME}"
+        VERSION "01.24" NAME "${VITA_APP_NAME}"
         FILE "${DAYTONA_ROOT}/THIRD_PARTY.md" "licenses/THIRD_PARTY.md"
         FILE "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md" "licenses/VITA.md")
 endif()
