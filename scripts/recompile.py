@@ -2,7 +2,7 @@
 """Recompile the game's i960 code, its TGP program and the sound board's 68000
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
-  recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--blocks]
+  recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--fast_inaccuracy]
 
 Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored):
 daytona93 (Daytona USA Deluxe '93, the default) or daytona (Revision A,
@@ -11,12 +11,20 @@ Everything
 derived from it (images, generated C++) goes under the build directory,
 which is git-ignored: never commit it.
 
---blocks recompiles the i960 code with the lockstep bookkeeping (interrupt and
-event checks, instruction count) once per basic block instead of before every
-instruction: faster, above all on the PS Vita, but no longer exact against
-MAME (interrupts are taken a few instructions later), so the lockstep and
-trace comparisons need the default output. Off by default; run again without
-it to go back.
+--fast_inaccuracy turns on every recompiler speed option
+for slow targets, above all the PS Vita:
+  i960 (tools/m2recomp/main.cpp)
+  1. the lockstep bookkeeping (interrupt and event checks, instruction count)
+     once per basic block instead of before every instruction: no longer
+     exact against MAME (interrupts are taken a few instructions later);
+  2. direct chaining: the generated gen::run moves from chunk to chunk itself
+     instead of returning to GameLoop on each transfer between chunks.
+  TGP (tools/m2tgprecomp/main.cpp)
+  3. for calls without an instruction budget (the game's): the instruction
+     count once per basic block and no budget test at each branch. Results
+     and counts stay those of the default output (the TGP has no interrupts).
+The lockstep and trace comparisons need the default output. Off by default;
+run again without it to go back.
 """
 
 import argparse
@@ -52,8 +60,9 @@ def main():
     ap.add_argument("--set", default="daytona93", choices=["daytona93", "daytona"])
     ap.add_argument("--build-dir", default="build")
     ap.add_argument("--config", default="Release")
-    ap.add_argument("--blocks", action="store_true",
-                    help="i960 bookkeeping once per basic block: faster (PS Vita), not interrupt-exact against MAME")
+    ap.add_argument("--fast_inaccuracy", action="store_true",
+                    help="recompiler speed options (i960 block bookkeeping and direct chunk chaining, TGP block counting): faster (PS Vita), "
+                         "not interrupt-exact against MAME")
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
@@ -81,13 +90,13 @@ def main():
     hooks = os.path.join("seeds", args.set + "_hooks.txt")
     if os.path.exists(os.path.join(ROOT, hooks)):
         recomp += ["--hooks", hooks]
-    if args.blocks:
-        recomp += ["--blocks"]
+    if args.fast_inaccuracy:
+        recomp += ["--fast_inaccuracy"]
     run(recomp)
     tgp = os.path.join(build, "gen", args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)
     run([tool(build, args.config, "m2tgprecomp"), os.path.join(cache, "tgp_program.bin"),
-         os.path.join(tgp, "tgp_gen.cpp")])
+         os.path.join(tgp, "tgp_gen.cpp")] + (["--fast_inaccuracy"] if args.fast_inaccuracy else []))
 
     snd = os.path.join(build, "gen", args.set + "_snd")
     os.makedirs(snd, exist_ok=True)

@@ -1,6 +1,6 @@
 // m2recomp: the i960 static recompiler (design doc, i960 static recompiler).
 //
-//   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--blocks]
+//   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]
 //
 // --hooks: "ADDRESS name" lines; the generated code calls rt::hook_<name>(c)
 // just before the instruction at ADDRESS (enhancements: see
@@ -14,7 +14,11 @@
 // address. The semantics are MAME's (src/refcore/i960_ref.cpp, src/runtime/cpu.cpp), expression
 // for expression, so the lockstep harness can hold the output to MAME.
 //
-// --blocks (off by default): the lockstep bookkeeping (IP store, interrupt and
+// --fast_inaccuracy (off by default) groups the speed options for slow targets
+// (PS Vita). Without it the output is the exact one the lockstep and trace
+// comparisons against MAME need. With it:
+//
+// 1. Block bookkeeping: the lockstep bookkeeping (IP store, interrupt and
 // event check, instruction count) is emitted once per basic block instead of
 // before every instruction. Each instruction's semantics and the instruction
 // count are unchanged, but an interrupt or a scheduled event is taken at the
@@ -29,6 +33,15 @@
 // runtime applies an event only at its exact count, which a block can step
 // over: the generated block_boundary() replays such an event at its own count
 // at the next block start, then restores the true count.
+//
+// 2. Direct chaining: gen::run moves from chunk to chunk itself (binary search
+// on the chunk ranges) instead of returning to GameLoop, which re-checked
+// has_code and re-scanned every chunk on each transfer between chunks (~1,360
+// per frame in a race, 0.68 us each on the Vita: platform/vita perf.log, CPU-2).
+// It returns as before when the frame ends (the lockstep is finished) or when
+// control reaches an address no chunk has code for, so GameLoop still reports
+// that address. Same instructions in the same order: this part alone keeps
+// the output exact.
 //
 // There is no fallback: an instruction without a native template fails the
 // recompile, listed by address and mnemonic. At run time, control reaching an
@@ -99,7 +112,7 @@ std::string ea(const Insn &in) {
     }
 }
 
-// --blocks: the check at a block start. The lockstep runtime applies an event
+// --fast_inaccuracy: the check at a block start. The lockstep runtime applies an event
 // (a frame-clock probe, a UART shift) when the count equals the event's; a
 // block adds its whole length at its end and can step over it. Such an event
 // is applied here at its own count, then the true count is restored: the
@@ -134,9 +147,9 @@ struct Emitter {
     uint64_t native = 0;
     std::vector<std::string> *missing; // instructions without a native template
 
-    // --blocks state, set by the caller before each emit().
+    // --fast_inaccuracy block state, set by the caller before each emit().
     bool blocks = false;                   // block bookkeeping
-    bool leader = true;                    // first instruction of a block (always, without --blocks)
+    bool leader = true;                    // first instruction of a block (always, without --fast_inaccuracy)
     unsigned block_end = 0;                // a block's last instruction: the block's length
     std::set<uint32_t> *targets = nullptr; // analysis pass: records every direct transfer target
     bool exits = false;                    // after emit(): the instruction has an explicit exit
@@ -160,7 +173,7 @@ struct Emitter {
         std::snprintf(comment, sizeof comment, "// %08x: %s", pc, i960::format_mame(in).c_str());
         o << lbl(pc) << ": " << comment << "\n";
         // Lockstep: MAME's interrupt events happen before this instruction
-        // (--blocks: before the block's first instruction only).
+        // (--fast_inaccuracy: before the block's first instruction only).
         if (leader) {
             line("c.m_IP = " + hex(pc) + ";");
             line(blocks ? "if (block_boundary(ls)) goto dispatch;" : "if (ls.boundary()) goto dispatch;");
@@ -354,7 +367,7 @@ struct Emitter {
 
         ++native;
         exits = !exit.empty();
-        // --blocks: inside a block the IP is not stored; an instruction that
+        // --fast_inaccuracy: inside a block the IP is not stored; an instruction that
         // compares the IP with its own address (synmovq's IAC check) gets it.
         if (!leader && exit.find("m_IP != " + hex(pc)) != std::string::npos) line("c.m_IP = " + hex(pc) + ";");
         if (body.find("cond") != std::string::npos) line("{ bool cond;");
@@ -422,14 +435,14 @@ std::vector<uint32_t> load_seeds(const std::string &path) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--blocks]\n");
+        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
     const std::string out = argv[2];
     std::vector<uint32_t> seeds;
     size_t chunk = 1500;
-    bool blocks = false;
+    bool blocks = false, chain = false;
     for (int i = 3; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--seeds") && i + 1 < argc) {
             auto s = load_seeds(argv[++i]);
@@ -438,8 +451,12 @@ int main(int argc, char **argv) {
             load_hooks(argv[++i]);
         } else if (!std::strcmp(argv[i], "--chunk") && i + 1 < argc) {
             chunk = std::strtoul(argv[++i], nullptr, 0);
-        } else if (!std::strcmp(argv[i], "--blocks")) {
-            blocks = true;
+        } else if (!std::strcmp(argv[i], "--fast_inaccuracy")) {
+            blocks = true; // 1. block bookkeeping
+            chain = true;  // 2. direct chaining
+        } else {
+            std::fprintf(stderr, "m2recomp: unknown option %s (--blocks is now --fast_inaccuracy)\n", argv[i]);
+            return 2;
         }
     }
 
@@ -461,7 +478,7 @@ int main(int argc, char **argv) {
     std::vector<const Insn *> insns;
     for (const auto &[a, in] : r.insns) insns.push_back(&in);
 
-    // --blocks: block starts. An analysis pass over every instruction records
+    // --fast_inaccuracy: block starts. An analysis pass over every instruction records
     // the direct transfer targets and the instructions that end a block.
     std::set<uint32_t> leaders;
     if (blocks) {
@@ -487,7 +504,7 @@ int main(int argc, char **argv) {
         for (size_t k = start; k < end; ++k) addrs.insert(insns[k]->addr);
         Emitter em{&addrs, {}, 0, &missing};
         em.blocks = blocks;
-        // Block structure (every instruction is its own block without --blocks):
+        // Block structure (every instruction is its own block without --fast_inaccuracy):
         // lead[i] starts a block, pos[i] = instructions before it in its block,
         // len[i] = its block's length.
         const size_t n = end - start;
@@ -507,7 +524,7 @@ int main(int argc, char **argv) {
         char name[32];
         std::snprintf(name, sizeof name, "chunk_%03zu", ci);
         em.o << "// Generated by m2recomp. Derived from the game: never commit.\n";
-        if (blocks) em.o << "// --blocks: interrupt/event checks and the instruction count once per basic block.\n";
+        if (blocks) em.o << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
         em.o << "#include \"runtime/gen_support.h\"\n\n" << "namespace gen {\n\n";
         if (blocks) em.o << kBlockBoundary;
         em.o << "void " << name << "(Env &e) {\n"
@@ -541,7 +558,8 @@ int main(int argc, char **argv) {
     // Dispatch table and instruction index.
     std::ostringstream t;
     t << "// Generated by m2recomp. Derived from the game: never commit.\n";
-    if (blocks) t << "// --blocks: interrupt/event checks and the instruction count once per basic block.\n";
+    if (blocks) t << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
+    if (chain) t << "// --fast_inaccuracy: gen::run chains chunks itself.\n";
     t << "#include \"runtime/gen_support.h\"\n\n"
       << "#include <algorithm>\n\nnamespace gen {\n\n";
     for (size_t i = 0; i < ranges.size(); ++i) t << "void chunk_" << (i < 10 ? "00" : i < 100 ? "0" : "") << i << "(Env &);\n";
@@ -554,9 +572,34 @@ int main(int argc, char **argv) {
         t << "    {" << hex(ranges[i].first) << ", " << hex(ranges[i].second) << ", " << name << "},\n";
     }
     t << "};\n} // namespace\n\n"
-      << "bool has_code(uint32_t a) { return std::binary_search(std::begin(kAddrs), std::end(kAddrs), a); }\n\n"
-      << "void run(Env &e) {\n    const uint32_t a = e.c.m_IP;\n"
-      << "    for (const Range &r : kChunks)\n        if (a >= r.first && a <= r.last) { r.fn(e); return; }\n}\n\n"
+      << "bool has_code(uint32_t a) { return std::binary_search(std::begin(kAddrs), std::end(kAddrs), a); }\n\n";
+    if (chain) {
+        // A chunk returns only when the lockstep is finished or m_IP is not
+        // in its switch. Back in the same chunk means no code there: return,
+        // and GameLoop's has_code reports the address as before.
+        t << "namespace {\n"
+          << "const Range *chunk_of(uint32_t a) {\n"
+          << "    const Range *r = std::upper_bound(std::begin(kChunks), std::end(kChunks), a,\n"
+          << "                                      [](uint32_t x, const Range &c) { return x < c.first; });\n"
+          << "    if (r == std::begin(kChunks)) return nullptr;\n"
+          << "    --r;\n"
+          << "    return a <= r->last ? r : nullptr;\n"
+          << "}\n"
+          << "} // namespace\n\n"
+          << "void run(Env &e) {\n"
+          << "    const Range *prev = nullptr;\n"
+          << "    do {\n"
+          << "        const Range *r = chunk_of(e.c.m_IP);\n"
+          << "        if (!r || r == prev) return;\n"
+          << "        r->fn(e);\n"
+          << "        prev = r;\n"
+          << "    } while (!e.ls.finished());\n"
+          << "}\n\n";
+    } else {
+        t << "void run(Env &e) {\n    const uint32_t a = e.c.m_IP;\n"
+          << "    for (const Range &r : kChunks)\n        if (a >= r.first && a <= r.last) { r.fn(e); return; }\n}\n\n";
+    }
+    t
       << "uint64_t native_instructions() { return " << native << "ull; }\n\n} // namespace gen\n";
     if (!missing.empty()) {
         std::fprintf(stderr, "m2recomp: FAILED: %zu reachable instructions have no native template:\n", missing.size());
@@ -568,7 +611,8 @@ int main(int argc, char **argv) {
     std::printf("m2recomp: %zu instructions from %zu seeds -> %zu chunks in %s, all native; %zu indirect sites\n",
                 insns.size(), all.size(), ranges.size(), out.c_str(), r.indirect_sites.size());
     if (blocks)
-        std::printf("m2recomp: --blocks: %zu basic blocks, %.2f instructions per block (not interrupt-exact)\n",
+        std::printf("m2recomp: --fast_inaccuracy: %zu basic blocks, %.2f instructions per block (not interrupt-exact), "
+                    "direct chunk chaining\n",
                     block_count, block_count ? double(insns.size()) / double(block_count) : 0.0);
     return 0;
 }
