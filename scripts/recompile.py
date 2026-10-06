@@ -2,7 +2,7 @@
 """Recompile the game's i960 code, its TGP program and the sound board's 68000
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
-  recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release]
+  recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--blocks]
 
 Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored):
 daytona93 (Daytona USA Deluxe '93, the default) or daytona (Revision A,
@@ -10,6 +10,13 @@ daytona93 (Daytona USA Deluxe '93, the default) or daytona (Revision A,
 Everything
 derived from it (images, generated C++) goes under the build directory,
 which is git-ignored: never commit it.
+
+--blocks recompiles the i960 code with the lockstep bookkeeping (interrupt and
+event checks, instruction count) once per basic block instead of before every
+instruction: faster, above all on the PS Vita, but no longer exact against
+MAME (interrupts are taken a few instructions later), so the lockstep and
+trace comparisons need the default output. Off by default; run again without
+it to go back.
 """
 
 import argparse
@@ -45,6 +52,8 @@ def main():
     ap.add_argument("--set", default="daytona93", choices=["daytona93", "daytona"])
     ap.add_argument("--build-dir", default="build")
     ap.add_argument("--config", default="Release")
+    ap.add_argument("--blocks", action="store_true",
+                    help="i960 bookkeeping once per basic block: faster (PS Vita), not interrupt-exact against MAME")
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
@@ -72,6 +81,8 @@ def main():
     hooks = os.path.join("seeds", args.set + "_hooks.txt")
     if os.path.exists(os.path.join(ROOT, hooks)):
         recomp += ["--hooks", hooks]
+    if args.blocks:
+        recomp += ["--blocks"]
     run(recomp)
     tgp = os.path.join(build, "gen", args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)

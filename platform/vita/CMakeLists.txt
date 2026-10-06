@@ -37,18 +37,6 @@ set(DAYTONA_VITA_GEO_MODE 1 CACHE STRING "Default geometrizer mode: 0 single cor
 set(DAYTONA_VITA_MAIN_CORE 0 CACHE STRING "Core of the main thread (i960, TGP, video, GPU submission)")
 set(DAYTONA_VITA_GEO_CORE 1 CACHE STRING "Core of the geometry thread")
 
-# vitaGL renderer variants (see gpu_gl.cpp). Always passed to the GL build.
-set(DAYTONA_VITA_GL_DEPTH        1 CACHE STRING "GL: hardware depth test (0 = painter order, no depth)")
-set(DAYTONA_VITA_GL_PAINTER      0 CACHE STRING "GL: 1 = CPU painter order (+ depth if enabled)")
-set(DAYTONA_VITA_GL_BATCH        1 CACHE STRING "GL: regroup polygons by material")
-set(DAYTONA_VITA_GL_FULL_RANGE   1 CACHE STRING "GL: glDepthRangef(-1,1)")
-set(DAYTONA_VITA_GL_BINARY_ALPHA 1 CACHE STRING "GL: alpha-test the 2D layers")
-set(DAYTONA_GL_DEFS
-    DAYTONA_GL_DEPTH=${DAYTONA_VITA_GL_DEPTH}
-    DAYTONA_GL_PAINTER=${DAYTONA_VITA_GL_PAINTER}
-    DAYTONA_GL_BATCH=${DAYTONA_VITA_GL_BATCH}
-    DAYTONA_GL_FULL_RANGE=${DAYTONA_VITA_GL_FULL_RANGE}
-    DAYTONA_GL_BINARY_ALPHA=${DAYTONA_VITA_GL_BINARY_ALPHA})
 # Keep the switch frontend-only; audio/render/game code is identical in both builds.
 # DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
@@ -167,7 +155,7 @@ if(DAYTONA_VITA_COMPILE_CHECK)
     if(DAYTONA_VITA_GPU_GL)
         add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_gl.cpp)
         target_include_directories(daytona_vita_frontend PRIVATE "${VITAGL_INCLUDE_DIR}")
-        target_compile_definitions(daytona_vita_frontend PRIVATE DAYTONA_VITA_GPU_GL=1 ${DAYTONA_GL_DEFS})
+        target_compile_definitions(daytona_vita_frontend PRIVATE DAYTONA_VITA_GPU_GL=1)
     elseif(DAYTONA_VITA_GPU_FAST)
         add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_fast.cpp)
         target_include_directories(daytona_vita_frontend PRIVATE "${VITA2D_INCLUDE_DIR}")
@@ -182,7 +170,7 @@ else()
     if(DAYTONA_VITA_GPU_GL)
         add_executable(daytona_vita main_gpu.cpp gpu_gl.cpp ${GEN_SOURCES})
         target_include_directories(daytona_vita PRIVATE "${VITAGL_INCLUDE_DIR}")
-        target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_GL=1 ${DAYTONA_GL_DEFS})
+        target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_GL=1)
         target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
         set(VITA_APP_NAME "Daytona Recomp GL")
     elseif(DAYTONA_VITA_GPU_FAST)

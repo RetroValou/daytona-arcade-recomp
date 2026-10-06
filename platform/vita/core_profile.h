@@ -9,7 +9,7 @@
 //   core 0  main thread: input, i960 + TGP, geometry kick (or the whole parse
 //           in SYNC mode), 2D video, sound hand-off, GPU recording/submission
 //   core 1  geometry thread (platform/vita/src/runtime/geo.cpp): the parse
-//   sound   sound worker (reference sound board: 68000 + MultiPCM + FM), its own thread
+//   core 2  sound worker (reference sound board: 68000 + MultiPCM + FM)
 //
 // "Nested" sections are already contained in a main section (shown indented,
 // never added twice). "idle/unmeasured" is the main core's remaining time:
@@ -141,7 +141,7 @@ public:
         unsigned index = 0;
         const char *geo_mode = "";
         int cpu_mhz = 0, gpu_mhz = 0, bus_mhz = 0;
-        int main_core = -1, geo_core = -1;
+        int main_core = -1, geo_core = -1, sound_core = -1;
         bool geo_threaded = false, sound_threaded = false, native_audio = false;
         const char *renderer = "";
     };
@@ -166,9 +166,9 @@ public:
         w.add("frames: emulated %.2f fps (target %.2f), shown %.2f fps, worst loop %.2f ms, board frame budget %.2f ms\n",
               window_s > 0 ? double(counters.board_frames) / window_s : 0.0, kBoardHz,
               window_s > 0 ? double(loops_) / window_s : 0.0, ms(loop_max_), 1000.0 / kBoardHz);
-        w.add("cores: main=%d geometry=%d (%s) sound=%s\n", h.main_core, h.geo_core,
-              h.geo_threaded ? "thread" : "main core",
-              h.native_audio ? "native audio callback" : (h.sound_threaded ? "own thread" : "main core"));
+        w.add("cores: main=%d geometry=%d (%s) sound=%d (%s)\n", h.main_core, h.geo_core,
+              h.geo_threaded ? "thread" : "main core", h.sound_core,
+              h.native_audio ? "native audio callback" : (h.sound_threaded ? "thread" : "main core"));
         w.add("%-40s %7s %9s %9s %6s\n", "section", "core%", "ms/frame", "max ms", "hits");
 
         w.add("CORE 0 main: busy %.1f%% (%.2f ms per shown frame)\n", pct(main_sum), ms(main_sum) / loops);

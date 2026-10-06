@@ -65,9 +65,9 @@ them and append a bounded fault record to `vita-diag.log`. A quiet launch does
 not erase an existing log. This is a routine-diagnostics switch, not suppression
 of runtime faults. The older software-rendered diagnostic frontend is unchanged.
 
-Re-enable the GXM diagnostic build with `scripts/build_vita.py --gpu-fast
---diagnostics` (plus the usual SDK/build arguments), or set
-`-DDAYTONA_VITA_DIAGNOSTICS=ON` in the Vita CMake build. Default is OFF.
+Since the build modes, `scripts/build_vita.py` makes this diagnostic build by
+default (`-DDAYTONA_VITA_DIAGNOSTICS=ON`); `--release` turns the logging off
+and link-time optimization on. The CMake option itself still defaults to OFF.
 Keep GPU22 for an unchanged diagnostic comparison.
 
 The supplied GPU22 device log contains 78 active windows covering 157.274 s,

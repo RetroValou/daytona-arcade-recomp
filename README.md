@@ -65,7 +65,12 @@ Linux and macOS).
 
 After changing the recompiler or the seeds: `python3 scripts/recompile.py`
 (and `python3 scripts/recompile.py --set daytona --build-dir build-daytona`
-for Revision A). Revision A is `build-daytona/daytona`, with its own
+for Revision A). `--blocks` (off by default) recompiles the i960 code with
+its interrupt checks and instruction count once per basic block instead of
+per instruction: it loses precision (interrupts come a few instructions later
+than in MAME, so MAME lockstep and trace comparisons need the default output)
+but runs faster, above all on the PS Vita; see
+[platform/vita/README.md](platform/vita/README.md#block-recompilation-recompilepy---blocks-optional). Revision A is `build-daytona/daytona`, with its own
 settings and saves. Its factory settings are a linked twin cabinet, which
 waits for a second cabinet: set a single cabinet once in test mode (F2).
 

@@ -30,18 +30,9 @@ def main(argv=None):
     ap.add_argument("--reference-renderer", action="store_true", help="disable OPT03 renderer changes for comparison")
     gpu = ap.add_mutually_exclusive_group()
     gpu.add_argument("--gpu-fast", action="store_true", help="build experimental vita2d/GXM 3D renderer (requires vdpm libvita2d)")
-    gpu.add_argument("--gpu-gl", action="store_true", help="build experimental vitaGL 3D renderer with a hardware depth buffer (requires vitaGL + vitaShaRK; libshacccg.suprx on the Vita)")
+    gpu.add_argument("--gpu-gl", action="store_true", help="build experimental vitaGL 3D renderer, Model 2 draw priority (requires vitaGL + vitaShaRK; libshacccg.suprx on the Vita)")
     ap.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
-    gl = ap.add_argument_group("vitaGL renderer options (only with --gpu-gl)")
-    gl.add_argument("--gl-depth", type=int, choices=(0, 1), default=1,
-                    help="1: hardware depth test (default); 0: no depth, painter order")
-    gl.add_argument("--gl-painter", action="store_true",
-                    help="draw in CPU painter order (kept together with the depth test unless --gl-depth 0)")
-    gl.add_argument("--gl-batch", type=int, choices=(0, 1), default=1,
-                    help="regroup polygons by material (ignored in painter order)")
-    gl.add_argument("--gl-full-range", type=int, choices=(0, 1), default=1)
-    gl.add_argument("--gl-binary-alpha", type=int, choices=(0, 1), default=1)
-    
+
     args = ap.parse_args(argv)
     if args.jobs < 1:
         ap.error("--jobs must be positive")
@@ -71,11 +62,6 @@ def main(argv=None):
          f"-DDAYTONA_VITA_DIAGNOSTICS={'ON' if args.diagnostics else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_FAST={'ON' if args.gpu_fast else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_GL={'ON' if args.gpu_gl else 'OFF'}",
-         f"-DDAYTONA_VITA_GL_DEPTH={args.gl_depth}",
-         f"-DDAYTONA_VITA_GL_PAINTER={1 if args.gl_painter else 0}",
-         f"-DDAYTONA_VITA_GL_BATCH={args.gl_batch}",
-         f"-DDAYTONA_VITA_GL_FULL_RANGE={args.gl_full_range}",
-         f"-DDAYTONA_VITA_GL_BINARY_ALPHA={args.gl_binary_alpha}",
          f"-DDAYTONA_VITA_COMPILE_CHECK={'ON' if args.compile_check else 'OFF'}"], env)
     run(["cmake", "--build", build, "--parallel", args.jobs], env)
     if args.compile_check:

@@ -61,6 +61,9 @@
 #ifndef DAYTONA_VITA_GEO_CORE
 #define DAYTONA_VITA_GEO_CORE 1
 #endif
+#ifndef DAYTONA_VITA_SOUND_CORE
+#define DAYTONA_VITA_SOUND_CORE 2
+#endif
 
 extern "C" { unsigned int _newlib_heap_size_user = 192 * 1024 * 1024; }
 
@@ -98,7 +101,8 @@ constexpr bool kDiagnostics = DAYTONA_VITA_DIAGNOSTICS != 0;
 // Faults are always appended to vita-diag.log.
 constexpr bool kPerfLog = kDiagnostics;
 constexpr bool kProfile = kDiagnostics;
-constexpr int kMainCore = DAYTONA_VITA_MAIN_CORE, kGeoCore = DAYTONA_VITA_GEO_CORE;
+constexpr int kMainCore = DAYTONA_VITA_MAIN_CORE, kGeoCore = DAYTONA_VITA_GEO_CORE,
+              kSoundCore = DAYTONA_VITA_SOUND_CORE;
 constexpr double kPerfWindowSeconds = 5.0;
 constexpr const char *kDirectory = "ux0:data/daytona93";
 constexpr const char *kRom = "ux0:data/daytona93/daytona93.zip";
@@ -381,6 +385,8 @@ int main(int, char **) {
     // the worker has drained. Only one sound packet may be in flight.
     rt::GameLoop::SoundPacket active_sound;
     vita::SoundWorker sound_worker;
+    // Reference sound board on its own core (it used to float over all three).
+    sound_worker.set_cpu_mask(kSoundCore >= 0 && kSoundCore <= 2 ? SCE_KERNEL_CPU_MASK_USER_0 << kSoundCore : 0);
     sound_worker.open();
     log.log("GPU25 sound worker: threaded=%d affinity_result=%d affinity_mask=0x%x\n",
             int(sound_worker.threaded()), sound_worker.affinity_result(), sound_worker.affinity_mask());
@@ -409,9 +415,10 @@ int main(int, char **) {
             char text[1536];
             int n = std::snprintf(text, sizeof text,
                 "start: renderer=%s profile_window=%.0fs | main core=%d mask=0x%x result=%d | geometry core=%d | "
-                "sound worker threaded=%d mask=0x%x | geo_mode saved=%d build_default=%d\n",
+                "sound core=%d threaded=%d mask=0x%x result=%d | geo_mode saved=%d build_default=%d\n",
                 kRendererName, kPerfWindowSeconds, kMainCore, unsigned(main_affinity), main_affinity_result, kGeoCore,
-                int(sound_worker.threaded()), unsigned(sound_worker.affinity_mask()), settings.geo_mode, DAYTONA_VITA_GEO_MODE);
+                kSoundCore, int(sound_worker.threaded()), unsigned(sound_worker.affinity_mask()),
+                sound_worker.affinity_result(), settings.geo_mode, DAYTONA_VITA_GEO_MODE);
             if (n < 0) n = 0;
             n = std::min(n, int(sizeof text) - 1);
             n += int(vita::CoreProfiler::format_csv_header(text + n, sizeof text - size_t(n)));
@@ -945,7 +952,8 @@ int main(int, char **) {
                     h.cpu_mhz = scePowerGetArmClockFrequency();
                     h.gpu_mhz = scePowerGetGpuClockFrequency();
                     h.bus_mhz = scePowerGetBusClockFrequency();
-                    h.main_core = kMainCore; h.geo_core = kGeoCore;
+                    h.main_core = kMainCore; h.geo_core = kGeoCore; 
+                    h.sound_core = kSoundCore;
                     h.geo_threaded = geo && geo->worker().threaded && geo->mode() != rt::GeoMode::Sync;
                     h.sound_threaded = sound_worker.threaded();
                     h.native_audio = active_native_audio;

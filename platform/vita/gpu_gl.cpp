@@ -22,8 +22,8 @@
 //   * Transparency: no blending, like the real board. Texel 15 can be transparent
 //     (alpha test) and the Model 2 "checker" flag keeps one native pixel out of two.
 //
-// 2D layers (System 24 tilemaps, or the CPU-rendered background/foreground) are drawn as
-// alpha-tested textured quads before (background) and after (foreground) the polygons.
+// 2D layers (System 24 tilemaps) are alpha-tested textured quads placed by the depth buffer:
+// foreground before the polygons, background after them (see k2DLayersByDepth).
 //
 // GPU memory written in place: gl_begin_frame() waits for the GPU (cheap: the previous
 // frame finished long ago while the CPU emulated). After that, the frame's vertices and the
@@ -77,15 +77,29 @@ constexpr float kOffsetX = (kDisplayW - kSourceW * kScale) * 0.5f;
 inline float sx(float x) { return kOffsetX + x * kScale; } // native -> display pixels
 inline float sy(float y) { return y * kScale; }
 
-// Depth: one value per vertex in Vertex::d, in [0, 1], larger = in front (test GL_GEQUAL,
-// cleared to 0). The vertex shader outputs z = d * w, so it is d again after the division.
-//   kModel2Priority = true:  d = 1 - (rank + 1) / (polygons + 1), rank in the Model 2 draw
-//                            order above (same per-polygon priority as the arcade board:
-//                            no per-pixel depth, intersecting polygons do not cut).
-//   kModel2Priority = false: d = (1/256) / w, a classic per-pixel distance ("reversed Z"),
-//                            with a depth clear between Model 2 windows.
-constexpr bool kModel2Priority = true;
-constexpr float kDepthScale = 1.0f / 256.0f;
+// Depth: the Model 2 has no depth buffer, it draws its polygons in priority order. The
+// depth buffer only reproduces that order: one value per polygon (Vertex::d, the same on
+// every vertex), d = 1 - (rank + 1) / (polygons + 1), rank in the Model 2 draw order above.
+// Larger = in front (test GL_GEQUAL, cleared to 0, never cleared during the frame). The
+// vertex shader outputs z = d * w, so it is d again after the division. A polygon is
+// entirely in front of or behind another one: intersecting polygons do not cut, as on the
+// arcade board.
+//
+// 2D layers sorted by the same depth buffer instead of by drawing order (every polygon
+// depth is strictly inside (0, 1)). Drawing order:
+//   1. foreground layers  depth test + write at kForegroundDepth (in front of every
+//                         polygon): polygon pixels hidden by the HUD are rejected by the
+//                         depth test before their fragment shader runs.
+//   2. polygons           unchanged.
+//   3. background         backdrop + layers, depth test only at kBackgroundDepth (behind
+//                         every polygon, equal to the cleared depth): only the pixels no
+//                         polygon covered are shaded, the rest is rejected before the shader.
+// The image is the same as painting background, polygons, foreground in that order (no
+// blending anywhere in the game image). false: plain painter order (background, polygons,
+// foreground, 2D without depth test), same image, kept to compare on the console.
+constexpr bool k2DLayersByDepth = true;
+constexpr float kForegroundDepth = 0.99999994f; // largest float below 1: z stays inside w
+constexpr float kBackgroundDepth = 0.0f;        // glClear writes 0 (glClearDepthf(0))
 
 // vitaGL's glDrawArrays reads a fixed index table of 0xC000 entries (MAX_IDX_NUMBER):
 // never draw more vertices in one call. Multiple of 3.
@@ -212,33 +226,53 @@ struct Vertex {
     float x, y, w;  // x * w, y * w in display pixels, w (1 for 2D quads)
     float u, v;     // texture coordinates
     float p;        // palette row coordinate (Model 2 textures only)
-    float d;        // depth in [0, 1], larger = in front (polygons only, see kModel2Priority)
+    float d;        // depth in [0, 1], larger = in front (Model 2 priority, see above)
     uint32_t color; // bytes r, g, b, a
 };
 static_assert(sizeof(Vertex) == 32, "attribute offsets below rely on this layout");
+
+// Depth state of a command.
+enum class Depth : uint8_t {
+    Off,       // no depth test (menus, and the 2D layers when !k2DLayersByDepth)
+    TestWrite, // test GL_GEQUAL + write (polygons, foreground layers)
+    Test,      // test GL_GEQUAL, no write (background layers)
+};
 
 struct Cmd {
     Prog prog;
     GLuint texture;
     uint32_t first, count;    // vertex range in g.verts.data
-    bool depth;               // depth test + write (polygons only)
+    Depth depth;
     int clip;                 // scissor rectangle index in g.clips, -1 = none
-    bool clear_depth;         // pseudo command: clear the depth buffer
 };
 
-// Polygons waiting to be drawn, grouped by (window, clip, program, texture).
+// A polygon waiting in its batch: everything draw_polygons() resolved for it (material and
+// light); flush_batches() builds its vertices straight into the frame's GPU vertex memory.
+struct PolyRef {
+    const rt::GeoPoly *poly; // in Video::gpu_polys(), valid for the whole frame
+    float base_x, base_y;    // projection centre in display pixels
+    float u_scale, v_scale, palette;
+    float depth;             // Model 2 priority depth
+    uint32_t color;
+};
+
+// Polygons waiting to be drawn, grouped by (clip, program, texture). Model 2 windows need no
+// separate pass: the window is part of the priority rank, hence of the depth.
 struct Batch {
-    int window, clip;
+    int clip;
     Prog prog;
     GLuint texture;
-    std::vector<Vertex> verts; // kept between frames to reuse the allocation
+    std::vector<PolyRef> poly_refs; // kept between frames to reuse the allocation
+    // Filled by flush_batches(): what was actually written (invalid polygons are dropped).
+    unsigned valid_polys = 0;
+    size_t valid_vertices = 0;
 };
 
 struct FrameStats {
     unsigned polys_in = 0, polys_out = 0;
     unsigned skip_vcount = 0, skip_window = 0, skip_clip = 0, skip_invalid = 0, skip_texture = 0,
              skip_palette = 0, skip_renderer = 0;
-    unsigned draw_calls = 0, batches = 0, windows = 0;
+    unsigned draw_calls = 0, batches = 0;
     unsigned new_sources = 0, new_palettes = 0, deferred_sources = 0;
     unsigned dropped_vertices = 0; // vertex memory exhausted (should stay 0)
 };
@@ -322,7 +356,7 @@ void set_error(const char *what, const char *log = nullptr) {
 }
 
 // Append vertices; merged into the previous command when it uses the same state.
-void push(Prog prog, GLuint texture, const Vertex *vertices, size_t count, bool depth = false) {
+void push(Prog prog, GLuint texture, const Vertex *vertices, size_t count, Depth depth = Depth::Off) {
     if (!count) return;
     const uint32_t first = uint32_t(g.verts.size);
     Vertex *dst = g.verts.append(count);
@@ -330,25 +364,22 @@ void push(Prog prog, GLuint texture, const Vertex *vertices, size_t count, bool 
     std::memcpy(dst, vertices, count * sizeof(Vertex));
     if (!g.cmds.empty()) {
         Cmd &last = g.cmds.back();
-        if (!last.clear_depth && last.prog == prog && last.texture == texture && last.depth == depth &&
-            last.clip == g.clip) {
+        if (last.prog == prog && last.texture == texture && last.depth == depth && last.clip == g.clip) {
             last.count += uint32_t(count);
             return;
         }
     }
-    g.cmds.push_back({prog, texture, first, uint32_t(count), depth, g.clip, false});
+    g.cmds.push_back({prog, texture, first, uint32_t(count), depth, g.clip});
 }
 
-void push_depth_clear() { g.cmds.push_back({Prog::Flat, 0, 0, 0, false, -1, true}); }
-
-// Screen-space quad (w = 1), display pixels.
+// Screen-space quad (w = 1), display pixels, at depth d (only used when depth != Off).
 void push_quad(Prog prog, GLuint texture, float x0, float y0, float x1, float y1, float u0, float v0, float u1,
-               float v1, uint32_t color) {
+               float v1, uint32_t color, Depth depth = Depth::Off, float d = 0.0f) {
     const Vertex q[6] = {
-        {x0, y0, 1, u0, v0, 0, 0, color}, {x1, y0, 1, u1, v0, 0, 0, color}, {x1, y1, 1, u1, v1, 0, 0, color},
-        {x0, y0, 1, u0, v0, 0, 0, color}, {x1, y1, 1, u1, v1, 0, 0, color}, {x0, y1, 1, u0, v1, 0, 0, color},
+        {x0, y0, 1, u0, v0, 0, d, color}, {x1, y0, 1, u1, v0, 0, d, color}, {x1, y1, 1, u1, v1, 0, d, color},
+        {x0, y0, 1, u0, v0, 0, d, color}, {x1, y1, 1, u1, v1, 0, d, color}, {x0, y1, 1, u0, v1, 0, d, color},
     };
-    push(prog, texture, q, 6);
+    push(prog, texture, q, 6, depth);
 }
 
 // Index of a scissor rectangle in g.clips (added if new; there are only a few per frame).
@@ -360,39 +391,68 @@ int add_clip(const std::array<int, 4> &rect) {
 }
 
 // Index in g.batches of the polygon batch for this state, created on first use this frame.
-uint32_t batch_for(int window, int clip, Prog prog, GLuint texture) {
-    const uint64_t key = uint64_t(window & 0xff) << 56 | uint64_t(clip & 0xffff) << 40 | uint64_t(prog) << 32 | texture;
+uint32_t batch_for(int clip, Prog prog, GLuint texture) {
+    const uint64_t key = uint64_t(clip & 0xffff) << 40 | uint64_t(prog) << 32 | texture;
     auto found = g.batch_index.find(key);
     if (found != g.batch_index.end()) return found->second;
     if (g.batch_count == g.batches.size()) g.batches.emplace_back();
     Batch &b = g.batches[g.batch_count];
-    b.window = window; b.clip = clip; b.prog = prog; b.texture = texture;
-    b.verts.clear();
+    b.clip = clip; b.prog = prog; b.texture = texture;
+    b.poly_refs.clear();
     g.batch_index.emplace(key, uint32_t(g.batch_count));
     return uint32_t(g.batch_count++);
 }
 
-// Moves the batches into the draw list: window by window (lowest first, depth cleared in
-// between because a higher window always covers a lower one), and inside a window in
-// order of first appearance (decals come after the surface they sit on).
+// Moves the batches into the draw list, in order of first appearance. The order does not
+// change the image: every polygon has its own priority depth and nothing is blended.
 void flush_batches() {
-    std::vector<Batch *> order;
-    order.reserve(g.batch_count);
-    for (size_t i = 0; i < g.batch_count; ++i) order.push_back(&g.batches[i]);
-    std::stable_sort(order.begin(), order.end(), [](const Batch *a, const Batch *b) { return a->window < b->window; });
-    int window = -1;
-    for (const Batch *b : order) {
-        if (b->window != window) {
-            if (window >= 0) push_depth_clear();
-            window = b->window;
-            ++g.stats.windows;
-        }
+    for (size_t bi = 0; bi < g.batch_count; ++bi) {
+        Batch *b = &g.batches[bi];
         g.clip = b->clip;
-        push(b->prog, b->texture, b->verts.data(), b->verts.size(), true);
+        b->valid_polys = 0;
+        b->valid_vertices = 0;
+        if (b->poly_refs.empty()) continue;
+
+        const uint32_t first = uint32_t(g.verts.size);
+        uint32_t written = 0;
+        for (const PolyRef &ref : b->poly_refs) {
+            const rt::GeoPoly &poly = *ref.poly;
+            const int n = poly.num_vertices;
+
+            // 1. Vertices in homogeneous form; the GPU does the division by w.
+            Vertex v[8];
+            bool valid = true;
+            for (int i = 0; i < n && valid; ++i) {
+                const float w = poly.v[i].p[0];
+                v[i] = {ref.base_x * w + poly.v[i].x * kScale, ref.base_y * w - poly.v[i].y * kScale, w,
+                        poly.v[i].p[1] * ref.u_scale, poly.v[i].p[2] * ref.v_scale, ref.palette, ref.depth,
+                        ref.color};
+                valid = w > 0.0f && std::isfinite(w) && std::isfinite(v[i].x) && std::isfinite(v[i].y) &&
+                        std::isfinite(v[i].u) && std::isfinite(v[i].v);
+            }
+            if (!valid) { ++g.stats.skip_invalid; continue; }
+
+            // 2. Triangle fan written once, straight into the frame's GPU vertex memory
+            //    (vglForceAlloc: uncached RAM). The CPU only writes there, never reads back.
+            const size_t count = size_t(n - 2) * 3;
+            Vertex *dst = g.verts.append(count);
+            if (!dst) { g.stats.dropped_vertices += unsigned(count); continue; }
+            for (int i = 1; i + 1 < n; ++i) {
+                *dst++ = v[0];
+                *dst++ = v[i];
+                *dst++ = v[i + 1];
+            }
+            written += uint32_t(count);
+            ++b->valid_polys;
+        }
+        b->valid_vertices = written;
+        // One command per batch: batches have distinct states, so push() would not merge them.
+        if (written) g.cmds.push_back({b->prog, b->texture, first, written, Depth::TestWrite, g.clip});
     }
     g.clip = -1;
     g.stats.batches = unsigned(g.batch_count);
 }
+
 
 // The 3 attributes are interleaved in the VBO. Their pointers stay at the small constant
 // offsets 0/12/28 and each draw selects its vertices with glDrawArrays(first, ...).
@@ -432,32 +492,29 @@ void execute() {
     glActiveTexture(GL_TEXTURE0);
 
     // Current GL state, to skip redundant calls. -1 / 0 = unknown.
+    // gl_begin_frame() left glDepthMask at GL_TRUE.
     GLuint program = 0, texture = 0;
-    int blend = -1, depth = -1, clip = -2;
+    int blend = -1, depth_test = -1, depth_write = 1, clip = -2;
     for (const Cmd &c : g.cmds) {
-        if (c.clear_depth) {
-            if (clip != -1) glDisable(GL_SCISSOR_TEST);
-            glClear(GL_DEPTH_BUFFER_BIT); // depth only, glDepthMask stays GL_TRUE
-            // vitaGL's clear draws with its own shader: re-apply everything afterwards.
-            program = texture = 0;
-            blend = depth = -1;
-            clip = -1;
-            glBindBuffer(GL_ARRAY_BUFFER, g.vbo);
-            set_attributes(0);
-            continue;
-        }
         if (g.program[int(c.prog)] != program) {
             program = g.program[int(c.prog)];
             glUseProgram(program);
         }
-        const int want_blend = (c.prog == Prog::Flat && !c.depth) ? 1 : 0; // menu / HUD rectangles only
+        // Blending only for the menu / text rectangles; the game image is never blended.
+        const int want_blend = (c.prog == Prog::Flat && c.depth == Depth::Off) ? 1 : 0;
         if (want_blend != blend) {
             if (want_blend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
             blend = want_blend;
         }
-        if (int(c.depth) != depth) {
-            if (c.depth) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
-            depth = int(c.depth);
+        const int want_test = c.depth != Depth::Off ? 1 : 0;
+        if (want_test != depth_test) {
+            if (want_test) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+            depth_test = want_test;
+        }
+        const int want_write = c.depth != Depth::Test ? 1 : 0; // no effect while the test is off
+        if (want_test && want_write != depth_write) {
+            glDepthMask(want_write ? GL_TRUE : GL_FALSE);
+            depth_write = want_write;
         }
         if (textured(c.prog) && c.texture != texture) {
             glBindTexture(GL_TEXTURE_2D, c.texture);
@@ -477,6 +534,7 @@ void execute() {
     }
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
+    if (depth_write != 1) glDepthMask(GL_TRUE);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
@@ -500,9 +558,9 @@ GLuint build_program(const ProgramDef &def) {
     char common[320];
     std::snprintf(common, sizeof common,
                   "#version 140\nprecision lowp int;\nprecision highp float;\n"
-                  "#define SCREEN_W %.1f\n#define SCREEN_H %.1f\n#define DEPTH_SCALE %.8f\n"
+                  "#define SCREEN_W %.1f\n#define SCREEN_H %.1f\n"
                   "#define OFFSET_X %.6f\n#define INV_SCALE %.8f\n",
-                  double(kDisplayW), double(kDisplayH), double(kDepthScale), double(kOffsetX), double(1.0f / kScale));
+                  double(kDisplayW), double(kDisplayH), double(kOffsetX), double(1.0f / kScale));
     const GLuint vs = compile(GL_VERTEX_SHADER, common, def.defines, kVertexShader, def.name);
     const GLuint fs = vs ? compile(GL_FRAGMENT_SHADER, common, def.defines, kFragmentShader, def.name) : 0;
     GLuint program = 0;
@@ -585,9 +643,9 @@ void log_report() {
     r.add("frame %u: polys in=%u out=%u skipped: vcount=%u window=%u clip=%u invalid=%u texture=%u palette=%u renderer=%u\n",
            g.frame, s.polys_in, s.polys_out, s.skip_vcount, s.skip_window, s.skip_clip, s.skip_invalid, s.skip_texture,
            s.skip_palette, s.skip_renderer);
-    r.add("frame %u: windows=%u batches=%u cmds=%u draw_calls=%u verts=%u (dropped %u) | new textures=%u (deferred %u)"
+    r.add("frame %u: batches=%u cmds=%u draw_calls=%u verts=%u (dropped %u) | new textures=%u (deferred %u)"
           " new palettes=%u | free vram %u KB\n",
-          g.frame, s.windows, s.batches, unsigned(g.cmds.size()), s.draw_calls, unsigned(g.verts.size),
+          g.frame, s.batches, unsigned(g.cmds.size()), s.draw_calls, unsigned(g.verts.size),
           s.dropped_vertices, s.new_sources, s.deferred_sources, s.new_palettes, vglMemFree(VGL_MEM_VRAM) / 1024);
     gl_log("%s", r.text.c_str());
 }
@@ -616,7 +674,7 @@ bool gl_init() {
 
     glViewport(0, 0, int(kDisplayW), int(kDisplayH));
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearDepthf(0.0f);        // reversed Z: far = 0
+    glClearDepthf(0.0f);        // lowest priority = 0 (larger depth = in front)
     glDepthFunc(GL_GEQUAL);     // nearer = larger; on ties the later polygon wins
     glDepthRangef(-1.0f, 1.0f); // window depth = z / w as computed by the vertex shader
     glDepthMask(GL_TRUE);
@@ -974,79 +1032,103 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         ++cache_resets_;
     }
 
-    // Everything that depends only on the polygon's header (clip, shader, texture, palette,
-    // batch) is computed once and reused while the following polygons have the same header:
-    // neighbouring polygons nearly always belong to the same object and material.
-    enum class Skip : uint8_t { None, Window, Clip, Texture, Palette, Renderer };
-    struct Shade {
+    // Per-polygon state, cached on two levels and reused while the following polygons match:
+    //   * Material: everything that depends on the header (texheader, viewport, window):
+    //     clip, shader, texture, batch, UV scale. Neighbouring polygons nearly always belong
+    //     to the same object and material.
+    //   * Light: what depends on the polygon luma: the palette row (textured) or the flat
+    //     colour. The geometrizer lights each face (normal . light), so the luma changes
+    //     from one polygon to the next; only this part is redone when it is the only change.
+    enum class Skip : uint8_t { None, Window, Clip, Texture, Renderer };
+
+    struct Material {
         bool cached = false;
         // key
         uint16_t th[4] = {};
-        uint8_t luma = 0;
         int viewport[4] = {}, window = 0;
         // result
         Skip skip = Skip::None;
         bool textured = false, checker = false;
+        int clip = -1;
+        Prog prog = Prog::Flat;
+        GLuint texture = 0;
+        bool has_batch = false; // batch created when the first polygon gets a palette row
         uint32_t batch = 0;
-        float u_scale = 0, v_scale = 0, palette = 0;
+        float u_scale = 0, v_scale = 0;
+    } mat;
+    struct Light {
+        bool cached = false;
+        uint8_t key = 0;     // the luma bits the result depends on (see luma_key)
+        bool ok = false;     // false: palette texture full, polygon skipped
+        float palette = 0;
         uint32_t color = 0xffffffffu;
-    } sh;
+    } light;
+
     const int windows = video.gpu_windows(), rx = video.render_x(), ry = video.render_y();
     const int crtc_x = video.crtc_x(), crtc_y = video.crtc_y();
 
-    auto same_header = [&](const rt::GeoPoly &p) {
-        return sh.cached && p.texheader[0] == sh.th[0] && p.texheader[1] == sh.th[1] && p.texheader[2] == sh.th[2] &&
-               p.texheader[3] == sh.th[3] && p.luma == sh.luma && p.window == sh.window &&
-               p.viewport[0] == sh.viewport[0] && p.viewport[1] == sh.viewport[1] &&
-               p.viewport[2] == sh.viewport[2] && p.viewport[3] == sh.viewport[3];
+    auto same_material = [&](const rt::GeoPoly &p) {
+        return mat.cached && p.texheader[0] == mat.th[0] && p.texheader[1] == mat.th[1] &&
+               p.texheader[2] == mat.th[2] && p.texheader[3] == mat.th[3] && p.window == mat.window &&
+               p.viewport[0] == mat.viewport[0] && p.viewport[1] == mat.viewport[1] &&
+               p.viewport[2] == mat.viewport[2] && p.viewport[3] == mat.viewport[3];
     };
-    auto shade = [&](const rt::GeoPoly &p) {
-        sh = Shade{};
-        sh.cached = true;
-        for (int i = 0; i < 4; ++i) { sh.th[i] = p.texheader[i]; sh.viewport[i] = p.viewport[i]; }
-        sh.luma = p.luma;
-        sh.window = p.window;
-        if (p.window > windows) { sh.skip = Skip::Window; return; }
+    auto set_material = [&](const rt::GeoPoly &p) {
+        mat = Material{};
+        light.cached = false; // the palette also depends on texheader (luma base, colour)
+        mat.cached = true;
+        for (int i = 0; i < 4; ++i) { mat.th[i] = p.texheader[i]; mat.viewport[i] = p.viewport[i]; }
+        mat.window = p.window;
+        if (p.window > windows) { mat.skip = Skip::Window; return; }
 
         // Clip rectangle (the polygon's viewport), as a scissor in display pixels.
         const int l = std::max<int>(p.viewport[0] + rx, 0);
         const int r = std::min<int>(p.viewport[2] + rx, rt::Video::W - 1);
         const int t = std::max<int>(384 - p.viewport[3] + ry, 0);
         const int b = std::min<int>(384 - p.viewport[1] + ry, rt::Video::H - 1);
-        if (l > r || t > b) { sh.skip = Skip::Clip; return; }
-        const int clip = add_clip({int(sx(float(l))), int(sy(float(t))), int(sx(float(r + 1))), int(sy(float(b + 1)))});
+        if (l > r || t > b) { mat.skip = Skip::Clip; return; }
+        mat.clip = add_clip({int(sx(float(l))), int(sy(float(t))), int(sx(float(r + 1))), int(sy(float(b + 1)))});
 
-        // Shader, texture, palette, colour.
+        // Shader and texture.
         const int renderer = (p.texheader[0] >> 13) & 3; // 0 flat, 1 unsupported, 2-3 textured
-        sh.checker = (p.texheader[0] & 0x8000) != 0;
-        Prog prog;
-        GLuint texture = 0;
+        mat.checker = (p.texheader[0] & 0x8000) != 0;
         if (renderer & 2) {
             const Source *src = source_for(p, mem);
-            if (!src) { sh.skip = Skip::Texture; return; }
-            const int row = palette_row(p, mem);
-            if (row < 0) { sh.skip = Skip::Palette; return; }
-            prog = sh.checker ? Prog::ModelChecker : src->transparent ? Prog::ModelAlpha : Prog::Model;
-            texture = src->texture;
-            sh.textured = true;
-            sh.u_scale = 1.0f / (8.0f * float(src->source_w)); // Model 2 texel units are x8
-            sh.v_scale = 1.0f / (8.0f * float(src->source_h));
-            sh.palette = (float(row) + 0.5f) / float(kPaletteRows);
+            if (!src) { mat.skip = Skip::Texture; return; }
+            mat.prog = mat.checker ? Prog::ModelChecker : src->transparent ? Prog::ModelAlpha : Prog::Model;
+            mat.texture = src->texture;
+            mat.textured = true;
+            mat.u_scale = 1.0f / (8.0f * float(src->source_w)); // Model 2 texel units are x8
+            mat.v_scale = 1.0f / (8.0f * float(src->source_h));
         } else if (renderer == 0) {
-            prog = sh.checker ? Prog::FlatChecker : Prog::Flat;
-            sh.color = solid_color(p, mem);
+            mat.prog = mat.checker ? Prog::FlatChecker : Prog::Flat;
         } else {
-            sh.skip = Skip::Renderer;
-            return;
+            mat.skip = Skip::Renderer;
         }
-        // With the Model 2 priority depth, windows need no separate pass (the window is in
-        // the rank): batches mix windows. With distance depth, one pass per window.
-        sh.batch = batch_for(kModel2Priority ? 0 : std::min<int>(p.window, 255), clip, prog, texture);
+    };
+    // Luma bits that change the light result: the palette key keeps luma & kLumaMask
+    // (palette_row), the flat colour uses luma >> 2 (solid_color).
+    auto luma_key = [&](const rt::GeoPoly &p) -> uint8_t {
+        if (mat.textured) return kLumaMask ? uint8_t(p.luma & kLumaMask) : uint8_t(0);
+        return uint8_t(p.luma & 0xfc);
+    };
+    auto set_light = [&](const rt::GeoPoly &p) {
+        light = Light{};
+        light.cached = true;
+        light.key = luma_key(p);
+        if (mat.textured) {
+            const int row = palette_row(p, mem);
+            if (row < 0) return; // light.ok stays false
+            light.palette = (float(row) + 0.5f) / float(kPaletteRows);
+        } else {
+            light.color = solid_color(p, mem);
+        }
+        light.ok = true;
     };
 
-    // Model 2 draw priority -> one depth per polygon (see kModel2Priority).
+    // Model 2 draw priority -> one depth per polygon (see the Depth comment at the top).
     const uint64_t sort_begin = now_us();
-    if (kModel2Priority && !polys.empty()) {
+    if (!polys.empty()) {
         const auto &order = g.order.sort(polys); // first = drawn first = wins
         g.depth.resize(polys.size());
         const float step = 1.0f / float(polys.size() + 1);
@@ -1059,55 +1141,50 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         const int n = poly.num_vertices;
         if (n < 3 || n > 8) { ++st.skip_vcount; continue; }
 
-        // 1. Clip, shader, texture, palette, batch (reused from the previous polygon if possible).
-        if (!same_header(poly)) shade(poly);
-        switch (sh.skip) {
+        // 1. Material: clip, shader, texture (reused from the previous polygon if possible).
+        if (!same_material(poly)) set_material(poly);
+        switch (mat.skip) {
         case Skip::None: break;
         case Skip::Window: ++st.skip_window; continue;
         case Skip::Clip: ++st.skip_clip; continue;
         case Skip::Texture: ++st.skip_texture; continue;
-        case Skip::Palette: ++st.skip_palette; continue;
         case Skip::Renderer: ++st.skip_renderer; continue;
         }
+        // 2. Light: palette row or flat colour, redone only when the useful luma bits change.
+        if (!light.cached || luma_key(poly) != light.key) set_light(poly);
+        if (!light.ok) { ++st.skip_palette; continue; }
+        // 3. Batch: created at the first polygon that gets this far. Batches mix Model 2
+        //    windows: the window is part of the priority rank, hence of the depth.
+        if (!mat.has_batch) {
+            mat.batch = batch_for(mat.clip, mat.prog, mat.texture);
+            mat.has_batch = true;
+        }
 
-        // 2. Vertices in homogeneous form; the GPU does the division by w.
-        //    screen x = crtc_x + center_x + vx / pz   ->   x * w = (crtc_x + center_x) * w + vx
+        // 4. Reference only: the vertices are built by flush_batches(), straight into the
+        //    frame's GPU vertex memory. x * w = (crtc_x + center_x) * w + vx (GPU divides by w).
         const float base_x = sx(float(crtc_x + poly.center[0]));
         const float base_y = sy(float(384 - poly.center[1] + crtc_y));
-        Vertex v[8];
-        bool valid = true;
-        for (int i = 0; i < n && valid; ++i) {
-            const float w = poly.v[i].p[0];
-            const float d = kModel2Priority ? g.depth[pi] : std::min(kDepthScale / w, 1.0f);
-            v[i] = {base_x * w + poly.v[i].x * kScale, base_y * w - poly.v[i].y * kScale, w,
-                    poly.v[i].p[1] * sh.u_scale, poly.v[i].p[2] * sh.v_scale, sh.palette, d, sh.color};
-            valid = w > 0.0f && std::isfinite(w) && std::isfinite(v[i].x) && std::isfinite(v[i].y) &&
-                    std::isfinite(v[i].u) && std::isfinite(v[i].v);
-        }
-        if (!valid) { ++st.skip_invalid; continue; }
-
-        // 3. Triangle fan appended to the polygon's batch.
-        std::vector<Vertex> &out = g.batches[sh.batch].verts;
-        const size_t count = size_t(n - 2) * 3;
-        out.resize(out.size() + count);
-        Vertex *o = out.data() + out.size() - count;
-        for (int i = 1; i + 1 < n; ++i) {
-            *o++ = v[0];
-            *o++ = v[i];
-            *o++ = v[i + 1];
-        }
-        submitted_vertices_ += count;
-        ++st.polys_out;
-        if (sh.textured) {
-            ++textured_polys_;
-            if (sh.checker) ++textured_checker_polys_;
-        } else {
-            ++solid_polys_;
-            if (sh.checker) ++checker_polys_;
-        }
+        g.batches[mat.batch].poly_refs.push_back({
+            &poly, base_x, base_y, mat.u_scale, mat.v_scale, light.palette, g.depth[pi], light.color
+        });
     }
     clip_changes_ = unsigned(g.clips.size());
     flush_batches();
+
+    // Polygon counters, from what flush_batches() actually wrote (it drops invalid polygons).
+    for (size_t i = 0; i < g.batch_count; ++i) {
+        const Batch &b = g.batches[i];
+        st.polys_out += b.valid_polys;
+        submitted_vertices_ += b.valid_vertices;
+        const bool checker = b.prog == Prog::FlatChecker || b.prog == Prog::ModelChecker;
+        if (textured(b.prog)) {
+            textured_polys_ += b.valid_polys;
+            if (checker) textured_checker_polys_ += b.valid_polys;
+        } else {
+            solid_polys_ += b.valid_polys;
+            if (checker) checker_polys_ += b.valid_polys;
+        }
+    }
 }
 
 // ---- Renderer: 2D layers -----------------------------------------------------------------
@@ -1127,30 +1204,41 @@ void GpuGlRenderer::update_system24_textures(const rt::Video &video) {
 
 // System 24 tilemap layers as textured rectangles. Same layer/window/split logic as
 // GpuFastRenderer::draw_system24.
+// With k2DLayersByDepth the foreground is drawn before the polygons and the background
+// after them; the depth buffer puts each one in its place (see k2DLayersByDepth).
 void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
+    const Depth depth = !k2DLayersByDepth ? Depth::Off : foreground ? Depth::TestWrite : Depth::Test;
+    const float d = !k2DLayersByDepth ? 0.0f : foreground ? kForegroundDepth : kBackgroundDepth;
     if (!foreground) {
-        system24_quads_ = 0;
-        gl_fill_rect(kOffsetX, 0.0f, kSourceW * kScale, kDisplayH, argb_to_rgba(video.system24_pen(0)));
+        // Backdrop (pen 0) under the background layers. Opaque when sorted by depth: alpha
+        // is 255 once the palette is written, and black is black either way before that.
+        push_quad(Prog::Flat, 0, kOffsetX, 0.0f, kOffsetX + kSourceW * kScale, kDisplayH, 0.0f, 0.0f, 0.0f, 0.0f,
+                  argb_to_rgba(video.system24_pen(0)), depth, d);
     }
     // Rectangle in native pixels; h = horizontal scroll, v = source line of y0.
     struct Rect { int x0, x1, y0, y1, h, v; };
     auto submit = [&](int source_layer, const std::vector<Rect> &rects) {
         if (rects.empty()) return;
         const GLuint texture = system24_textures_[size_t((foreground ? 4 : 0) + source_layer)];
-        std::vector<Vertex> verts;
-        verts.reserve(rects.size() * 6u);
+        // Quads written once, straight into the frame's GPU vertex memory (no temporary vector).
+        const uint32_t first = uint32_t(g.verts.size);
+        const size_t count = rects.size() * 6u;
+        Vertex *dst = g.verts.append(count);
+        if (!dst) { g.stats.dropped_vertices += unsigned(count); return; }
+
         for (const Rect &r : rects) {
             const float u0 = float(r.x0 + r.h) / 512.0f, u1 = float(r.x1 + r.h) / 512.0f;
             const float v0 = float(r.v) / 512.0f, v1 = float(r.v + (r.y1 - r.y0)) / 512.0f;
             const float x0 = sx(float(r.x0)), x1 = sx(float(r.x1)), y0 = sy(float(r.y0)), y1 = sy(float(r.y1));
-            const Vertex q[6] = {
-                {x0, y0, 1, u0, v0, 0, 0, 0xffffffffu}, {x1, y0, 1, u1, v0, 0, 0, 0xffffffffu},
-                {x1, y1, 1, u1, v1, 0, 0, 0xffffffffu}, {x0, y0, 1, u0, v0, 0, 0, 0xffffffffu},
-                {x1, y1, 1, u1, v1, 0, 0, 0xffffffffu}, {x0, y1, 1, u0, v1, 0, 0, 0xffffffffu},
-            };
-            verts.insert(verts.end(), q, q + 6);
+            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y0, 1, u1, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            *dst++ = {x0, y1, 1, u0, v1, 0, d, 0xffffffffu};
         }
-        push(Prog::Layer, texture, verts.data(), verts.size());
+        // One command per layer texture (consecutive submits never share a texture).
+        g.cmds.push_back({Prog::Layer, texture, first, uint32_t(count), depth, g.clip});
         system24_quads_ += unsigned(rects.size());
     };
 
@@ -1257,13 +1345,16 @@ void GpuGlRenderer::draw(rt::Video &video) {
     last_polygon_us_ = last_tile_us_ = last_upload_us_ = last_sort_us_ = last_texture_us_ = 0;
     // The Vita GPU always draws the System 24 layers itself (Video::system24_gpu_compatible()
     // is unconditionally true there): background tiles, Model 2 polygons, foreground tiles.
+    // With k2DLayersByDepth the foreground goes first and the background last; the depth
+    // buffer keeps the same image (see k2DLayersByDepth).
     update_system24_textures(video);
+    system24_quads_ = 0;
     const uint64_t t0 = now_us();
-    draw_system24(video, false);
+    draw_system24(video, k2DLayersByDepth); // first pass: foreground (by depth) or background
     const uint64_t t1 = now_us();
     draw_polygons(video);
     const uint64_t t2 = now_us();
-    draw_system24(video, true);
+    draw_system24(video, !k2DLayersByDepth); // last pass: background (by depth) or foreground
     const uint64_t t3 = now_us();
     last_upload_us_ = t0 - begin;
     last_polygon_us_ = t2 - t1;

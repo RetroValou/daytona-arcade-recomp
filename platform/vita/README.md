@@ -187,10 +187,14 @@ initialise sceGxm. Without either flag the CPU-exact build is produced as before
 
 * Build requirements: vitaGL (built with `HAVE_SHARK=1`), vitaShaRK, mathneon, and
   `libshacccg.suprx` installed on the console (runtime shader compiler).
-* Polygons are resolved by a classic depth buffer (`GL_LEQUAL`, perspective depth from
-  the vertex distance `pz`, near/far set by `kDepthNear`/`kDepthFar` in `gpu_gl.cpp`).
-  They are submitted in raw list order with **no sorting**. Compile `gpu_gl.cpp` with
-  `-DDAYTONA_GL_PAINTER=1` to draw in the CPU painter order (still depth tested), or
-  `-DDAYTONA_GL_DEPTH=0 -DDAYTONA_GL_PAINTER=1` for the pure painter order.
-* System 24 layers, the HUD layers and the menu font never use the depth buffer.
-* Planned v2: replace `depth_from_q()` with a Model 2 specific depth.
+* Polygons follow the Model 2 draw priority, as in the CPU reference renderer (higher
+  window first, then smaller z sort key, then newest polygon first). The Model 2 has no
+  depth buffer; the GPU one only reproduces that order: each polygon gets one depth from
+  its rank (`GL_GEQUAL`, never cleared during the frame), so whole polygons are in front
+  of or behind each other and intersecting polygons do not cut, as on the arcade board.
+  Polygons are grouped by (clip, shader, texture) into one draw call per group.
+* System 24 layers are placed by the same depth buffer: foreground before the polygons
+  (in front of every polygon), background after them (behind every polygon), so hidden
+  pixels are rejected before their shader runs. `k2DLayersByDepth = false` in
+  `gpu_gl.cpp` restores the plain painter order (same image). The menu font never uses
+  the depth buffer.

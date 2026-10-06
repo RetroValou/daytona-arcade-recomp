@@ -1,4 +1,4 @@
-# Geometry core and per-core profiling (GPU builds, VPK 01.24)
+# Geometry core and per-core profiling (GPU builds, VPK 01.25)
 
 ## What changed
 
@@ -12,11 +12,15 @@ on the main core:
 core 0  main thread      input, i960 + TGP, buffer RAM snapshot, 2D video update,
                          sound hand-off, GPU recording + submission (vitaGL / vita2d)
 core 1  geometry thread  display list parse (unmodified MAME geometrizer)
-sound   sound worker     unchanged (its own thread, any application core)
+core 2  sound worker     reference sound board (68000 + SCSP), pinned to core 2
 ```
 
-Cores: CMake `DAYTONA_VITA_MAIN_CORE` (default 0) and `DAYTONA_VITA_GEO_CORE`
-(default 1); `-1` leaves a thread unpinned.
+Cores: CMake `DAYTONA_VITA_MAIN_CORE` (default 0), `DAYTONA_VITA_GEO_CORE`
+(default 1) and `DAYTONA_VITA_SOUND_CORE` (default 2); `-1` leaves a thread
+unpinned (the sound worker then keeps all application cores, as before, and
+the scheduler could put it on core 0 or 1 next to the main or geometry thread).
+The sound worker's mask is in the `perf.log` start line (`mask=0x40000` = core 2)
+and in `cores:` of every report.
 
 ## Files (nothing in src/ is modified)
 
@@ -26,13 +30,25 @@ Cores: CMake `DAYTONA_VITA_MAIN_CORE` (default 0) and `DAYTONA_VITA_GEO_CORE`
 | `src/runtime/geo.cpp` (this directory) | Replaces `src/runtime/geo.cpp` in the Vita runtime: compiles the original unchanged as `rt::GeoCore`, plus the wrapper and its thread. |
 | `core_profile.h` | Per-core accounting and the `perf.log` writer. |
 | `main_gpu.cpp` | Core placement, GEOMETRY option, profiling. |
-| `gpu_gl.cpp/.h` | Single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only with `--diagnostics`. |
-| `CMakeLists.txt` | The replacement source, include order and options. |
+| `gpu_gl.cpp/.h` | Single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the debug build (not `--release`). |
+| `sound_worker.h` | `set_cpu_mask()`: the sound worker pins itself to its core. |
+| `CMakeLists.txt` | The replacement source, include order, core options, LTO. |
 
 `m2_board.cpp`, `video.cpp`, `game_loop.cpp` and the rest of `src/` are compiled
 as they are and simply get the wrapper when they say `Geo`. The MAME code is
 reused by inclusion, so a change of `geo.cpp`/`geo.h` in `src/` is picked up
 automatically; only the interface listed above must stay the same.
+
+## Link-time optimization
+
+`DAYTONA_VITA_LTO` (`scripts/build_vita.py --release`) builds the whole VPK with GCC LTO: the
+generated i960/TGP code can then inline the runtime's small memory and bus
+accessors (`cpu.cpp`, `m2_board.cpp`), which a normal build calls through
+separate object files. The float rules are unchanged (`-fno-fast-math
+-ffp-contract=off` also at the link-time code generation). CMake prints
+`Vita LTO: enabled`, or a warning and a normal build if the toolchain cannot do
+LTO. The link is longer and uses more host memory (the generated code is large),
+so the default debug build leaves it off.
 
 ## Why the polygons stay identical (one frame later)
 
@@ -65,10 +81,11 @@ If the geometry thread cannot be created the main core is used, and the line
 
 ## perf.log (per-core time accounting)
 
-All log files exist only in diagnostic builds: `python3 scripts/build_vita.py
---gpu-gl --diagnostics` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag enables
-`perf.log`, `gl.log`, the periodic lines of `vita-diag.log` and the profiling
-clocks; a normal build writes nothing except faults to `vita-diag.log`.
+All log files exist only in debug builds, the default of `python3
+scripts/build_vita.py --gpu-gl` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag
+enables `perf.log`, `gl.log`, the periodic lines of `vita-diag.log` and the
+profiling clocks; a `--release` build writes nothing except faults to
+`vita-diag.log`.
 
 `ux0:data/daytona93/perf.log` is rewritten at each launch. A background thread writes one report
 every 5 s of **gameplay** (menus excluded, a window restarts after a pause).
@@ -80,7 +97,7 @@ frame (`ms/frame`), worst frame (`max ms`), frames with that work (`hits`):
 ```text
 ==== perf 3: 5.01 s gameplay | geo=ASYNC_PIPELINED | renderer=VITAGL | CPU 444 MHz GPU 222 MHz BUS 222 MHz ====
 frames: emulated 52.63 fps (target 57.52), shown 52.63 fps, worst loop 19.00 ms, board frame budget 17.38 ms
-cores: main=0 geometry=1 (thread) sound=own thread
+cores: main=0 geometry=1 (thread) sound=2 (thread)
 section                                    core%  ms/frame    max ms   hits
 CORE 0 main: busy 93.7% (17.80 ms per shown frame)
   i960+TGP game logic (to vblank)           40.6      7.71      8.49    300
