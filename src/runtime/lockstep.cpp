@@ -52,7 +52,12 @@ bool Lockstep::apply() {
         if (e.kind == Event::Call) {
             const size_t fn = e.fn; // the callback may add events (e moves)
             ++next_;
-            calls_[fn]();
+            // Take the callback out and free its slot first: it may add a callback,
+            // which can then reuse the slot (and may reallocate calls_).
+            std::function<void()> call = std::move(calls_[fn]);
+            calls_[fn] = nullptr;
+            free_calls_.push_back(fn);
+            call();
         } else if (e.kind == Event::Line) {
             ++next_;
             core_.execute_set_input(e.a, e.b);
@@ -87,8 +92,14 @@ void Lockstep::add_callback(uint64_t at, std::function<void()> fn) {
     Event e{};
     e.kind = Event::Call;
     e.count = at;
-    e.fn = calls_.size();
-    calls_.push_back(std::move(fn));
+    if (!free_calls_.empty()) {
+        e.fn = free_calls_.back();
+        free_calls_.pop_back();
+        calls_[e.fn] = std::move(fn);
+    } else {
+        e.fn = calls_.size();
+        calls_.push_back(std::move(fn));
+    }
     // Before the first event at the same count or later (the log is in count order).
     auto it = log_.begin() + long(next_);
     while (it != log_.end() && it->count < at) ++it;

@@ -52,7 +52,11 @@ private:
         uint32_t ip = 0;
         size_t fn = 0; // Call: index into calls_
     };
+    // Callback slots. A slot is released once its callback has run and reused by the
+    // next add_callback: GameLoop re-arms its probe every 1024 instructions, so a
+    // vector that only grew kept ~2,000 dead std::function per second of play.
     std::vector<std::function<void()>> calls_;
+    std::vector<size_t> free_calls_;
     bool apply();
     void refresh_next();
     static void on_take(void *ctx, int vector, uint32_t ip, bool pending);
