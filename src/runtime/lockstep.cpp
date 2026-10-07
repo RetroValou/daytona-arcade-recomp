@@ -42,7 +42,21 @@ Lockstep::Lockstep(Cpu &core) : core_(core), free_run_(true) {
 void Lockstep::refresh_next() {
     next_count = next_ < log_.size() ? log_[next_].count : UINT64_MAX;
     if (next_ < log_.size() && log_[next_].kind == Event::Pend) next_count += 1; // checked after it should happen
+#ifdef M2_FAST_GEN
+    next_count = std::min(next_count, end_count); // boundary() compares next_count only
+    ++epoch;
+#endif
 }
+
+#ifdef M2_FAST_GEN
+uint32_t Lockstep::check(uint32_t ip) {
+    core_.m_IP = ip;
+    if (boundary()) return 0;
+    if (next_count <= count) return 1; // check again at the next instruction
+    const uint64_t left = next_count - count;
+    return left > 0x40000000u ? 0x40000000u : uint32_t(left);
+}
+#endif
 
 bool Lockstep::apply() {
     if (count >= end_count) return true;

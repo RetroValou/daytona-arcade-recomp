@@ -11,6 +11,7 @@
 #include <bit>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace gen {
 
@@ -42,5 +43,17 @@ inline float u2f(uint32_t u) { return std::bit_cast<float>(u); }
 bool has_code(uint32_t addr);   // generated
 void run(Env &e);               // generated: dispatches into the chunk holding c.m_IP
 uint64_t native_instructions(); // generated: instructions recompiled (all of them: there is no fallback)
+
+#ifdef M2_FAST_GEN
+// Work RAM at a fixed offset, for the code rewritten by fast_gen.py: what the
+// bus does for these addresses (plain RAM, little-endian, aligned, nothing
+// watches its writes), without the calls.
+inline uint32_t wram_r32(const rt::Cpu &c, uint32_t o) { uint32_t v; std::memcpy(&v, c.work_ram + o, 4); return v; }
+inline uint16_t wram_r16(const rt::Cpu &c, uint32_t o) { uint16_t v; std::memcpy(&v, c.work_ram + o, 2); return v; }
+inline uint8_t wram_r8(const rt::Cpu &c, uint32_t o) { return c.work_ram[o]; }
+inline void wram_w32(rt::Cpu &c, uint32_t o, uint32_t v) { std::memcpy(c.work_ram + o, &v, 4); }
+inline void wram_w16(rt::Cpu &c, uint32_t o, uint16_t v) { std::memcpy(c.work_ram + o, &v, 2); }
+inline void wram_w8(rt::Cpu &c, uint32_t o, uint8_t v) { c.work_ram[o] = v; }
+#endif
 
 } // namespace gen

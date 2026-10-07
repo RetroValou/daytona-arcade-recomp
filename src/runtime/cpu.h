@@ -99,6 +99,13 @@ public:
     void do_ret_0();
     void do_ret();
     void standard_irq_callback(int, uint32_t) {}
+
+#ifdef M2_FAST_GEN
+    // Work RAM (0x00500000-0x005fffff, the board's), for the generated code
+    // rewritten by fast_gen.py (gen::wram_*). Last in the class, so the members
+    // the generated code uses keep their offsets.
+    uint8_t *work_ram = nullptr;
+#endif
 };
 
 // Shims for the transplanted MAME code.
