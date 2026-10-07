@@ -7,6 +7,7 @@
 #include "runtime/video.h"
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -52,7 +53,7 @@ void gl_profile_loop(const GlLoopProfile &profile);
 class GpuGlRenderer {
 public:
     GpuGlRenderer();
-    ~GpuGlRenderer() = default; // main_gpu calls shutdown() before gl_fini()
+    ~GpuGlRenderer(); // stops the 2D worker; main_gpu calls shutdown() before gl_fini()
     GpuGlRenderer(const GpuGlRenderer &) = delete;
     GpuGlRenderer &operator=(const GpuGlRenderer &) = delete;
 
@@ -68,7 +69,11 @@ public:
     uint64_t last_texture_us() const { return last_texture_us_; } // index texture builds (inside polygons)
     uint64_t last_polygon_us() const { return last_polygon_us_; }
     uint64_t last_tile_us() const { return last_tile_us_; }
-    uint64_t last_upload_us() const { return last_upload_us_; }
+    uint64_t last_upload_us() const { return last_upload_us_; }  // main core waiting for the 2D worker
+    uint64_t last_2d_worker_us() const { return last_2d_worker_us_; } // 2D worker job (core 2, in parallel)
+    bool worker_2d_threaded() const { return s24_thread_ >= 0; }
+    int worker_2d_result() const { return s24_create_result_; }
+    static int worker_2d_core();
     std::size_t cached_bytes() const { return cached_bytes_; }
     std::size_t cached_materials() const { return palette_index_.size(); } // palette rows
     std::size_t cached_sources() const { return sources_.size(); }         // index textures
@@ -117,7 +122,10 @@ private:
     };
 
     static constexpr std::size_t kSourceCacheBytes = 24u * 1024u * 1024u;
-    static constexpr unsigned kSourceBuildBudget = 32; // new index textures per frame
+    // New index textures per frame: at most kSourceBuildBudget, and at most
+    // kSourceTexelBudget texels decoded (the first build of a frame always runs).
+    static constexpr unsigned kSourceBuildBudget = 32;
+    static constexpr uint32_t kSourceTexelBudget = 128u * 1024u; // e.g. two 256x256 or 128 32x32
     static constexpr uint32_t kTextureLimit = 512;     // max GL texture side
     static constexpr uint32_t kPaletteWidth = 128;     // luminance steps per palette
     static constexpr uint32_t kPaletteRows = 2048;     // palettes in the palette texture
@@ -131,15 +139,47 @@ private:
     int palette_row(const rt::GeoPoly &poly, const rt::VideoMem &mem);
     uint32_t solid_color(const rt::GeoPoly &poly, const rt::VideoMem &mem) const;
     void clear_cache();
-    // 2D layers
-    void update_system24_textures(const rt::Video &video);
-    void draw_system24(const rt::Video &video, bool foreground);
+    // 2D layers (System 24). Drawn one frame late, in phase with the pipelined 3D: draw()
+    // shows the slot prepared during the previous frame while the 2D worker thread (core 2,
+    // the sound core) prepares this frame's into the other slot: tile and palette uploads,
+    // then the layer rectangles. The worker makes no GL call; draw() waits for it before
+    // returning, so the board never runs while it reads Video, and gl_begin_frame() has
+    // waited for the GPU before the slot it writes (shown one frame earlier) is rewritten.
+    struct S24Rect { int x0, x1, y0, y1, h, v; }; // native pixels; h = horizontal scroll, v = source line of y0
+    struct S24Run { int layer; uint32_t first, count; };  // consecutive rects of one source layer
+    struct S24Slot {
+        std::array<uint32_t, 8> textures{};  // GLuint: 0-3 background layers, 4-7 foreground layers (pen numbers)
+        std::array<void *, 8> texels{};      // their pixels (fixed while the textures live)
+        uint32_t palette_texture = 0;        // GLuint, 128x64 RGBA: the 8192 System 24 pens
+        uint32_t *palette = nullptr;
+        uint64_t generation = UINT64_MAX;    // Video::system24_texture_generation() of the tiles
+        uint64_t palette_generation = UINT64_MAX;
+        bool valid = false;                  // prepared since the last reset
+        uint32_t backdrop = 0;               // pen 0, RGBA
+        std::vector<S24Rect> rects;          // same rectangles for the background and foreground passes
+        std::vector<S24Run> runs;            // in drawing order (layer 3 to 0)
+        std::array<std::vector<S24Rect>, 2> split; // scratch of the split modes
+        unsigned uploaded_tiles = 0;
+    };
+    static void s24_prepare(S24Slot &slot, const rt::Video &video); // the worker's job (no GL)
+    static int s24_thread_entry(SceSize args, void *argp);
+    bool s24_start_thread();
+    void s24_stop_thread();
+    void s24_kick(const rt::Video &video); // starts preparing the back slot (inline without thread)
+    void s24_join();
+    void s24_emit(const S24Slot &slot, bool foreground);
     // Polygons
     void draw_polygons(rt::Video &video);
 
     bool ok_ = false, shutdown_ = false;
-    std::array<uint32_t, 8> system24_textures_{}; // 0-3 background layers, 4-7 foreground layers
-    uint64_t system24_generation_ = UINT64_MAX;
+    std::array<S24Slot, 2> s24_{};
+    unsigned s24_back_ = 0;                        // slot prepared this frame; the other one is shown
+    int s24_thread_ = -1, s24_start_ = -1, s24_done_ = -1, s24_create_result_ = 0; // SceUID
+    std::atomic<bool> s24_stop_{false};
+    bool s24_busy_ = false;                        // a job was started and not joined
+    const rt::Video *s24_video_ = nullptr;         // the job: Video -> slot (set before the start signal)
+    S24Slot *s24_job_ = nullptr;
+    uint64_t s24_job_us_ = 0;                      // written by the worker, read after the join
     std::unordered_map<SourceKey, Source, SourceKeyHash> sources_;
     std::vector<uint8_t> index_scratch_;
     std::size_t cached_bytes_ = 0;
@@ -153,7 +193,8 @@ private:
 
     // Diagnostics
     double last_gpu_ms_ = 0.0;
-    uint64_t last_polygon_us_ = 0, last_tile_us_ = 0, last_upload_us_ = 0, last_sort_us_ = 0, last_texture_us_ = 0;
+    uint64_t last_polygon_us_ = 0, last_tile_us_ = 0, last_upload_us_ = 0, last_sort_us_ = 0, last_texture_us_ = 0,
+             last_2d_worker_us_ = 0;
     unsigned cache_resets_ = 0, material_drops_ = 0, material_builds_ = 0, material_defers_ = 0,
              system24_quads_ = 0, system24_uploaded_tiles_ = 0, clip_changes_ = 0, textured_polys_ = 0,
              solid_polys_ = 0, checker_polys_ = 0, textured_checker_polys_ = 0;

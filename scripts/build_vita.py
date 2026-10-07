@@ -31,7 +31,9 @@ def main(argv=None):
     gpu = ap.add_mutually_exclusive_group()
     gpu.add_argument("--gpu-fast", action="store_true", help="build experimental vita2d/GXM 3D renderer (requires vdpm libvita2d)")
     gpu.add_argument("--gpu-gl", action="store_true", help="build experimental vitaGL 3D renderer, Model 2 draw priority (requires vitaGL + vitaShaRK; libshacccg.suprx on the Vita)")
-    ap.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
+    mode.add_argument("--release", action="store_true", help="fastest build: no diagnostic logging + link-time optimization (LTO; longer link, more host memory)")
 
     args = ap.parse_args(argv)
     if args.jobs < 1:
@@ -60,6 +62,7 @@ def main(argv=None):
          f"-DDAYTONA_GEN_ROOT={gen}",
          f"-DDAYTONA_VITA_RENDER_OPT={'OFF' if args.reference_renderer else 'ON'}",
          f"-DDAYTONA_VITA_DIAGNOSTICS={'ON' if args.diagnostics else 'OFF'}",
+         f"-DDAYTONA_VITA_LTO={'ON' if args.release else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_FAST={'ON' if args.gpu_fast else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_GL={'ON' if args.gpu_gl else 'OFF'}",
          f"-DDAYTONA_VITA_COMPILE_CHECK={'ON' if args.compile_check else 'OFF'}"], env)
@@ -71,7 +74,8 @@ def main(argv=None):
         if not package.is_file():
             raise RuntimeError(f"build completed without the expected package: {package}")
         mode = "GPU GL (vitaGL)" if args.gpu_gl else ("GPU FAST" if args.gpu_fast else "CPU EXACT")
-        print(f"VPK: {package}\nRenderer build: {mode}\nROM location on Vita: ux0:data/daytona93/daytona93.zip")
+        kind = "release (LTO, no logs)" if args.release else ("diagnostics (logs)" if args.diagnostics else "normal (no logs)")
+        print(f"VPK: {package}\nRenderer build: {mode}\nBuild: {kind}\nROM location on Vita: ux0:data/daytona93/daytona93.zip")
     return 0
 
 

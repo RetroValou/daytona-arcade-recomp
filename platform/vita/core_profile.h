@@ -9,7 +9,8 @@
 //   core 0  main thread: input, i960 + TGP, geometry kick (or the whole parse
 //           in SYNC mode), 2D video, sound hand-off, GPU recording/submission
 //   core 1  geometry thread (platform/vita/src/runtime/geo.cpp): the parse
-//   core 2  sound worker (reference sound board: 68000 + MultiPCM + FM)
+//   core 2  sound worker (reference sound board: 68000 + MultiPCM + FM) and
+//           the vitaGL 2D worker (System 24 uploads + layer rectangles)
 //
 // "Nested" sections are already contained in a main section (shown indented,
 // never added twice). "idle/unmeasured" is the main core's remaining time:
@@ -46,7 +47,7 @@ public:
         SoundSync,    // join of the sound worker + dispatch of the next packet / native send
         GpuPrepare,   // renderer prepare_frame (cache resets)
         GfxBegin,     // frame begin: GPU fence wait + clear
-        Upload,       // System 24 / layer texture uploads
+        Upload,       // waiting for the 2D worker (or its job inline without the thread)
         Layers,       // 2D layer quads recording
         Sort,         // polygon priority sort
         Polygons,     // polygon recording (vertices, materials, batches)
@@ -61,6 +62,7 @@ public:
         GeoParse,            // core 1: Geo::parse
         SoundBoard,          // sound thread: sound board frame
         SoundQueue,          // sound thread: sample conversion/queueing
+        Worker2D,            // 2D worker: System 24 uploads + layer rectangles
         kSections
     };
 
@@ -76,7 +78,7 @@ public:
             {"sound sync / dispatch", 0, false},
             {"renderer prepare_frame", 0, false},
             {"frame begin (GPU wait + clear)", 0, false},
-            {"2D texture uploads", 0, false},
+            {"2D: wait for the core 2 worker", 0, false},
             {"2D layer recording", 0, false},
             {"polygon priority sort", 0, false},
             {"polygon recording", 0, false},
@@ -88,6 +90,7 @@ public:
             {"display list parse", 1, false},
             {"sound board (68000+PCM+FM)", 2, false},
             {"sample conversion/queue", 2, false},
+            {"2D worker (uploads + rectangles)", 2, false},
         };
         return table[s];
     }
@@ -195,9 +198,10 @@ public:
             w.add("  idle: the geometry runs on the main core (SYNC) or no 3D frame\n");
         }
 
-        w.add("SOUND thread: busy %.1f%%\n", pct(totals_[SoundBoard] + totals_[SoundQueue]));
+        w.add("CORE 2 (sound + 2D worker): busy %.1f%%\n", pct(totals_[SoundBoard] + totals_[SoundQueue] + totals_[Worker2D]));
         line(w, SoundBoard, "  ", ms, pct, loops);
         line(w, SoundQueue, "  ", ms, pct, loops);
+        line(w, Worker2D, "  ", ms, pct, loops);
         if (h.native_audio)
             w.add("  native audio callback: last %.3f ms, peak %.3f ms (SDL audio thread)\n",
                   ms(counters.native_callback_last), ms(counters.native_callback_peak));
@@ -259,7 +263,7 @@ private:
         static const char *const names[kSections] = {
             "input", "logic", "geo_main", "irq", "video2d", "board_other", "sound_sync", "gpu_prepare",
             "gfx_begin", "upload", "layers", "sort", "polygons", "gfx_end", "log",
-            "geo_wait_board", "snapshot", "tex_build", "geo_parse", "sound_board", "sound_queue"};
+            "geo_wait_board", "snapshot", "tex_build", "geo_parse", "sound_board", "sound_queue", "worker_2d"};
         return names[s];
     }
     template<class Ms, class Pct>

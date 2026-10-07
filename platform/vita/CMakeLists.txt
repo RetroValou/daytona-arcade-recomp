@@ -28,22 +28,38 @@ if(DAYTONA_VITA_GPU_FAST AND DAYTONA_VITA_GPU_GL)
     message(FATAL_ERROR "DAYTONA_VITA_GPU_FAST (vita2d) and DAYTONA_VITA_GPU_GL (vitaGL) are mutually exclusive: both initialise sceGxm")
 endif()
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
-# Geometrizer placement (GPU builds): 0 = single core, exact image;
-# 1 = two cores, 3D one frame behind the 2D layers (fastest, default).
-# This is the default of the GEOMETRY option, which vita.cfg then remembers.
-set(DAYTONA_VITA_GEO_MODE 1 CACHE STRING "Default geometrizer mode: 0 single core (exact image), 1 two cores (+1 frame)")
-# Application cores (0-2) of the main and geometry threads; -1 = unpinned.
+# Link-time optimization (scripts/build_vita.py --release): the generated i960/TGP
+# code can inline the runtime's small memory and bus accessors (cpu.cpp,
+# m2_board.cpp) instead of calling them across object files. Set before any target
+# is created, so it covers the libraries, the frontend and the generated code.
+option(DAYTONA_VITA_LTO "Build the whole VPK with GCC link-time optimization" OFF)
+if(DAYTONA_VITA_LTO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT DAYTONA_VITA_LTO_OK OUTPUT DAYTONA_VITA_LTO_ERROR LANGUAGES C CXX)
+    if(DAYTONA_VITA_LTO_OK)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+        # The link step generates the code: same float rules and level as the compile.
+        add_link_options(-O3 -fno-fast-math -ffp-contract=off)
+        message(STATUS "Vita LTO: enabled")
+    else()
+        message(WARNING "Vita LTO: not supported by this toolchain, normal build.\n${DAYTONA_VITA_LTO_ERROR}")
+    endif()
+endif()
+# GPU builds: the geometrizer always runs pipelined on its own core (3D one frame late)
+# and the vitaGL renderer shows the 2D layers one frame late too, prepared by a worker.
+# Application cores (0-2) of the main, geometry and 2D worker threads; -1 = unpinned.
 # The sound worker keeps its own policy (any application core).
 set(DAYTONA_VITA_MAIN_CORE 0 CACHE STRING "Core of the main thread (i960, TGP, video, GPU submission)")
 set(DAYTONA_VITA_GEO_CORE 1 CACHE STRING "Core of the geometry thread")
+set(DAYTONA_VITA_2D_CORE 2 CACHE STRING "Core of the vitaGL 2D worker (System 24 uploads + layer rectangles)")
 
 # Keep the switch frontend-only; audio/render/game code is identical in both builds.
 # DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
 set_source_files_properties(gpu_gl.cpp PROPERTIES COMPILE_DEFINITIONS
-    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>")
+    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${DAYTONA_VITA_2D_CORE}")
 set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
-    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_GEO_MODE=${DAYTONA_VITA_GEO_MODE};DAYTONA_VITA_MAIN_CORE=${DAYTONA_VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${DAYTONA_VITA_GEO_CORE}")
+    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${DAYTONA_VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${DAYTONA_VITA_GEO_CORE}")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
 set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID")
 if(NOT DAYTONA_VITA_COMPILE_CHECK)

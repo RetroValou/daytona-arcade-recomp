@@ -29,8 +29,8 @@ and in `cores:` of every report.
 | `src/runtime/geo.h` (this directory) | Replaces `src/runtime/geo.h`: the Vita CMake puts `platform/vita/src` **before** `src` on the include path. It includes the original header unchanged, its class renamed `rt::GeoCore`, then declares `rt::Geo`, a wrapper with exactly the interface `M2Board` uses (constructor, `zclip_w`, `parse`, `polys`, `windows`, `set_wide_margin`). |
 | `src/runtime/geo.cpp` (this directory) | Replaces `src/runtime/geo.cpp` in the Vita runtime: compiles the original unchanged as `rt::GeoCore`, plus the wrapper and its thread. |
 | `core_profile.h` | Per-core accounting and the `perf.log` writer. |
-| `main_gpu.cpp` | Core placement, GEOMETRY option, profiling. |
-| `gpu_gl.cpp/.h` | Single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the debug build (not `--release`). |
+| `main_gpu.cpp` | Core placement (geometry always pipelined), profiling. |
+| `gpu_gl.cpp/.h` | Single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the `--diagnostics` build. |
 | `sound_worker.h` | `set_cpu_mask()`: the sound worker pins itself to its core. |
 | `CMakeLists.txt` | The replacement source, include order, core options, LTO. |
 
@@ -48,7 +48,8 @@ separate object files. The float rules are unchanged (`-fno-fast-math
 -ffp-contract=off` also at the link-time code generation). CMake prints
 `Vita LTO: enabled`, or a warning and a normal build if the toolchain cannot do
 LTO. The link is longer and uses more host memory (the generated code is large),
-so the default debug build leaves it off.
+so the normal build leaves it off. `--release` also turns the diagnostic logs off
+(it cannot be combined with `--diagnostics`).
 
 ## Why the polygons stay identical (one frame later)
 
@@ -67,24 +68,34 @@ so the default debug build leaves it off.
 * A parse failure (`GeoFatal`) is rethrown on the main thread at the next
   join, inside the frontend's normal runtime-error handling.
 
-Two modes, nothing in between (**OPTIONS > GEOMETRY**, saved as `geo_mode` in
-`vita.cfg`, build default `DAYTONA_VITA_GEO_MODE`, applied at once):
+The GPU frontend has a single mode, no option: the geometrizer always runs
+pipelined on core 1. The frame shows the previous parse, which overlapped the
+whole next game frame on the geometry core: the main core normally never waits.
+Game-visible state is unchanged: the polygon count register still reports the
+newest parse. At 30 Hz the list is shown from the frame after its parse.
 
-| Option | `geo_mode` | Behaviour |
-| --- | --- | --- |
-| 1 CORE (EXACT IMAGE) | 0 | The parse on the main core: the reference image, for A/B comparisons. |
-| 2 CORES (3D +1 FRAME) | 1 (default) | The frame shows the previous parse, which overlapped the whole next game frame on the geometry core: the main core normally never waits. The 3D layer is one frame behind the 2D layers (HUD, sky tilemap). Game-visible state is unchanged: the polygon count register still reports the newest parse. At 30 Hz the list is shown from the frame after its parse. |
+The vitaGL renderer shows the 2D layers (System 24: HUD, sky tilemap) one frame
+late too, so 2D and 3D are in phase: the picture is the exact one, one frame
+(17.4 ms) late. It keeps two sets of 2D textures; while a frame shows the set
+prepared during the previous frame, a worker thread on core 2 (the sound core,
+`DAYTONA_VITA_2D_CORE`) uploads this frame's changed tiles and palette into the
+other set and computes its layer rectangles. The main core only emits the quads
+and waits for the worker at the end of `draw()` (`2D: wait for the core 2
+worker` in `perf.log`; the job itself is `2D worker` under CORE 2).
 
-If the geometry thread cannot be created the main core is used, and the line
-`geometry: ... thread=0 result=<error>` is written to `perf.log` and to
-`vita-diag.log`. A `geo_mode=2` saved by an earlier test build is read as 1.
+If the geometry thread cannot be created the main core is used (2D then one
+frame behind the 3D), and the line `geometry: ... thread=0 result=<error>` is
+written to `perf.log` and to `vita-diag.log`. If the 2D worker cannot be
+created, its job runs on the main core and `GPU25 2D worker: thread
+unavailable` is written to `vita-diag.log`. Old `geo_mode` keys in `vita.cfg`
+are ignored.
 
 ## perf.log (per-core time accounting)
 
-All log files exist only in debug builds, the default of `python3
-scripts/build_vita.py --gpu-gl` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag
+All log files exist only in diagnostic builds: `python3 scripts/build_vita.py
+--gpu-gl --diagnostics` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag
 enables `perf.log`, `gl.log`, the periodic lines of `vita-diag.log` and the
-profiling clocks; a `--release` build writes nothing except faults to
+profiling clocks; a normal or `--release` build writes nothing except faults to
 `vita-diag.log`.
 
 `ux0:data/daytona93/perf.log` is rewritten at each launch. A background thread writes one report
@@ -106,7 +117,7 @@ CORE 1 geometry: busy 39.2%
   display list parse                        39.2      7.46      8.47    300
   parses 300, avg 7.46 ms, worst ... | polys avg 2400 ... | start->done avg ...
   main core blocked on 2 of 300 joins (worst wait 0.90 ms), polygon count reads 0, failures 0
-SOUND thread: busy 22.6%
+CORE 2 (sound + 2D worker): busy 22.6%
   ...
 work per emulated frame: i960 110000 instr, TGP 300000 instr (both inside the i960+TGP lines), polygons 2400
 PRIORITY main core: 1) i960+TGP game logic 40.6% (7.71 ms) 2) polygon recording 18.4% (3.50 ms) ...
@@ -121,7 +132,7 @@ Main-core sections, in loop order (with `idle / unmeasured`, 100 %):
 | --- | --- |
 | input + menu + frame clock | pad, chord, frame clock |
 | i960+TGP game logic | game code up to its wait-for-vblank loop (split from the vblank handler by the geometrizer's own timestamps; at 30 Hz, frames without a parse keep the handler here) |
-| geometry on main core | snapshot + wake-up of the geometry thread (the whole parse in 1 CORE mode); the snapshot is shown nested |
+| geometry on main core | snapshot + wake-up of the geometry thread (the whole parse if the geometry thread is unavailable); the snapshot is shown nested |
 | i960+TGP vblank handler | the vblank interrupt handler |
 | 2D video update | `Video::screen_update` (System 24 tile cache) |
 | board other | probes/scheduler between those stages; `(nested) WAIT for the geometry core` is shown under it |

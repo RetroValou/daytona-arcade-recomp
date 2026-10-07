@@ -23,7 +23,14 @@
 //     (alpha test) and the Model 2 "checker" flag keeps one native pixel out of two.
 //
 // 2D layers (System 24 tilemaps) are alpha-tested textured quads placed by the depth buffer:
-// foreground before the polygons, background after them (see k2DLayersByDepth).
+// foreground before the polygons, background after them (see k2DLayersByDepth). Their
+// textures hold pen NUMBERS; the Layer shader looks the colour up in a 128x64 palette
+// texture (unit 2). A palette change (fades, flashes) rewrites that 32 KB texture only,
+// where colour textures had to rewrite all 16384 tiles (~67 ms on the Vita).
+// The 2D is shown one frame late, like the 3D of the pipelined geometrizer, so both are
+// in phase: two sets of layer textures; while the frame shows the set prepared during the
+// previous frame, a worker thread on core 2 (the sound core, the least loaded) uploads
+// this frame's tiles and palette into the other set and computes its layer rectangles.
 //
 // GPU memory written in place: gl_begin_frame() waits for the GPU (cheap: the previous
 // frame finished long ago while the CPU emulated). After that, the frame's vertices and the
@@ -34,9 +41,11 @@
 
 #include "gpu_gl.h"
 #include "runtime/raster_texel.h"
+#include "texel_index.h"
 #include "system24_upload.h"
 #include "polygon_order.h"
 
+#include <psp2/kernel/threadmgr.h>
 #include <psp2/power.h>
 
 #include <algorithm>
@@ -98,6 +107,13 @@ inline float sy(float y) { return y * kScale; }
 // blending anywhere in the game image). false: plain painter order (background, polygons,
 // foreground, 2D without depth test), same image, kept to compare on the console.
 constexpr bool k2DLayersByDepth = true;
+
+// Core of the 2D worker thread (System 24 uploads + layer rectangles): 2, the sound
+// core, the least loaded one in the race (-1 = any application core).
+#ifndef DAYTONA_VITA_2D_CORE
+#define DAYTONA_VITA_2D_CORE 2
+#endif
+constexpr int kWorker2DCore = DAYTONA_VITA_2D_CORE;
 constexpr float kForegroundDepth = 0.99999994f; // largest float below 1: z stays inside w
 constexpr float kBackgroundDepth = 0.0f;        // glClear writes 0 (glClearDepthf(0))
 
@@ -152,6 +168,7 @@ void wait_gpu() {
 //   MODEL       s_tex holds Model 2 indices; colour from s_palette (unit 1), row v_uvp.z
 //   ALPHA_TEST  discard transparent texels
 //   CHECKER     Model 2 checker: discard one native pixel out of two
+//   PALETTE24   s_tex holds System 24 pen numbers (column r, row g); colour from s_pal24 (unit 2)
 const char *const kVertexShader = R"(
 attribute vec3 a_pos;    // x * w, y * w (display pixels, top-left origin), w
 attribute vec4 a_uvpd;   // texture u, v (1.0 = one texture width), palette row coordinate, depth
@@ -184,6 +201,9 @@ uniform sampler2D s_tex;
 #ifdef MODEL
 uniform sampler2D s_palette;
 #endif
+#ifdef PALETTE24
+uniform sampler2D s_pal24;
+#endif
 void main() {
 #ifdef CHECKER
     vec2 p = floor(v_pos.xy / v_pos.z); 
@@ -199,7 +219,13 @@ void main() {
     float k = floor(t.r * 127.5 + 0.01);
     gl_FragColor = texture2D(s_palette, vec2((k + 0.5) * (1.0 / 128.0), v_uvp.z)) * v_color;
 #else
+#ifdef PALETTE24
+    float k = floor(t.r * 127.5 + 0.01);
+    float j = floor(t.g * 63.75 + 0.01);
+    gl_FragColor = texture2D(s_pal24, vec2((k + 0.5) * (1.0 / 128.0), (j + 0.5) * (1.0 / 64.0))) * v_color;
+#else
     gl_FragColor = t * v_color;
+#endif
 #endif
 #else
     gl_FragColor = v_color;
@@ -213,7 +239,7 @@ enum class Prog : uint8_t { Flat, Layer, Model, ModelAlpha, FlatChecker, ModelCh
 struct ProgramDef { const char *name; const char *defines; };
 constexpr ProgramDef kPrograms[int(Prog::Count)] = {
     {"Flat", ""},
-    {"Layer", "#define TEXTURED\n#define ALPHA_TEST\n"},
+    {"Layer", "#define TEXTURED\n#define ALPHA_TEST\n#define PALETTE24\n"},
     {"Model", "#define TEXTURED\n#define MODEL\n"},
     {"ModelAlpha", "#define TEXTURED\n#define MODEL\n#define ALPHA_TEST\n"},
     {"FlatChecker", "#define CHECKER\n"},
@@ -274,6 +300,7 @@ struct FrameStats {
              skip_palette = 0, skip_renderer = 0;
     unsigned draw_calls = 0, batches = 0;
     unsigned new_sources = 0, new_palettes = 0, deferred_sources = 0;
+    uint32_t new_texels = 0;       // texels decoded into new index textures this frame
     unsigned dropped_vertices = 0; // vertex memory exhausted (should stay 0)
 };
 
@@ -334,6 +361,7 @@ struct State {
     GLuint program[int(Prog::Count)] = {};
     GLuint vbo = 0;
     GLuint palette_texture = 0; // bound on unit 1 for the MODEL shaders
+    GLuint s24_palette_texture = 0; // bound on unit 2 for the Layer shader (System 24 pens)
     VertexArena verts;
     std::vector<Cmd> cmds;
     std::vector<std::array<int, 4>> clips; // x0, y0, x1, y1 display pixels, top-left origin, exclusive
@@ -486,9 +514,12 @@ void execute() {
     vglBufferData(GL_ARRAY_BUFFER, g.verts.data); // the VBO uses our GPU memory as is
     for (GLuint i = 0; i < 3; ++i) glEnableVertexAttribArray(i);
     set_attributes(0);
-    // Palette texture on unit 1 for the whole frame; per-command textures on unit 0.
+    // Palette textures for the whole frame (unit 1 Model 2, unit 2 System 24); per-command
+    // textures on unit 0.
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(GL_TEXTURE_2D, g.palette_texture);
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, g.s24_palette_texture);
     glActiveTexture(GL_TEXTURE0);
 
     // Current GL state, to skip redundant calls. -1 / 0 = unknown.
@@ -578,6 +609,7 @@ GLuint build_program(const ProgramDef &def) {
             glUseProgram(program);
             if (GLint loc = glGetUniformLocation(program, "s_tex"); loc >= 0) glUniform1i(loc, 0);
             if (GLint loc = glGetUniformLocation(program, "s_palette"); loc >= 0) glUniform1i(loc, 1);
+            if (GLint loc = glGetUniformLocation(program, "s_pal24"); loc >= 0) glUniform1i(loc, 2);
             glUseProgram(0);
         } else {
             char log[400] = {};
@@ -629,7 +661,7 @@ void log_report() {
            ms(t.board_core, l), ms(t.board_geometry, l), ms(t.board_video, l), ms(t.board_max));
     r.add("  sound     %6.2f ms  waiting for the sound thread (it runs %.2f ms per frame in parallel)\n", sound_wait,
            ms(t.sound_worker, l));
-    r.add("  renderer  %6.2f ms  CPU: uploads %.2f, 2D layers %.2f, polygons %.2f (texture builds %.2f) + prepare %.2f\n",
+    r.add("  renderer  %6.2f ms  CPU: 2D worker wait %.2f, 2D quads %.2f, polygons %.2f (texture builds %.2f) + prepare %.2f\n",
            record + prepare, ms(t.rec_upload, n), ms(t.rec_layers, n), ms(t.rec_polygons, n), ms(t.rec_textures, n),
            prepare);
     r.add("  GPU wait  %6.2f ms  at frame start, before rewriting vertices and textures in place\n", gpu_wait);
@@ -687,6 +719,7 @@ bool gl_init() {
         g.program[i] = build_program(kPrograms[i]);
         gl_log("gl_init: program %s = %u\n", kPrograms[i].name, g.program[i]);
     }
+
     if (!g.program[int(Prog::Flat)] || !g.program[int(Prog::Layer)] || !g.program[int(Prog::Model)] ||
         !g.program[int(Prog::ModelAlpha)])
         return false;
@@ -817,10 +850,22 @@ uint32_t argb_to_rgba(uint32_t argb) { return (argb & 0xff00ff00u) | ((argb >> 1
 GpuGlRenderer::GpuGlRenderer() {
     for (int i = 0; i < 256; ++i) gamma_[i] = uint8_t(std::max((double(i) - 64.0) * 255.0 / 191.0, 0.0));
     bool ok = true;
-    for (uint32_t &texture : system24_textures_) {
-        // Point sampled and repeating: scroll offsets add up to 511 texels to the coordinates.
-        texture = make_texture(512, 512, false, GL_REPEAT, GL_REPEAT, GL_RGBA, nullptr);
-        ok = ok && texture && texture_memory(texture);
+    for (S24Slot &slot : s24_) {
+        for (size_t i = 0; i < slot.textures.size(); ++i) {
+            // Point sampled and repeating: scroll offsets add up to 511 texels to the coordinates.
+            slot.textures[i] = make_texture(512, 512, false, GL_REPEAT, GL_REPEAT, GL_RGBA, nullptr);
+            slot.texels[i] = texture_memory(slot.textures[i]);
+            ok = ok && slot.textures[i] && slot.texels[i];
+        }
+        // System 24 palette: 8192 pens, point sampled (system24_upload.h).
+        slot.palette_texture = make_texture(kSystem24PaletteWidth, kSystem24PaletteHeight, false, GL_CLAMP_TO_EDGE,
+                                            GL_CLAMP_TO_EDGE, GL_RGBA, nullptr);
+        slot.palette = static_cast<uint32_t *>(texture_memory(slot.palette_texture));
+        ok = ok && slot.palette_texture && slot.palette;
+        // The worker should not allocate: room for the usual frames (more is allocated if needed).
+        slot.rects.reserve(4096);
+        slot.runs.reserve(64);
+        for (auto &split : slot.split) split.reserve(1024);
     }
     // Palette texture: point sampled, one row per palette.
     palette_texture_ = make_texture(kPaletteWidth, kPaletteRows, false, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_RGBA, nullptr);
@@ -830,7 +875,12 @@ GpuGlRenderer::GpuGlRenderer() {
     palette_index_.reserve(kPaletteRows);
     sources_.reserve(1024);
     ok_ = g.ready && ok;
+    if (ok_ && !s24_start_thread()) s24_stop_thread(); // 2D prepared inline on the main core
 }
+
+GpuGlRenderer::~GpuGlRenderer() { s24_stop_thread(); }
+
+int GpuGlRenderer::worker_2d_core() { return kWorker2DCore; }
 
 uint32_t GpuGlRenderer::make_texture(uint32_t w, uint32_t h, bool linear, uint32_t wrap_s, uint32_t wrap_t,
                                      uint32_t format, const void *pixels) {
@@ -874,9 +924,13 @@ void GpuGlRenderer::clear_cache() {
 }
 
 void GpuGlRenderer::reset_materials() {
+    s24_join();
     glFinish();
     clear_cache();
-    system24_generation_ = UINT64_MAX;
+    for (S24Slot &slot : s24_) {
+        slot.valid = false; // nothing shown until a frame of the new state was prepared
+        slot.generation = slot.palette_generation = UINT64_MAX;
+    }
 }
 
 void GpuGlRenderer::prepare_frame() {
@@ -898,10 +952,20 @@ void GpuGlRenderer::shutdown() {
     palette_texture_ = 0;
     palette_data_ = nullptr;
     g.palette_texture = 0;
-    for (uint32_t &texture : system24_textures_) {
-        GLuint t = texture;
+    s24_stop_thread();
+    g.s24_palette_texture = 0;
+    for (S24Slot &slot : s24_) {
+        for (uint32_t &texture : slot.textures) {
+            GLuint t = texture;
+            if (t) glDeleteTextures(1, &t);
+            texture = 0;
+        }
+        GLuint t = slot.palette_texture;
         if (t) glDeleteTextures(1, &t);
-        texture = 0;
+        slot.palette_texture = 0;
+        slot.palette = nullptr;
+        slot.texels.fill(nullptr);
+        slot.valid = false;
     }
     shutdown_ = true;
     ok_ = false;
@@ -921,16 +985,21 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
         ++material_drops_;
         return nullptr;
     }
-    if (g.stats.new_sources >= kSourceBuildBudget) { // spread a cold cache over several frames
+    Source s;
+    s.source_w = 32u << (poly.texheader[0] & 7);
+    s.source_h = 32u << ((poly.texheader[0] >> 3) & 7);
+    // Spread a cold cache over several frames, by texels decoded (cost grows with the
+    // size; a count let one frame take 32 large textures, ~88 ms). The first build of a
+    // frame is always allowed, so even the largest texture is never deferred forever.
+    const uint32_t texels = std::min(s.source_w, kTextureLimit) * std::min(s.source_h, kTextureLimit);
+    if (g.stats.new_sources > 0 &&
+        (g.stats.new_sources >= kSourceBuildBudget || g.stats.new_texels + texels > kSourceTexelBudget)) {
         ++material_defers_;
         ++g.stats.deferred_sources;
         return nullptr;
     }
 
     const uint64_t build_begin = now_us();
-    Source s;
-    s.source_w = 32u << (poly.texheader[0] & 7);
-    s.source_h = 32u << ((poly.texheader[0] >> 3) & 7);
     s.transparent = (poly.texheader[0] >> 13) & 1;
     // Above kTextureLimit, keep one texel every 'step' (GL texture side limit).
     const uint32_t step_x = std::max(1u, (s.source_w + kTextureLimit - 1) / kTextureLimit);
@@ -942,14 +1011,15 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint32_t *sheet = (poly.texheader[2] & 0x1000) ? mem.tex1 : mem.tex0;
     std::vector<uint8_t> &la = index_scratch_; // L, A pairs
     la.resize(size_t(w) * h * 2u);
+    const uint8_t transparent_alpha = s.transparent ? 0 : 255; // alpha of index 15
     for (uint32_t y = 0; y < h; ++y) {
         const uint32_t ty = std::min(y * step_y, s.source_h - 1);
+        uint8_t *row = &la[size_t(y) * w * 2u];
         for (uint32_t x = 0; x < w; ++x) {
-            const uint32_t tx = std::min(x * step_x, s.source_w - 1);
-            const uint8_t index = uint8_t((rt::read_texel_quad(bx, by, tx, tx, ty, ty, sheet).t00 >> 4) & 0x0f);
-            const size_t i = (size_t(y) * w + x) * 2u;
-            la[i] = uint8_t(index * 16);
-            la[i + 1] = (s.transparent && index == 15) ? 0 : 255;
+            const uint32_t tx = x * step_x; // < source_w: w = ceil(source_w / step_x)
+            const uint32_t index = texel_index(bx, by, tx, ty, sheet);
+            row[x * 2u] = uint8_t(index * 16);
+            row[x * 2u + 1] = index == 15 ? transparent_alpha : 255;
         }
     }
     if (s.transparent) {
@@ -971,6 +1041,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     s.bytes = la.size();
     cached_bytes_ += s.bytes;
     ++g.stats.new_sources;
+    g.stats.new_texels += w * h;
     g.timing.rec_textures += now_us() - build_begin;
     last_texture_us_ += now_us() - build_begin;
     return &sources_.emplace(key, s).first->second;
@@ -1189,59 +1260,39 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
 
 // ---- Renderer: 2D layers -----------------------------------------------------------------
 
-void GpuGlRenderer::update_system24_textures(const rt::Video &video) {
-    system24_uploaded_tiles_ = 0;
-    if (system24_generation_ == video.system24_texture_generation()) return;
-    // Only the tiles changed since the last update are written, straight into the textures.
-    constexpr size_t kStride = 512u * sizeof(uint32_t);
-    for (int layer = 0; layer < 4; ++layer) {
-        system24_uploaded_tiles_ += upload_system24_layer(
-            video, layer, system24_generation_, texture_memory(system24_textures_[size_t(layer)]), kStride,
-            texture_memory(system24_textures_[size_t(layer + 4)]), kStride);
+// Worker job (core 2, or inline without the thread): no GL call, reads only Video's
+// System 24 state, writes only the slot (its texture pixels: the GPU is done with them).
+void GpuGlRenderer::s24_prepare(S24Slot &slot, const rt::Video &video) {
+    slot.uploaded_tiles = 0;
+    // Palette: 8192 pens, rewritten when a pen changed since this slot's last frame.
+    if (slot.palette_generation == UINT64_MAX || slot.palette_generation != video.system24_palette_generation()) {
+        upload_system24_palette(video, slot.palette, kSystem24PaletteWidth);
+        slot.palette_generation = video.system24_palette_generation();
     }
-    system24_generation_ = video.system24_texture_generation();
-}
-
-// System 24 tilemap layers as textured rectangles. Same layer/window/split logic as
-// GpuFastRenderer::draw_system24.
-// With k2DLayersByDepth the foreground is drawn before the polygons and the background
-// after them; the depth buffer puts each one in its place (see k2DLayersByDepth).
-void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
-    const Depth depth = !k2DLayersByDepth ? Depth::Off : foreground ? Depth::TestWrite : Depth::Test;
-    const float d = !k2DLayersByDepth ? 0.0f : foreground ? kForegroundDepth : kBackgroundDepth;
-    if (!foreground) {
-        // Backdrop (pen 0) under the background layers. Opaque when sorted by depth: alpha
-        // is 255 once the palette is written, and black is black either way before that.
-        push_quad(Prog::Flat, 0, kOffsetX, 0.0f, kOffsetX + kSourceW * kScale, kDisplayH, 0.0f, 0.0f, 0.0f, 0.0f,
-                  argb_to_rgba(video.system24_pen(0)), depth, d);
+    // Tiles whose pixels or categories changed since this slot's last frame (two frames
+    // ago: tile generations only grow), straight into the textures, as pen numbers.
+    if (slot.generation != video.system24_texture_generation()) {
+        constexpr size_t kStride = 512u * sizeof(uint32_t);
+        for (int layer = 0; layer < 4; ++layer)
+            slot.uploaded_tiles += upload_system24_layer_indices(video, layer, slot.generation,
+                                                                 slot.texels[size_t(layer)], kStride,
+                                                                 slot.texels[size_t(layer + 4)], kStride);
+        slot.generation = video.system24_texture_generation();
     }
-    // Rectangle in native pixels; h = horizontal scroll, v = source line of y0.
-    struct Rect { int x0, x1, y0, y1, h, v; };
-    auto submit = [&](int source_layer, const std::vector<Rect> &rects) {
-        if (rects.empty()) return;
-        const GLuint texture = system24_textures_[size_t((foreground ? 4 : 0) + source_layer)];
-        // Quads written once, straight into the frame's GPU vertex memory (no temporary vector).
-        const uint32_t first = uint32_t(g.verts.size);
-        const size_t count = rects.size() * 6u;
-        Vertex *dst = g.verts.append(count);
-        if (!dst) { g.stats.dropped_vertices += unsigned(count); return; }
+    slot.backdrop = argb_to_rgba(video.system24_pen(0));
 
-        for (const Rect &r : rects) {
-            const float u0 = float(r.x0 + r.h) / 512.0f, u1 = float(r.x1 + r.h) / 512.0f;
-            const float v0 = float(r.v) / 512.0f, v1 = float(r.v + (r.y1 - r.y0)) / 512.0f;
-            const float x0 = sx(float(r.x0)), x1 = sx(float(r.x1)), y0 = sy(float(r.y0)), y1 = sy(float(r.y1));
-            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
-            *dst++ = {x1, y0, 1, u1, v0, 0, d, 0xffffffffu};
-            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
-            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
-            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
-            *dst++ = {x0, y1, 1, u0, v1, 0, d, 0xffffffffu};
-        }
-        // One command per layer texture (consecutive submits never share a texture).
-        g.cmds.push_back({Prog::Layer, texture, first, uint32_t(count), depth, g.clip});
-        system24_quads_ += unsigned(rects.size());
+    // Layer rectangles, the same for the background and foreground passes. Same
+    // layer/window/split logic as GpuFastRenderer::draw_system24.
+    using Rect = S24Rect;
+    auto &rects = slot.rects;
+    auto &runs = slot.runs;
+    rects.clear();
+    runs.clear();
+    auto add_run = [&](int layer, const std::vector<Rect> &list) {
+        if (list.empty()) return;
+        runs.push_back({layer, uint32_t(rects.size()), uint32_t(list.size())});
+        rects.insert(rects.end(), list.begin(), list.end());
     };
-
     for (int layer = 3; layer >= 0; --layer) {
         const uint16_t hreg = video.system24_word(0x5000u + unsigned(layer));
         const uint16_t vreg = video.system24_word(0x5004u + unsigned(layer));
@@ -1254,7 +1305,9 @@ void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
         if (split_mode) {
             // The even layer draws itself and the following odd layer; the odd one is skipped.
             if (layer & 1) continue;
-            std::array<std::vector<Rect>, 2> split_rects;
+            auto &split_rects = slot.split;
+            split_rects[0].clear();
+            split_rects[1].clear();
             const int source_y = vreg & 511;
             auto add = [&](int source_layer, int x0, int x1, int y0, int y1, int scroll) {
                 x0 = std::clamp(x0, 0, rt::Video::W);
@@ -1303,8 +1356,8 @@ void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
                     add(first_layer ^ 1, cut, rt::Video::W, 0, rt::Video::H, scroll);
                 }
             }
-            submit(layer, split_rects[0]);
-            submit(layer + 1, split_rects[1]);
+            add_run(layer, split_rects[0]);
+            add_run(layer + 1, split_rects[1]);
             continue;
         }
 
@@ -1315,7 +1368,7 @@ void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
         auto line_scroll_of = [&](int y) {
             return line_scroll ? ((-int(video.system24_word(line_base + unsigned(y)))) & 511) : ((-int(hreg)) & 511);
         };
-        std::vector<Rect> rects;
+        const uint32_t run_first = uint32_t(rects.size());
         for (int y = 0; y < rt::Video::H;) {
             const int h = line_scroll_of(y);
             std::array<uint16_t, 4> masks{};
@@ -1335,7 +1388,138 @@ void GpuGlRenderer::draw_system24(const rt::Video &video, bool foreground) {
             }
             y = y1;
         }
-        submit(layer, rects);
+        if (rects.size() > run_first) runs.push_back({layer, run_first, uint32_t(rects.size()) - run_first});
+    }
+    slot.valid = true;
+}
+
+int GpuGlRenderer::s24_thread_entry(SceSize, void *argp) {
+    GpuGlRenderer *self = *static_cast<GpuGlRenderer **>(argp);
+    sceKernelSignalSema(self->s24_done_, 1); // started
+    for (;;) {
+        sceKernelWaitSema(self->s24_start_, 1, nullptr);
+        if (self->s24_stop_.load()) break;
+        const uint64_t begin = now_us();
+        S24Slot &slot = *self->s24_job_;
+        try {
+            s24_prepare(slot, *self->s24_video_);
+        } catch (...) { // out of memory: this frame shows no 2D, the next one uploads everything
+            slot.valid = false;
+            slot.generation = slot.palette_generation = UINT64_MAX;
+        }
+        self->s24_job_us_ = now_us() - begin;
+#if defined(__arm__)
+        // The texels go to GPU-visible memory: drain this core's writes before the main core submits.
+        __asm__ volatile("dsb" ::: "memory");
+#endif
+        sceKernelSignalSema(self->s24_done_, 1);
+    }
+    return 0;
+}
+
+bool GpuGlRenderer::s24_start_thread() {
+    s24_stop_.store(false);
+    s24_start_ = sceKernelCreateSema("daytona_2d_start", 0, 0, 1, nullptr);
+    s24_done_ = sceKernelCreateSema("daytona_2d_done", 0, 0, 1, nullptr);
+    if (s24_start_ < 0 || s24_done_ < 0) {
+        s24_create_result_ = s24_start_ < 0 ? s24_start_ : s24_done_;
+        return false;
+    }
+    // One step above the main and sound threads (both at the default user priority): the
+    // job is short (~2-3 ms) and the main core waits for it at the end of draw(), so it
+    // preempts the sound board, which has room to spare in its frame.
+    int priority = sceKernelGetThreadCurrentPriority();
+    priority = priority > 64 && priority <= 191 ? priority - 1 : 159;
+    const int mask = kWorker2DCore >= 0 && kWorker2DCore <= 2 ? SCE_KERNEL_CPU_MASK_USER_0 << kWorker2DCore
+                                                              : SCE_KERNEL_CPU_MASK_USER_ALL;
+    s24_thread_ = sceKernelCreateThread("daytona_2d", reinterpret_cast<SceKernelThreadEntry>(&s24_thread_entry),
+                                        priority, 128 * 1024, 0, mask, nullptr);
+    s24_create_result_ = s24_thread_;
+    if (s24_thread_ < 0) { s24_thread_ = -1; return false; }
+    GpuGlRenderer *self = this;
+    const int started = sceKernelStartThread(s24_thread_, sizeof(self), &self);
+    if (started < 0) {
+        s24_create_result_ = started;
+        sceKernelDeleteThread(s24_thread_);
+        s24_thread_ = -1;
+        return false;
+    }
+    sceKernelWaitSema(s24_done_, 1, nullptr);
+    return true;
+}
+
+void GpuGlRenderer::s24_stop_thread() {
+    s24_join();
+    if (s24_thread_ >= 0) {
+        s24_stop_.store(true);
+        sceKernelSignalSema(s24_start_, 1);
+        sceKernelWaitThreadEnd(s24_thread_, nullptr, nullptr);
+        sceKernelDeleteThread(s24_thread_);
+        s24_thread_ = -1;
+    }
+    if (s24_start_ >= 0) sceKernelDeleteSema(s24_start_);
+    if (s24_done_ >= 0) sceKernelDeleteSema(s24_done_);
+    s24_start_ = s24_done_ = -1;
+}
+
+void GpuGlRenderer::s24_kick(const rt::Video &video) {
+    S24Slot &slot = s24_[s24_back_];
+    if (s24_thread_ < 0) {
+        const uint64_t begin = now_us();
+        try {
+            s24_prepare(slot, video);
+        } catch (...) {
+            slot.valid = false;
+            slot.generation = slot.palette_generation = UINT64_MAX;
+        }
+        s24_job_us_ = now_us() - begin;
+        return;
+    }
+    s24_video_ = &video;
+    s24_job_ = &slot;
+    s24_busy_ = true;
+    sceKernelSignalSema(s24_start_, 1);
+}
+
+void GpuGlRenderer::s24_join() {
+    if (!s24_busy_) return;
+    sceKernelWaitSema(s24_done_, 1, nullptr);
+    s24_busy_ = false;
+}
+
+// Quads of a prepared slot, written once, straight into the frame's GPU vertex memory.
+// With k2DLayersByDepth the foreground is drawn before the polygons and the background
+// after them; the depth buffer puts each one in its place (see k2DLayersByDepth).
+void GpuGlRenderer::s24_emit(const S24Slot &slot, bool foreground) {
+    const Depth depth = !k2DLayersByDepth ? Depth::Off : foreground ? Depth::TestWrite : Depth::Test;
+    const float d = !k2DLayersByDepth ? 0.0f : foreground ? kForegroundDepth : kBackgroundDepth;
+    if (!foreground) {
+        // Backdrop (pen 0) under the background layers. Opaque when sorted by depth: alpha
+        // is 255 once the palette is written, and black is black either way before that.
+        push_quad(Prog::Flat, 0, kOffsetX, 0.0f, kOffsetX + kSourceW * kScale, kDisplayH, 0.0f, 0.0f, 0.0f, 0.0f,
+                  slot.backdrop, depth, d);
+    }
+    for (const S24Run &run : slot.runs) {
+        const GLuint texture = slot.textures[size_t((foreground ? 4 : 0) + run.layer)];
+        const uint32_t first = uint32_t(g.verts.size);
+        const size_t count = size_t(run.count) * 6u;
+        Vertex *dst = g.verts.append(count);
+        if (!dst) { g.stats.dropped_vertices += unsigned(count); continue; }
+        for (uint32_t i = run.first; i < run.first + run.count; ++i) {
+            const S24Rect &r = slot.rects[i];
+            const float u0 = float(r.x0 + r.h) / 512.0f, u1 = float(r.x1 + r.h) / 512.0f;
+            const float v0 = float(r.v) / 512.0f, v1 = float(r.v + (r.y1 - r.y0)) / 512.0f;
+            const float x0 = sx(float(r.x0)), x1 = sx(float(r.x1)), y0 = sy(float(r.y0)), y1 = sy(float(r.y1));
+            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y0, 1, u1, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
+            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            *dst++ = {x0, y1, 1, u0, v1, 0, d, 0xffffffffu};
+        }
+        // One command per layer texture (consecutive runs never share a texture).
+        g.cmds.push_back({Prog::Layer, texture, first, uint32_t(count), depth, g.clip});
+        system24_quads_ += run.count;
     }
 }
 
@@ -1347,23 +1531,33 @@ void GpuGlRenderer::draw(rt::Video &video) {
     // is unconditionally true there): background tiles, Model 2 polygons, foreground tiles.
     // With k2DLayersByDepth the foreground goes first and the background last; the depth
     // buffer keeps the same image (see k2DLayersByDepth).
-    update_system24_textures(video);
-    system24_quads_ = 0;
+    // The polygons drawn here are the previous frame's (pipelined geometrizer), so the 2D
+    // shown is the previous frame's too (the front slot) while the worker prepares this
+    // frame's into the back slot, in parallel with the recording below.
+    const S24Slot &front = s24_[s24_back_ ^ 1u];
+    s24_kick(video);
     const uint64_t t0 = now_us();
-    draw_system24(video, k2DLayersByDepth); // first pass: foreground (by depth) or background
+    system24_quads_ = 0;
+    g.s24_palette_texture = front.palette_texture;
+    if (front.valid) s24_emit(front, k2DLayersByDepth); // first pass: foreground (by depth) or background
     const uint64_t t1 = now_us();
     draw_polygons(video);
     const uint64_t t2 = now_us();
-    draw_system24(video, !k2DLayersByDepth); // last pass: background (by depth) or foreground
+    if (front.valid) s24_emit(front, !k2DLayersByDepth); // last pass: background (by depth) or foreground
     const uint64_t t3 = now_us();
-    last_upload_us_ = t0 - begin;
+    s24_join(); // the board must not run while the worker reads Video
+    const uint64_t t4 = now_us();
+    system24_uploaded_tiles_ = s24_[s24_back_].uploaded_tiles;
+    s24_back_ ^= 1u;
+    last_2d_worker_us_ = s24_job_us_;
+    last_upload_us_ = (t0 - begin) + (t4 - t3); // inline job (no thread) or waiting for the worker
     last_polygon_us_ = t2 - t1;
     last_tile_us_ = (t1 - t0) + (t3 - t2);
-    g.record_us += now_us() - begin;
+    g.record_us += t4 - begin;
     g.timing.rec_upload += last_upload_us_;
     g.timing.rec_layers += last_tile_us_;
     g.timing.rec_polygons += last_polygon_us_;
-    last_gpu_ms_ = double(now_us() - begin) / 1000.0;
+    last_gpu_ms_ = double(t4 - begin) / 1000.0;
 }
 
 } // namespace vita

@@ -1,5 +1,65 @@
 # Vita performance diagnostics
 
+## vitaGL: 2D one frame late, prepared on core 2
+
+The geometrizer is always pipelined on core 1 (the "1 core / exact image"
+option is gone: menu item, `geo_mode` key in `vita.cfg`, CMake
+`DAYTONA_VITA_GEO_MODE`). The 3D shown is the previous frame's, so the
+renderer now shows the previous frame's 2D too: 2D and 3D are in phase again,
+the whole picture one frame (17.4 ms) late.
+
+* Two sets of System 24 textures (8 layers + palette each, 2 x 8.03 MB). While
+  a frame emits the quads of the set prepared during the previous frame, the
+  `daytona_2d` thread (core 2, `DAYTONA_VITA_2D_CORE`, one priority step above
+  the sound thread) uploads this frame's changed tiles and palette into the
+  other set and computes the layer rectangles (`GpuGlRenderer::s24_prepare`).
+  Each set keeps its own generations: it catches up two frames of tile
+  changes at once (generations only grow).
+* The main core records the polygons meanwhile and waits for the worker at
+  the end of `draw()`, so the board never runs while Video is read; the set
+  being written was last drawn one frame earlier, and `gl_begin_frame()` has
+  already waited for the GPU.
+* Expected in the race: ~2.3 ms off core 0 (16.4 -> ~15.7 ms with the frame
+  end), core 2 ~12.8 -> ~15.1 ms of its 17.4 ms.
+* perf.log: `2D: wait for the core 2 worker` (core 0, should stay near 0),
+  `2D worker (uploads + rectangles)` under `CORE 2`. Without the thread
+  (`GPU25 2D worker: thread unavailable` in vita-diag.log) the job runs on the
+  main core and is counted in the wait line.
+
+
+## vitaGL: stutters and repeated frames
+
+From the optimisation-candidate measurements (attract and menus: worst frames
+80-120 ms; race unaffected):
+
+* **System 24 layers as pen numbers.** The 8 layer textures now hold each
+  texel's pen as palette texture coordinates (column x2 in r, row x4 in g,
+  visibility in alpha); the Layer shader looks the colour up in a 128x64
+  palette texture on unit 2, with the same floor/lookup form as the Model 2
+  palette shader. A first form (13-bit pen decoded in the shader) crashed the
+  console's runtime shader compiler inside gl_init; this one compiles
+  (`system24_upload.h`: `upload_system24_layer_indices`,
+  `upload_system24_palette`). A palette change (fades, flashes) rewrites that
+  32 KB texture instead of all 16384 tiles (8 MB, ~67 ms each on the Vita,
+  up to 9 times in 5 s). Tiles are rewritten only when their pixels or
+  categories change, as before. Cost: one dependent texture read per Layer
+  pixel (~1.5 Mpixel/frame), on a GPU that measured 10-14 ms per frame.
+  The vita2d path keeps the colour form.
+* **Model 2 texture builds by texels.** At most 128 Ki texels decoded per
+  frame (`kSourceTexelBudget`; the first build of a frame always runs) as well
+  as at most 32 textures: 29 builds in one frame took 88 ms. The decoder reads
+  one texel instead of a 2x2 quad per texel (`texel_index.h`, ~4x faster on a
+  host, identical to `rt::read_texel_quad` on 4.3 million reads).
+* **No redraw without a new emulated frame.** A main-loop iteration that ran
+  no board frame (the host ahead of the 57.52 Hz board clock) no longer
+  renders and swaps the same picture again (~15 ms each, 6-9% of attract
+  loops); the screen keeps the last image.
+
+Host checks: `scripts/test_vita_renderer.py` (the index form decoded through
+the palette equals the colour form after tile, split and fade changes; a
+palette change rewrites no tile), `test_vita_texel_index`. Not yet measured
+on a console.
+
 ## Calibrated native output (GPU25 / 01.23)
 
 GPU24's 50% boost remained about 8.25 dB below reference RMS. GPU25 sets
@@ -65,9 +125,10 @@ them and append a bounded fault record to `vita-diag.log`. A quiet launch does
 not erase an existing log. This is a routine-diagnostics switch, not suppression
 of runtime faults. The older software-rendered diagnostic frontend is unchanged.
 
-Since the build modes, `scripts/build_vita.py` makes this diagnostic build by
-default (`-DDAYTONA_VITA_DIAGNOSTICS=ON`); `--release` turns the logging off
-and link-time optimization on. The CMake option itself still defaults to OFF.
+`scripts/build_vita.py` has three builds: normal (no logs), `--diagnostics`
+(`-DDAYTONA_VITA_DIAGNOSTICS=ON`: all the logs) and `--release` (no logs +
+link-time optimization, `-DDAYTONA_VITA_LTO=ON`). Both CMake options default to
+OFF.
 Keep GPU22 for an unchanged diagnostic comparison.
 
 The supplied GPU22 device log contains 78 active windows covering 157.274 s,
