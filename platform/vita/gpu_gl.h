@@ -5,6 +5,7 @@
 // GpuGlRenderer mirrors GpuFastRenderer's public interface so main_gpu.cpp needs few #ifdefs.
 
 #include "runtime/video.h"
+#include "flat_index.h"
 
 #include <array>
 #include <atomic>
@@ -67,6 +68,7 @@ public:
     double last_gpu_ms() const { return last_gpu_ms_; }
     uint64_t last_sort_us() const { return last_sort_us_; } // priority sort feeding the depth ranks
     uint64_t last_texture_us() const { return last_texture_us_; } // index texture builds (inside polygons)
+    uint64_t last_vertex_us() const { return last_vertex_us_; }   // vertex writing (inside polygons)
     uint64_t last_polygon_us() const { return last_polygon_us_; }
     uint64_t last_tile_us() const { return last_tile_us_; }
     uint64_t last_upload_us() const { return last_upload_us_; }  // main core waiting for the 2D worker
@@ -180,21 +182,22 @@ private:
     const rt::Video *s24_video_ = nullptr;         // the job: Video -> slot (set before the start signal)
     S24Slot *s24_job_ = nullptr;
     uint64_t s24_job_us_ = 0;                      // written by the worker, read after the join
-    std::unordered_map<SourceKey, Source, SourceKeyHash> sources_;
+    std::unordered_map<SourceKey, Source, SourceKeyHash> sources_; // storage (stable addresses)
+    FlatIndex<uint32_t, const Source *, 12> source_cache_;         // fast lookup in front of sources_
     std::vector<uint8_t> index_scratch_;
     std::size_t cached_bytes_ = 0;
     bool cache_reset_pending_ = false;
     // Palettes: rows of the palette texture, filled in order of first use.
     uint32_t palette_texture_ = 0;     // GLuint, kPaletteWidth x kPaletteRows RGBA
     uint32_t *palette_data_ = nullptr; // its pixels, written directly
-    std::unordered_map<uint32_t, uint32_t> palette_index_; // palette key -> row
+    FlatIndex<uint32_t, uint32_t, 12> palette_index_; // palette key -> row (at most kPaletteRows)
     uint32_t palette_used_ = 0;        // rows
     uint8_t gamma_[256]{};
 
     // Diagnostics
     double last_gpu_ms_ = 0.0;
     uint64_t last_polygon_us_ = 0, last_tile_us_ = 0, last_upload_us_ = 0, last_sort_us_ = 0, last_texture_us_ = 0,
-             last_2d_worker_us_ = 0;
+             last_2d_worker_us_ = 0, last_vertex_us_ = 0;
     unsigned cache_resets_ = 0, material_drops_ = 0, material_builds_ = 0, material_defers_ = 0,
              system24_quads_ = 0, system24_uploaded_tiles_ = 0, clip_changes_ = 0, textured_polys_ = 0,
              solid_polys_ = 0, checker_polys_ = 0, textured_checker_polys_ = 0;

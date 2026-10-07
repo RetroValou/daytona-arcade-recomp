@@ -1,5 +1,55 @@
 # Vita performance diagnostics
 
+## Polygon recording: lookups and measurement
+
+* **No more `std::unordered_map` on the per-polygon path** (`flat_index.h`). The
+  palette row (looked up for nearly every polygon: the luma changes per face),
+  the batch (per material change) and the index texture (per material change)
+  went through `unordered_map`: a modulo by a prime per lookup, and the
+  Cortex-A9 has no divide instruction (library call), one heap node per entry
+  (cache misses), and the batch map freed and reallocated its nodes every
+  frame. Now power-of-two open-addressing tables: multiplicative hash, linear
+  probing in one array, O(1) clear, no allocation. `sources_` keeps the
+  textures (stable addresses) behind a lookup cache. Same results (host test
+  against `unordered_map`).
+* **perf.log** splits `polygon recording` with a new nested line `of which vertex
+  writing` (`flush_batches`: vertices into GPU memory). The rest of the line
+  is the material/palette pass. This decides the next step: if vertex writing
+  dominates, indexed triangles (quads: 4 vertices instead of 6) or moving it to
+  core 1; if the material pass dominates, that part must stay on core 0 (GL).
+* **perf.log averages are now per emulated frame** (they were per main-loop
+  iteration; since loops without a board frame skip all work, ~8 iterations per
+  frame divided every figure by ~8). The header shows `main loop N/s` instead of
+  the misleading "shown fps"; the csv column `shown_fps` is now `loops_per_s`.
+
+
+## Scene changes and audio crackles
+
+* **2D rewrites by rows (`system24_upload.h`).** The index-form uploader now
+  works by rows of 64 tiles: the changed tiles of a row are grouped into runs,
+  then each texel line is written run by run, 8 texels per step with NEON
+  (scalar fallback elsewhere, same texels). A full rewrite (scene change: 16384
+  tiles, ~8 MB) becomes 512-texel sequential lines instead of 8-texel pieces
+  2 KB apart, which suits the write-combined GPU memory, and the per-texel
+  branches are gone. Measured before: 45-57 ms per full rewrite on core 2 (the
+  main core waited for it). Host checks: identical texels and tile counts to the
+  per-tile form (sparse, dense, full, split, two texture sets alternating), the
+  NEON path through SIMDe and a Cortex-A9 cross-compile.
+* **Reference audio pacing (`audio_rate.h`, `audio.h`).** The emulation never
+  runs ahead of real time (lost time is dropped), so once a slow frame had eaten
+  the start-up cushion it was never rebuilt and every later slow frame crackled.
+  Now the output keeps a 64 ms cushion (plus a 512-frame device buffer instead of
+  1024): a controller plays very slightly slower or faster to hold it (at most
+  +0.5%, and down to -5% only while the emulation stays below full speed: the
+  sound follows the game's speed instead of crackling). After an underrun the
+  output stays silent until the cushion is back: one short gap instead of a
+  crackle at every callback. Simulated (`tests/test_vita_audio_rate.cpp`): no gap
+  with 30 ms late frames every 1.7 s, 20 ms every 0.5 s, or 96-97.5% speed for two
+  minutes; one gap per 100 ms hitch; rare gaps at 94% speed. Latency ~75 ms
+  (was ~64 ms at start-up). perf.log: `reference audio: N gaps, playback speed,
+  queue` under CORE 2.
+
+
 ## vitaGL: 2D one frame late, prepared on core 2
 
 The geometrizer is always pipelined on core 1 (the "1 core / exact image"

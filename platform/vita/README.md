@@ -198,3 +198,55 @@ initialise sceGxm. Without either flag the CPU-exact build is produced as before
   pixels are rejected before their shader runs. `k2DLayersByDepth = false` in
   `gpu_gl.cpp` restores the plain painter order (same image). The menu font never uses
   the depth buffer.
+  
+### How the 2D layers (System 24) are drawn
+
+The HUD, the sky and the other 2D layers come from the System 24 tilemap chip of the
+board. The vitaGL renderer does not turn them into RGB images: like the arcade
+hardware, it keeps **indexed images** and resolves the colours on the GPU.
+
+* **Layer textures hold colour numbers, not colours.** Each of the 4 layers is a
+  512x512 texture (one for the background pass, one for the foreground pass: 8 in
+  all). A texel stores the pen number (0-8191) of that pixel, encoded as palette
+  texture coordinates: column (`pen % 128`) in red, row (`pen / 128`) in green.
+  Alpha is 0 for an empty pixel, which the shader discards (it never reads a colour).
+  See `system24_index_texel` in `system24_upload.h`.
+* **One palette texture holds every colour.** A 128x64 texture, one texel per pen:
+  all 8192 System 24 colours, shared by every layer and both passes
+  (`upload_system24_palette`).
+* **The shader does the lookup.** For each pixel the `Layer` shader reads the layer
+  texture at the scrolled position, gets the pen number, then reads exactly that
+  texel of the palette texture (bound on texture unit 2, point sampled: no filtering,
+  which would mix unrelated colours). The palette is a lookup table: it is never
+  displayed or scaled.
+
+  ```
+  layer texture (512x512)          palette texture (128x64)
+  texel = pen 1234  ──────────────▶ texel (1234 % 128, 1234 / 128) = colour ──▶ pixel
+  ```
+* **Fades cost almost nothing.** A fade to black is done by the game itself: it
+  rewrites its palette RAM step by step, the tile pixels do not change. The renderer
+  only copies the 8192 colours (32 KB) into the palette texture when a colour changed.
+  With RGB textures, every fade step meant rewriting all 16384 tiles (8 MB, ~67 ms on
+  the Vita): the old stutters during fades.
+* **Only changed tiles are rewritten.** Each 8x8 tile has a generation number;
+  `upload_system24_layer_indices` rewrites the tiles changed since the last upload,
+  row of tiles by row of tiles: changed neighbouring tiles become one run, and each
+  texel line of a run is written in one go (NEON, 8 texels per step). A full rewrite
+  (scene change) is then long sequential lines, which suits the write-combined GPU
+  memory.
+* **One frame late, prepared on core 2.** The geometrizer runs pipelined (the 3D shown
+  is the previous frame's), so the 2D shown is the previous frame's too. There are two
+  sets of layer + palette textures: while a frame draws the set prepared during the
+  previous frame, the `daytona_2d` worker thread (core 2, `DAYTONA_VITA_2D_CORE`)
+  uploads the current frame's tiles and palette into the other set and computes the
+  layer rectangles (scroll, split screen, windows). The main core only emits the quads.
+* **Placement by depth.** Foreground layers are drawn before the polygons and
+  background layers after them, with fixed depths (see above).
+
+Model 2 polygon textures work on the same principle, with one difference: their texels
+are 4-bit indices that the GPU **filters** (blends between neighbours) before the
+lookup, as the real board did. Each polygon gets one 128-entry row of a palette texture
+(one row per luma table, colour and face brightness), so the filtered in-between values
+also have a colour. The rows are built by the CPU the first time a combination appears,
+then cached.

@@ -368,7 +368,7 @@ struct State {
     int clip = -1;                         // clip of the next pushed vertices
     std::vector<Batch> batches;
     size_t batch_count = 0;
-    std::unordered_map<uint64_t, uint32_t> batch_index;
+    FlatIndex<uint64_t, uint32_t, 12> batch_index; // (clip, program, texture) -> batch, cleared per frame
     PolygonOrder order;        // Model 2 draw priority (same order as the CPU renderer)
     std::vector<float> depth;  // per polygon depth from that order
     FrameStats stats;
@@ -421,13 +421,12 @@ int add_clip(const std::array<int, 4> &rect) {
 // Index in g.batches of the polygon batch for this state, created on first use this frame.
 uint32_t batch_for(int clip, Prog prog, GLuint texture) {
     const uint64_t key = uint64_t(clip & 0xffff) << 40 | uint64_t(prog) << 32 | texture;
-    auto found = g.batch_index.find(key);
-    if (found != g.batch_index.end()) return found->second;
+    if (const uint32_t *found = g.batch_index.find(key)) return *found;
     if (g.batch_count == g.batches.size()) g.batches.emplace_back();
     Batch &b = g.batches[g.batch_count];
     b.clip = clip; b.prog = prog; b.texture = texture;
     b.poly_refs.clear();
-    g.batch_index.emplace(key, uint32_t(g.batch_count));
+    g.batch_index.insert(key, uint32_t(g.batch_count)); // full table: a second batch, same image
     return uint32_t(g.batch_count++);
 }
 
@@ -872,7 +871,6 @@ GpuGlRenderer::GpuGlRenderer() {
     palette_data_ = static_cast<uint32_t *>(texture_memory(palette_texture_));
     g.palette_texture = palette_texture_;
     ok = ok && palette_texture_ && palette_data_;
-    palette_index_.reserve(kPaletteRows);
     sources_.reserve(1024);
     ok_ = g.ready && ok;
     if (ok_ && !s24_start_thread()) s24_stop_thread(); // 2D prepared inline on the main core
@@ -917,6 +915,7 @@ void GpuGlRenderer::clear_cache() {
         if (texture) glDeleteTextures(1, &texture);
     }
     sources_.clear();
+    source_cache_.clear();
     cached_bytes_ = 0;
     cache_reset_pending_ = false;
     palette_index_.clear();
@@ -978,8 +977,13 @@ void GpuGlRenderer::shutdown() {
 // copied from an opaque neighbour so the filter does not pull index 15 into the edges.
 const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, const rt::VideoMem &mem) {
     const SourceKey key{uint16_t(poly.texheader[0] & 0x23ff), uint16_t(poly.texheader[2] & 0x1fff)};
+    const uint32_t key32 = uint32_t(key.h0) | uint32_t(key.h2) << 16;
+    if (const Source *const *cached = source_cache_.find(key32)) return *cached;
     auto found = sources_.find(key);
-    if (found != sources_.end()) return &found->second;
+    if (found != sources_.end()) {
+        source_cache_.insert(key32, &found->second); // full: stays in sources_ only
+        return &found->second;
+    }
     if (cached_bytes_ >= kSourceCacheBytes) {
         cache_reset_pending_ = true; // emptied by the next prepare_frame()
         ++material_drops_;
@@ -1044,7 +1048,9 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     g.stats.new_texels += w * h;
     g.timing.rec_textures += now_us() - build_begin;
     last_texture_us_ += now_us() - build_begin;
-    return &sources_.emplace(key, s).first->second;
+    const Source *built = &sources_.emplace(key, s).first->second;
+    source_cache_.insert(key32, built);
+    return built;
 }
 
 // Row of the palette texture for this polygon (created on first use), -1 when full.
@@ -1055,8 +1061,7 @@ int GpuGlRenderer::palette_row(const rt::GeoPoly &poly, const rt::VideoMem &mem)
     const uint32_t color_index = (poly.texheader[3] >> 6) & 0x3ff;
     const uint32_t luma_scale = kLumaMask ? (poly.luma & kLumaMask) : 0xff;
     const uint32_t key = lumabase | color_index << 8 | luma_scale << 18;
-    auto found = palette_index_.find(key);
-    if (found != palette_index_.end()) return int(found->second);
+    if (const uint32_t *found = palette_index_.find(key)) return int(*found);
     if (palette_used_ >= kPaletteRows) { ++material_drops_; return -1; }
 
     const uint32_t row = palette_used_++;
@@ -1069,7 +1074,7 @@ int GpuGlRenderer::palette_row(const rt::GeoPoly &poly, const rt::VideoMem &mem)
         const uint8_t b = gamma_[le16(mem.colorxlat, 0x8000 / 2 + (((color >> 10) & 0x1f) << 8) + luma) & 0xff];
         out[k] = RGBA8(r, gg, b, 255);
     }
-    palette_index_.emplace(key, row);
+    palette_index_.insert(key, row); // kPaletteRows < capacity: always room
     ++material_builds_;
     ++g.stats.new_palettes;
     return int(row);
@@ -1240,7 +1245,9 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         });
     }
     clip_changes_ = unsigned(g.clips.size());
+    const uint64_t vertex_begin = now_us();
     flush_batches();
+    last_vertex_us_ = now_us() - vertex_begin;
 
     // Polygon counters, from what flush_batches() actually wrote (it drops invalid polygons).
     for (size_t i = 0; i < g.batch_count; ++i) {

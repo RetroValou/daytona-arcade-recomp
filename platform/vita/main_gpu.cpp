@@ -63,6 +63,7 @@
 #define DAYTONA_VITA_SOUND_CORE 2
 #endif
 
+// Read by newlib (not LTO code): kept by "used" in the release (LTO) build.
 extern "C" { __attribute__((used)) unsigned int _newlib_heap_size_user = 192 * 1024 * 1024; }
 
 namespace {
@@ -393,6 +394,7 @@ int main(int, char **) {
     vita::CoreProfiler core_profile;
     vita::PerfLog perf_file;
     unsigned perf_index = 0;
+    unsigned audio_gaps_seen = 0; // reference audio underruns already reported
     uint64_t perf_log_pending_us = 0; // report formatting time, charged to the next window
     const rt::Geo *geo_seen = nullptr;
     rt::Geo::Stats geo_prev;
@@ -834,6 +836,7 @@ int main(int, char **) {
                     core_profile.add(P::Polygons, draw_total > parts ? draw_total - parts : 0);
 #if DAYTONA_VITA_GPU_GL
                     core_profile.add(P::TexBuild, gpu.last_texture_us());
+                    core_profile.add(P::VertexWrite, gpu.last_vertex_us());
                     core_profile.add(P::Worker2D, gpu.last_2d_worker_us()); // core 2, in parallel
 #endif
                 } else {
@@ -933,6 +936,11 @@ int main(int, char **) {
                     const auto native = native_audio.stats();
                     c.native_callback_last = native.last_us;
                     c.native_callback_peak = native.peak_us;
+                    const auto pacing = audio.stats();
+                    c.audio_gaps = pacing.underruns - std::min(audio_gaps_seen, pacing.underruns);
+                    audio_gaps_seen = pacing.underruns;
+                    c.audio_speed = pacing.ratio;
+                    c.audio_queue_ms = pacing.queued_ms;
                     vita::CoreProfiler::Header h;
                     h.index = ++perf_index;
                     const rt::Geo *geo = geometry_of(game.get());

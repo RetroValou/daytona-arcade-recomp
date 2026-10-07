@@ -58,6 +58,7 @@ public:
         GeoWaitBoard = kMainSections, // main core blocked on the geometry thread (vblank start/end, count reads)
         Snapshot,            // buffer RAM copy (inside GeoMain)
         TexBuild,            // texture builds (inside Polygons)
+        VertexWrite,         // vertex writing into GPU memory (inside Polygons)
         // Other cores.
         GeoParse,            // core 1: Geo::parse
         SoundBoard,          // sound thread: sound board frame
@@ -87,6 +88,7 @@ public:
             {"(nested) WAIT for the geometry core", 0, true},
             {"of which buffer RAM snapshot", 0, true},
             {"of which texture builds", 0, true},
+            {"of which vertex writing", 0, true},
             {"display list parse", 1, false},
             {"sound board (68000+PCM+FM)", 2, false},
             {"sample conversion/queue", 2, false},
@@ -104,6 +106,10 @@ public:
         uint64_t geo_parse_max = 0;
         uint64_t sound_frames = 0;
         uint64_t native_callback_peak = 0, native_callback_last = 0; // native audio (SDL callback thread)
+        // Reference audio pacing (audio_rate.h), read at the report.
+        uint64_t audio_gaps = 0;     // underruns in this window (one short silence each)
+        double audio_speed = 1.0;    // playback speed (1 = real time; < 1: the emulation is slow)
+        double audio_queue_ms = 0.0; // averaged queue level (target 64 ms)
     };
 
     void reset(uint64_t now) {
@@ -154,7 +160,9 @@ public:
         Writer w{out, size};
         const double tps = double(ticks_per_second ? ticks_per_second : 1);
         const double window_s = double(window_ticks()) / tps;
-        const double loops = double(loops_ ? loops_ : 1);
+        // Averages per EMULATED frame: main-loop iterations without a board frame (the host
+        // ahead of the 57.52 Hz clock) do almost nothing and are not frames.
+        const double loops = double(counters.board_frames ? counters.board_frames : (loops_ ? loops_ : 1));
         const double frames = double(counters.board_frames ? counters.board_frames : 1);
         auto ms = [&](uint64_t ticks) { return double(ticks) * 1000.0 / tps; };
         auto pct = [&](uint64_t ticks) { return window_ticks() ? 100.0 * double(ticks) / double(window_ticks()) : 0.0; };
@@ -166,7 +174,7 @@ public:
 
         w.add("==== perf %u: %.2f s gameplay | geo=%s | renderer=%s | CPU %d MHz GPU %d MHz BUS %d MHz ====\n",
               h.index, window_s, h.geo_mode, h.renderer, h.cpu_mhz, h.gpu_mhz, h.bus_mhz);
-        w.add("frames: emulated %.2f fps (target %.2f), shown %.2f fps, worst loop %.2f ms, board frame budget %.2f ms\n",
+        w.add("frames: emulated %.2f fps (target %.2f), main loop %.0f/s, worst loop %.2f ms, board frame budget %.2f ms\n",
               window_s > 0 ? double(counters.board_frames) / window_s : 0.0, kBoardHz,
               window_s > 0 ? double(loops_) / window_s : 0.0, ms(loop_max_), 1000.0 / kBoardHz);
         w.add("cores: main=%d geometry=%d (%s) sound=%d (%s)\n", h.main_core, h.geo_core,
@@ -174,13 +182,16 @@ public:
               h.native_audio ? "native audio callback" : (h.sound_threaded ? "thread" : "main core"));
         w.add("%-40s %7s %9s %9s %6s\n", "section", "core%", "ms/frame", "max ms", "hits");
 
-        w.add("CORE 0 main: busy %.1f%% (%.2f ms per shown frame)\n", pct(main_sum), ms(main_sum) / loops);
+        w.add("CORE 0 main: busy %.1f%% (%.2f ms per emulated frame)\n", pct(main_sum), ms(main_sum) / loops);
         for (int i = 0; i < kMainSections; ++i) {
             line(w, Section(i), "  ", ms, pct, loops);
             // Nested detail right below its parent.
             if (i == GeoMain) line(w, Snapshot, "    ", ms, pct, loops);
             if (i == BoardOther) line(w, GeoWaitBoard, "    ", ms, pct, loops);
-            if (i == Polygons) line(w, TexBuild, "    ", ms, pct, loops);
+            if (i == Polygons) {
+                line(w, TexBuild, "    ", ms, pct, loops);
+                line(w, VertexWrite, "    ", ms, pct, loops);
+            }
         }
         w.add("  %-38s %7.1f %9.2f\n", "idle / unmeasured (vsync, delay)", pct(idle), ms(idle) / loops);
 
@@ -198,13 +209,16 @@ public:
             w.add("  idle: the geometry runs on the main core (SYNC) or no 3D frame\n");
         }
 
-        w.add("CORE 2 (sound + 2D worker): busy %.1f%%\n", pct(totals_[SoundBoard] + totals_[SoundQueue] + totals_[Worker2D]));
+        w.add("CORE 2 (sound + 2D worker): busy %.1f%% at most (the sound board line also counts the 2D worker when it interrupts the sound)\n", pct(totals_[SoundBoard] + totals_[SoundQueue] + totals_[Worker2D]));
         line(w, SoundBoard, "  ", ms, pct, loops);
         line(w, SoundQueue, "  ", ms, pct, loops);
         line(w, Worker2D, "  ", ms, pct, loops);
         if (h.native_audio)
             w.add("  native audio callback: last %.3f ms, peak %.3f ms (SDL audio thread)\n",
                   ms(counters.native_callback_last), ms(counters.native_callback_peak));
+        else
+            w.add("  reference audio: %llu gaps, playback speed %.2f%%, queue %.1f ms (target 64)\n",
+                  ull(counters.audio_gaps), counters.audio_speed * 100.0, counters.audio_queue_ms);
 
         w.add("work per emulated frame: i960 %.0f instr, TGP %.0f instr (both inside the i960+TGP lines), polygons %.0f\n",
               double(counters.i960_instructions) / frames, double(counters.tgp_instructions) / frames,
@@ -234,7 +248,7 @@ public:
     // Column names of the csv line, written once at the top of perf.log.
     static size_t format_csv_header(char *out, size_t size) {
         Writer w{out, size};
-        w.add("csv,window,seconds,geo_mode,emulated_fps,shown_fps");
+        w.add("csv,window,seconds,geo_mode,emulated_fps,loops_per_s"); // section columns: ms per emulated frame
         for (int i = 0; i < kSections; ++i) w.add(",%s", csv_name(Section(i)));
         w.add(",idle\n");
         return w.used;
@@ -263,7 +277,7 @@ private:
         static const char *const names[kSections] = {
             "input", "logic", "geo_main", "irq", "video2d", "board_other", "sound_sync", "gpu_prepare",
             "gfx_begin", "upload", "layers", "sort", "polygons", "gfx_end", "log",
-            "geo_wait_board", "snapshot", "tex_build", "geo_parse", "sound_board", "sound_queue", "worker_2d"};
+            "geo_wait_board", "snapshot", "tex_build", "vertex_write", "geo_parse", "sound_board", "sound_queue", "worker_2d"};
         return names[s];
     }
     template<class Ms, class Pct>
