@@ -1,5 +1,38 @@
 # Vita performance diagnostics
 
+## Measured follow-up: leak, silent FM, indexed quads, cleaner perf.log
+
+From a console perf.log with fine-grained probes (not kept in the sources):
+
+* **Lockstep callback leak (src/runtime/lockstep.cpp/.h).** `calls_` never released a
+  slot: `GameLoop::probe` re-arms itself every 1024 i960 instructions, so the console
+  kept +2,200 to +2,800 dead `std::function` per second (236,787 after 110 s, ~125 MB
+  per hour, plus a full copy of the vector at every doubling). A slot is now freed when
+  its callback runs and reused by the next `add_callback`. A host replay of the
+  GameLoop/UART callback pattern gives the same callback sequence (858,543 callbacks,
+  same counts) with flat memory instead of 32 MB after 5 minutes.
+* **Silent FM not queued (audio.h).** The YM3438 output was zero in every window of
+  whole races, yet its resampling in `SDL_AudioStreamPut` cost ~1.65 ms per frame on
+  core 2. A silent block is no longer queued; the PCM stream sets the pace and the
+  callback adds the FM that is queued. FM that starts again is padded with the silence
+  it skipped so that it stays aligned on the PCM queue. Not silent FM is unchanged.
+* **Indexed quads (gpu_gl.cpp).** Polygons and
+  System 24 rectangles are written as groups of 4 vertices drawn through a static
+  16-bit index buffer {4q, 4q+1, 4q+2, 4q, 4q+2, 4q+3}: same triangles as the fans (an
+  odd fan ends with one degenerate triangle), 4 vertices per quad instead of 6 (95% of
+  the race polygons). Expected about a third less of the ~435 KB of vertices written per
+  race frame (~2.3 ms of core 0). Above 65,536 vertices in a frame, or without the index
+  buffer, batches fall back to plain triangles.
+* **perf.log reliability.** gl.log GPU samples (two `sceGxmFinish` every 60 frames,
+  30-50 ms each) were the only frame time spikes of the race: removed, gl.log no longer
+  has a GPU line. The gl.log write is reported as `logging`, no longer as `frame end`. The frontend clock reads
+  `sceKernelGetProcessTimeWide` directly (0.70 us per read instead of 1.39 us through SDL
+  and a 64-bit division), the same microseconds SDL returned.
+
+Not verified on the console yet: the indexed quads (image and timing) and the FM
+alignment when FM plays.
+
+
 ## Polygon recording: lookups and measurement
 
 * **No more `std::unordered_map` on the per-polygon path** (`flat_index.h`). The

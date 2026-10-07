@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 namespace vita {
 // The SDL playback callback consumes only converted samples. The sound worker
@@ -14,6 +15,12 @@ namespace vita {
 // SDL's device lock serializes stream conversion with the playback callback.
 // Output pacing (cushion kept by a slight speed change, silent re-priming after an
 // underrun): audio_rate.h.
+// Silent FM is not queued: Daytona's sound program leaves the YM3438 silent (perf.log on
+// the console: 0 non-zero FM frames over whole races), yet resampling that silence from
+// 55.6 to 48 kHz in SDL_AudioStreamPut cost ~1.65 ms per frame on the sound core. The PCM
+// stream sets the pace; the FM stream holds only the FM that was not silent, aligned on
+// the head of the PCM queue (padded with silence when it starts again), and the callback
+// adds whatever FM it has. Not silent FM goes through the same SDL conversion as before.
 class Audio {
 public:
     struct Stats {
@@ -33,8 +40,8 @@ public:
         device_ = SDL_OpenAudioDevice(nullptr, 0, &want, &got, 0);
         if (!device_) return false;
         rate_ = got.freq;
-        fm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, int(snd::SoundBoard::kYmClock / 144.0 + 0.5),
-                                 AUDIO_F32SYS, 2, rate_);
+        fm_rate_ = int(snd::SoundBoard::kYmClock / 144.0 + 0.5);
+        fm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, fm_rate_, AUDIO_F32SYS, 2, rate_);
         pcm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, int(snd::SoundBoard::kPcmClock / 224.0 + 0.5),
                                   AUDIO_F32SYS, 2, rate_);
         if (!fm_ || !pcm_) { close(); return false; }
@@ -48,12 +55,29 @@ public:
         const int limit = rate_ * 2 * int(sizeof(float)) / 4; // at most 250 ms
         if (SDL_AudioStreamAvailable(fm_) > limit || SDL_AudioStreamAvailable(pcm_) > limit) {
             SDL_AudioStreamClear(fm_); SDL_AudioStreamClear(pcm_);
+            fm_active_ = false;
         }
-        if (SDL_AudioStreamPut(fm_, fm.data(), int(fm.size() * sizeof(float))) < 0 ||
-            SDL_AudioStreamPut(pcm_, pcm.data(), int(pcm.size() * sizeof(float))) < 0)
+        bool fm_ok = true;
+        if (std::any_of(fm.begin(), fm.end(), [](float v) { return v != 0.0f; })) {
+            if (!fm_active_) {
+                // FM starts again after silence: pad it with the silence it skipped, so its
+                // first sample plays with the PCM sample queued at the same time.
+                const int behind = (SDL_AudioStreamAvailable(pcm_) - SDL_AudioStreamAvailable(fm_)) / kFrameBytes;
+                if (behind > 0) {
+                    const std::vector<float> silence(size_t(int64_t(behind) * fm_rate_ / rate_) * 2u, 0.0f);
+                    if (!silence.empty())
+                        fm_ok = SDL_AudioStreamPut(fm_, silence.data(), int(silence.size() * sizeof(float))) >= 0;
+                }
+                fm_active_ = true;
+            }
+            fm_ok = fm_ok && SDL_AudioStreamPut(fm_, fm.data(), int(fm.size() * sizeof(float))) >= 0;
+        } else {
+            fm_active_ = false; // what is still queued plays out, aligned on the PCM
+        }
+        if (!fm_ok || SDL_AudioStreamPut(pcm_, pcm.data(), int(pcm.size() * sizeof(float))) < 0)
             std::fprintf(stderr, "audio queue: %s\n", SDL_GetError());
         const int prime = AudioRate::kPrimeFrames * kFrameBytes;
-        const bool ready = SDL_AudioStreamAvailable(fm_) >= prime && SDL_AudioStreamAvailable(pcm_) >= prime;
+        const bool ready = SDL_AudioStreamAvailable(pcm_) >= prime;
         SDL_UnlockAudioDevice(device_);
         if (!playing_ && ready) { SDL_PauseAudioDevice(device_, 0); playing_ = true; }
     }
@@ -62,6 +86,7 @@ public:
         SDL_PauseAudioDevice(device_, 1);
         SDL_LockAudioDevice(device_);
         SDL_AudioStreamClear(fm_); SDL_AudioStreamClear(pcm_);
+        fm_active_ = false;
         restart_locked();
         SDL_UnlockAudioDevice(device_);
         playing_ = false;
@@ -103,9 +128,8 @@ private:
         buffering_ = true;
         resampler_.reset();
     }
-    int queued_frames_locked() const {
-        return std::min(SDL_AudioStreamAvailable(fm_), SDL_AudioStreamAvailable(pcm_)) / kFrameBytes;
-    }
+    // The PCM stream sets the pace (the FM one is empty while the FM is silent).
+    int queued_frames_locked() const { return SDL_AudioStreamAvailable(pcm_) / kFrameBytes; }
 
     static void callback(void *userdata, Uint8 *buffer, int bytes) {
         auto &self = *static_cast<Audio *>(userdata);
@@ -133,12 +157,16 @@ private:
             float *fm = self.fm_in_, *pcm = self.pcm_in_, *mixed = self.mixed_;
             const int got = std::min(need, kMaxInput); // need <= kChunk * (1 + kMaxSpeedUp) + 1
             if (got > 0) {
-                SDL_AudioStreamGet(self.fm_, fm, got * kFrameBytes);
                 SDL_AudioStreamGet(self.pcm_, pcm, got * kFrameBytes);
-                for (int i = 0; i < got * 2; ++i) fm[i] += pcm[i];
+                // FM queued only while it was not silent: what there is lines up with this PCM.
+                const int fm_frames = std::min(got, SDL_AudioStreamAvailable(self.fm_) / kFrameBytes);
+                if (fm_frames > 0) {
+                    SDL_AudioStreamGet(self.fm_, fm, fm_frames * kFrameBytes);
+                    for (int i = 0; i < fm_frames * 2; ++i) pcm[i] += fm[i];
+                }
             }
             queued -= got;
-            self.resampler_.run(fm, got, mixed, n, ratio);
+            self.resampler_.run(pcm, got, mixed, n, ratio);
             for (int i = 0; i < n * 2; ++i) {
                 float sample = self.muted_ ? 0.f : mixed[i] * self.volume_;
                 if (!std::isfinite(sample)) sample = 0.f;
@@ -149,7 +177,8 @@ private:
     }
     SDL_AudioDeviceID device_ = 0;
     SDL_AudioStream *fm_ = nullptr, *pcm_ = nullptr;
-    int rate_ = 48000;
+    int rate_ = 48000, fm_rate_ = 55556;
+    bool fm_active_ = false; // the last FM block was queued (not silent); worker side, under the device lock
     bool playing_ = false, muted_ = false;
     float volume_ = 0.8f;
     // Output pacing, touched by the callback and under the device lock only.

@@ -50,6 +50,9 @@ struct GlLoopProfile {
     uint64_t prepare = 0;        // GpuGlRenderer::prepare_frame (texture cache resets)
 };
 void gl_profile_loop(const GlLoopProfile &profile);
+// Time the last gl_end_frame() spent writing gl.log (diagnostics builds), in microseconds:
+// perf.log counts it as logging, not as frame end.
+uint64_t gl_last_diagnostic_us();
 
 class GpuGlRenderer {
 public:

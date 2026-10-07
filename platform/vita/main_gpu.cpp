@@ -157,10 +157,10 @@ rt::Inputs map_input(const vita::Input &in) {
     return out;
 }
 
-uint64_t ticks_us() {
-    const uint64_t f = SDL_GetPerformanceFrequency();
-    return f ? SDL_GetPerformanceCounter() * 1000000ull / f : 0;
-}
+// Microseconds. SDL2's Vita performance counter is this same call at 1 MHz; calling it
+// directly skips SDL and a 64-bit division per read (measured 1.39 us per read through SDL,
+// 0.70 us direct): the profiling clocks of a diagnostics build cost half as much.
+uint64_t ticks_us() { return sceKernelGetProcessTimeWide(); }
 
 // Measurement only; never use this clock to pace game or audio playback.
 uint64_t diagnostic_ticks_us() {
@@ -842,7 +842,14 @@ int main(int, char **) {
                 } else {
                     core_profile.add(P::Upload, draw_total); // menu text or the exact CPU frame upload
                 }
-                core_profile.add(P::GfxEnd, gfx_ended - drawn);
+                // The gl.log write is diagnostics, not frame end (gpu_gl.cpp).
+#if DAYTONA_VITA_GPU_GL
+                const uint64_t gl_diagnostic = std::min<uint64_t>(vita::gl_last_diagnostic_us(), gfx_ended - drawn);
+#else
+                const uint64_t gl_diagnostic = 0;
+#endif
+                core_profile.add(P::GfxEnd, gfx_ended - drawn - gl_diagnostic);
+                core_profile.add(P::Log, gl_diagnostic);
             }
             if (!menu && game) {
                 ++perf_presents;

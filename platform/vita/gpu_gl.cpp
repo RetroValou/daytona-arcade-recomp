@@ -55,9 +55,8 @@
 #include <cstring>
 #include <string>
 
-// Waiting for the GPU (prepare_frame, GPU time sampling in gl_end_frame) uses vitaGL's
-// internal 'gxm_context' symbol. Set to 0 if your libvitaGL does not export it (link
-// error): glFinish() is used instead and GPU time is not sampled.
+// Waiting for the GPU (gl_begin_frame) uses vitaGL's internal 'gxm_context' symbol. Set to
+// 0 if your libvitaGL does not export it (link error): glFinish() is used instead.
 #ifndef DAYTONA_GL_GPU_TIMING
 #define DAYTONA_GL_GPU_TIMING 1
 #endif
@@ -121,6 +120,19 @@ constexpr float kBackgroundDepth = 0.0f;        // glClear writes 0 (glClearDept
 // never draw more vertices in one call. Multiple of 3.
 constexpr size_t kMaxVerticesPerDraw = 49152;
 
+// Indexed quads (polygons and System 24 rectangles). A static index buffer turns each group
+// of 4 vertices {a, b, c, d} into the triangles (a, b, c) (a, c, d): a Model 2 quad needs 4
+// vertices instead of 6 (95% of the polygons), and a clipped n-gon ceil((n-2)/2) quads
+// instead of n-2 triangles (an odd fan ends with a degenerate quad, d = c, which draws
+// nothing). Same triangles as the fan, so the same image, with a third less vertex data
+// written to uncached GPU memory (perf.log: ~14,000 vertices = 435 KB per frame in a
+// race, ~2.3 ms of the main core). Indices are absolute 16-bit vertex numbers, the vertex
+// attributes stay at offset 0 (see set_attributes): batches start on a multiple of 4 and
+// only the first kIndexedVertexLimit vertices of a frame are indexed; anything beyond, or
+// a failed index buffer, falls back to plain triangles.
+constexpr size_t kIndexedVertexLimit = 65536;              // 16-bit indices
+constexpr size_t kQuadIndices = kIndexedVertexLimit / 4 * 6; // 98,304 indices, 192 KB
+
 // Polygon luma kept in the palette key. 0xfc = 64 brightness levels per palette;
 // 0 = always full brightness (fewest palettes).
 constexpr uint8_t kLumaMask = 0xfc;
@@ -129,15 +141,14 @@ constexpr uint8_t kLumaMask = 0xfc;
 // Each line is appended then the file is closed, so the last line survives a crash.
 constexpr const char *kLogPath = "ux0:data/daytona93/gl.log";
 constexpr unsigned kLogEvery = 300; // frames per report (averages over that period)
-// Every kGpuSampleEvery frames, wait for the GPU before and after the frame to measure
-// how long the GPU itself needs (that frame loses the CPU/GPU overlap). 0 = never.
-constexpr unsigned kGpuSampleEvery = 60;
+// No GPU time sampling: waiting for the GPU before and after a frame stalled the main core
+// 30-50 ms on purpose, the only frame time spikes perf.log showed in the race. The gl.log
+// write is reported to perf.log as logging, not as frame end (gl_last_diagnostic_us).
 
 #ifndef DAYTONA_VITA_DIAGNOSTICS
 #define DAYTONA_VITA_DIAGNOSTICS 0
 #endif
-// gl.log and the periodic GPU time samples (which stall the CPU on purpose) exist
-// only in diagnostic builds (scripts/build_vita.py --diagnostics).
+// gl.log exists only in diagnostic builds (scripts/build_vita.py --diagnostics).
 constexpr bool kGlLog = DAYTONA_VITA_DIAGNOSTICS != 0;
 
 void gl_log(const char *fmt, ...) {
@@ -270,6 +281,7 @@ struct Cmd {
     uint32_t first, count;    // vertex range in g.verts.data
     Depth depth;
     int clip;                 // scissor rectangle index in g.clips, -1 = none
+    bool quads = false;       // indexed quads: first and count are multiples of 4
 };
 
 // A polygon waiting in its batch: everything draw_polygons() resolved for it (material and
@@ -317,8 +329,6 @@ struct Timing {
     uint64_t gpu_wait = 0;                   // gl_begin_frame: GPU still busy with the previous frame
     uint64_t submit = 0;                     // execute(): GL calls
     uint64_t swap = 0;                       // vglSwapBuffers: waits for a free buffer / vsync
-    unsigned gpu_samples = 0;
-    uint64_t gpu = 0, gpu_max = 0;           // sampled GPU time of one frame
     // Main loop, reported by main_gpu.cpp through gl_profile_loop().
     unsigned loops = 0, menu_loops = 0, board_frames = 0;
     uint64_t board = 0, board_core = 0, board_geometry = 0, board_video = 0, board_max = 0;
@@ -360,6 +370,7 @@ struct State {
     unsigned frame = 0;
     GLuint program[int(Prog::Count)] = {};
     GLuint vbo = 0;
+    GLuint quad_ibo = 0;        // static index buffer of the indexed quads (0: plain triangles)
     GLuint palette_texture = 0; // bound on unit 1 for the MODEL shaders
     GLuint s24_palette_texture = 0; // bound on unit 2 for the Layer shader (System 24 pens)
     VertexArena verts;
@@ -374,6 +385,7 @@ struct State {
     FrameStats stats;
     Timing timing;
     uint64_t record_us = 0, last_end = 0;
+    uint64_t diagnostic_us = 0; // last gl_end_frame: gl.log write
     bool skip_worst = false; // the next interval includes the log write
     char error[512] = {};
 } g;
@@ -392,7 +404,7 @@ void push(Prog prog, GLuint texture, const Vertex *vertices, size_t count, Depth
     std::memcpy(dst, vertices, count * sizeof(Vertex));
     if (!g.cmds.empty()) {
         Cmd &last = g.cmds.back();
-        if (last.prog == prog && last.texture == texture && last.depth == depth && last.clip == g.clip) {
+        if (!last.quads && last.prog == prog && last.texture == texture && last.depth == depth && last.clip == g.clip) {
             last.count += uint32_t(count);
             return;
         }
@@ -430,6 +442,32 @@ uint32_t batch_for(int clip, Prog prog, GLuint texture) {
     return uint32_t(g.batch_count++);
 }
 
+// Vertex slots for `quads` indexed quads, starting on a multiple of 4 (the index buffer is
+// built for groups of 4); nullptr when they would pass the 16-bit index limit (the caller
+// then writes plain triangles) or memory is exhausted. The padding vertices are never drawn.
+Vertex *append_quads(size_t quads) {
+    if (!g.quad_ibo || !quads) return nullptr;
+    const size_t pad = (4 - g.verts.size % 4) % 4;
+    if (g.verts.size + pad + quads * 4 > kIndexedVertexLimit) return nullptr;
+    if (!g.verts.append(pad + quads * 4)) return nullptr;
+    return g.verts.data + (g.verts.size - quads * 4);
+}
+
+// Fan (v0, vi, vi+1) of a convex n-gon as quads (v0, v1+2k, v2+2k, v3+2k): the two fan
+// triangles 1+2k and 2+2k. Odd fans end with (v0, vn-2, vn-1, vn-1), whose second triangle
+// is degenerate. Returns the vertices written (4 per quad).
+size_t write_fan_quads(Vertex *dst, const Vertex *v, int n) {
+    size_t written = 0;
+    for (int a = 1; a + 1 < n; a += 2) {
+        *dst++ = v[0];
+        *dst++ = v[a];
+        *dst++ = v[a + 1];
+        *dst++ = v[std::min(a + 2, n - 1)];
+        written += 4;
+    }
+    return written;
+}
+
 // Moves the batches into the draw list, in order of first appearance. The order does not
 // change the image: every polygon has its own priority depth and nothing is blended.
 void flush_batches() {
@@ -440,7 +478,12 @@ void flush_batches() {
         b->valid_vertices = 0;
         if (b->poly_refs.empty()) continue;
 
-        const uint32_t first = uint32_t(g.verts.size);
+        // Indexed quads when they fit under the 16-bit index limit (see kIndexedVertexLimit).
+        size_t quads = 0;
+        for (const PolyRef &ref : b->poly_refs) quads += size_t(ref.poly->num_vertices - 1) / 2;
+        Vertex *quad_dst = append_quads(quads);
+        const bool indexed = quad_dst != nullptr;
+        const uint32_t first = indexed ? uint32_t(quad_dst - g.verts.data) : uint32_t(g.verts.size);
         uint32_t written = 0;
         for (const PolyRef &ref : b->poly_refs) {
             const rt::GeoPoly &poly = *ref.poly;
@@ -459,8 +502,13 @@ void flush_batches() {
             }
             if (!valid) { ++g.stats.skip_invalid; continue; }
 
-            // 2. Triangle fan written once, straight into the frame's GPU vertex memory
-            //    (vglForceAlloc: uncached RAM). The CPU only writes there, never reads back.
+            // 2. Written once, straight into the frame's GPU vertex memory (vglForceAlloc:
+            //    uncached RAM). The CPU only writes there, never reads back.
+            if (indexed) { // quads in the slots reserved above (invalid polygons leave theirs unused)
+                written += uint32_t(write_fan_quads(quad_dst + written, v, n));
+                ++b->valid_polys;
+                continue;
+            }
             const size_t count = size_t(n - 2) * 3;
             Vertex *dst = g.verts.append(count);
             if (!dst) { g.stats.dropped_vertices += unsigned(count); continue; }
@@ -473,8 +521,10 @@ void flush_batches() {
             ++b->valid_polys;
         }
         b->valid_vertices = written;
+        // Slots reserved for invalid polygons: give them back (they are at the end).
+        if (indexed) g.verts.size = first + written;
         // One command per batch: batches have distinct states, so push() would not merge them.
-        if (written) g.cmds.push_back({b->prog, b->texture, first, written, Depth::TestWrite, g.clip});
+        if (written) g.cmds.push_back({b->prog, b->texture, first, written, Depth::TestWrite, g.clip, indexed});
     }
     g.clip = -1;
     g.stats.batches = unsigned(g.batch_count);
@@ -506,11 +556,20 @@ void draw_range(uint32_t first, uint32_t count) {
     }
 }
 
+// Indexed quads (see kIndexedVertexLimit): count / 4 quads from vertex `first`, both
+// multiples of 4, with the static index buffer bound.
+void draw_quads(uint32_t first, uint32_t count) {
+    const size_t offset = size_t(first / 4) * 6 * sizeof(uint16_t);
+    glDrawElements(GL_TRIANGLES, GLsizei(count / 4 * 6), GL_UNSIGNED_SHORT, reinterpret_cast<const void *>(offset));
+    ++g.stats.draw_calls;
+}
+
 // Runs the recorded draw list.
 void execute() {
     if (g.cmds.empty()) return;
     glBindBuffer(GL_ARRAY_BUFFER, g.vbo);
     vglBufferData(GL_ARRAY_BUFFER, g.verts.data); // the VBO uses our GPU memory as is
+    if (g.quad_ibo) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g.quad_ibo);
     for (GLuint i = 0; i < 3; ++i) glEnableVertexAttribArray(i);
     set_attributes(0);
     // Palette textures for the whole frame (unit 1 Model 2, unit 2 System 24); per-command
@@ -560,11 +619,13 @@ void execute() {
             }
             clip = c.clip;
         }
-        draw_range(c.first, c.count);
+        if (c.quads) draw_quads(c.first, c.count);
+        else draw_range(c.first, c.count);
     }
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     if (depth_write != 1) glDepthMask(GL_TRUE);
+    if (g.quad_ibo) glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
@@ -667,10 +728,6 @@ void log_report() {
     r.add("  GL submit %6.2f ms\n", submit);
     r.add("  swap      %6.2f ms  waiting in vglSwapBuffers (GPU still busy with an older frame, or vsync)\n", swap);
     r.add("  other     %6.2f ms  input, menu, SDL_Delay, logs, everything not measured above\n", other);
-    if (t.gpu_samples)
-        r.add("  GPU       %6.2f ms  per frame on the GPU itself (avg of %u samples, worst %.2f): %s\n",
-               ms(t.gpu, t.gpu_samples), t.gpu_samples, ms(t.gpu_max),
-               ms(t.gpu, t.gpu_samples) > frame * 0.9 ? "GPU-BOUND" : "the GPU waits for the CPU");
     r.add("frame %u: polys in=%u out=%u skipped: vcount=%u window=%u clip=%u invalid=%u texture=%u palette=%u renderer=%u\n",
            g.frame, s.polys_in, s.polys_out, s.skip_vcount, s.skip_window, s.skip_clip, s.skip_invalid, s.skip_texture,
            s.skip_palette, s.skip_renderer);
@@ -737,6 +794,24 @@ bool gl_init() {
         return false;
     }
     g.cmds.reserve(1024);
+    {
+        // Static index buffer of the indexed quads: {4q, 4q+1, 4q+2, 4q, 4q+2, 4q+3}.
+        std::vector<uint16_t> indices(kQuadIndices);
+        for (size_t q = 0; q < kIndexedVertexLimit / 4; ++q) {
+            const uint16_t v = uint16_t(q * 4);
+            uint16_t *i = &indices[q * 6];
+            i[0] = v; i[1] = uint16_t(v + 1); i[2] = uint16_t(v + 2);
+            i[3] = v; i[4] = uint16_t(v + 2); i[5] = uint16_t(v + 3);
+        }
+        glGenBuffers(1, &g.quad_ibo);
+        if (g.quad_ibo) {
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, g.quad_ibo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr(indices.size() * sizeof(uint16_t)), indices.data(),
+                         GL_STATIC_DRAW);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        }
+        gl_log("gl_init: indexed quads %s\n", g.quad_ibo ? "on" : "unavailable, plain triangles");
+    }
     g.ready = true;
     gl_log("gl_init: done\n");
     return true;
@@ -759,28 +834,15 @@ void gl_begin_frame() {
 
 void gl_end_frame() {
     Timing &t = g.timing;
-    // GPU sample: let the GPU finish everything older, then time this frame alone.
-    const bool sample = kGlLog && DAYTONA_GL_GPU_TIMING != 0 && kGpuSampleEvery != 0 && g.frame % kGpuSampleEvery == 0;
-#if DAYTONA_GL_GPU_TIMING
-    if (sample) sceGxmFinish(gxm_context);
-#endif
+    uint64_t diagnostic = 0; // gl.log write, reported apart (gl_last_diagnostic_us)
     const uint64_t t0 = now_us();
     execute();
     const uint64_t t1 = now_us();
     vglSwapBuffers(GL_FALSE);
     const uint64_t t2 = now_us();
-#if DAYTONA_GL_GPU_TIMING
-    if (sample) {
-        sceGxmFinish(gxm_context);
-        const uint64_t gpu = now_us() - t0;
-        ++t.gpu_samples;
-        t.gpu += gpu;
-        t.gpu_max = std::max(t.gpu_max, gpu);
-    }
-#endif
     const uint64_t end = now_us();
 
-    const bool exclude = sample || g.skip_worst; // stalls on purpose, or includes the log write
+    const bool exclude = g.skip_worst; // includes the log write
     g.skip_worst = false;
     if (g.last_end) {
         const uint64_t interval = end - g.last_end;
@@ -794,12 +856,17 @@ void gl_end_frame() {
     g.last_end = end;
     g.record_us = 0;
     if (kGlLog && (g.frame <= 3 || g.frame % kLogEvery == 0)) {
+        const uint64_t l0 = now_us();
         log_report();
+        diagnostic += now_us() - l0;
         t = {};
         g.skip_worst = true;
     }
+    g.diagnostic_us = diagnostic;
     g.stats = {};
 }
+
+uint64_t gl_last_diagnostic_us() { return g.diagnostic_us; }
 
 void gl_profile_loop(const GlLoopProfile &p) {
     Timing &t = g.timing;
@@ -832,6 +899,8 @@ void gl_fini() {
         glDeleteBuffers(1, &g.vbo);
     }
     g.vbo = 0;
+    if (g.quad_ibo) glDeleteBuffers(1, &g.quad_ibo);
+    g.quad_ibo = 0;
     g.verts.release();
     g.ready = false;
 }
@@ -1508,24 +1577,30 @@ void GpuGlRenderer::s24_emit(const S24Slot &slot, bool foreground) {
     }
     for (const S24Run &run : slot.runs) {
         const GLuint texture = slot.textures[size_t((foreground ? 4 : 0) + run.layer)];
-        const uint32_t first = uint32_t(g.verts.size);
-        const size_t count = size_t(run.count) * 6u;
-        Vertex *dst = g.verts.append(count);
+        // Indexed quads (4 vertices per rectangle) when they fit, else two triangles (6).
+        Vertex *dst = append_quads(run.count);
+        const bool indexed = dst != nullptr;
+        const size_t count = size_t(run.count) * (indexed ? 4u : 6u);
+        if (!indexed) dst = g.verts.append(count);
         if (!dst) { g.stats.dropped_vertices += unsigned(count); continue; }
+        const uint32_t first = uint32_t(dst - g.verts.data);
         for (uint32_t i = run.first; i < run.first + run.count; ++i) {
             const S24Rect &r = slot.rects[i];
             const float u0 = float(r.x0 + r.h) / 512.0f, u1 = float(r.x1 + r.h) / 512.0f;
             const float v0 = float(r.v) / 512.0f, v1 = float(r.v + (r.y1 - r.y0)) / 512.0f;
             const float x0 = sx(float(r.x0)), x1 = sx(float(r.x1)), y0 = sy(float(r.y0)), y1 = sy(float(r.y1));
+            // Triangles (x0y0, x1y0, x1y1) (x0y0, x1y1, x0y1) in both forms.
             *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
             *dst++ = {x1, y0, 1, u1, v0, 0, d, 0xffffffffu};
             *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
-            *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
-            *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            if (!indexed) {
+                *dst++ = {x0, y0, 1, u0, v0, 0, d, 0xffffffffu};
+                *dst++ = {x1, y1, 1, u1, v1, 0, d, 0xffffffffu};
+            }
             *dst++ = {x0, y1, 1, u0, v1, 0, d, 0xffffffffu};
         }
         // One command per layer texture (consecutive runs never share a texture).
-        g.cmds.push_back({Prog::Layer, texture, first, uint32_t(count), depth, g.clip});
+        g.cmds.push_back({Prog::Layer, texture, first, uint32_t(count), depth, g.clip, indexed});
         system24_quads_ += run.count;
     }
 }
