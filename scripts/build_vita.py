@@ -79,7 +79,7 @@ def direct_ram(folder):
     print(f"build_vita: {stats['wram']} work-RAM accesses direct", flush=True)
 
 
-def vita_code(host, gen, build, mode, game):
+def vita_code(host, gen, build, mode, game, profile=None):
     """The game code of the Vita build, made here from the host build's tools and ROM
     cache (scripts/recompile.py, run once in any mode): the host's own generated code
     and the desktop build are left as they are. Into BUILD_DIR/gen_vita:
@@ -108,6 +108,8 @@ def vita_code(host, gen, build, mode, game):
         i960 += ["--hooks", f"seeds/{game}_hooks.txt"]
     if mode != "fast_gen":
         i960.append("--fast_inaccuracy")
+    if profile:  # --profile: the block profile's chunk layout, as scripts/recompile.py --profile
+        i960 += ["--profile", profile]
     run(i960, os.environ)
     i960_out = tmp / "i960"
     if mode == "fast_inaccuracy":
@@ -168,6 +170,9 @@ def main(argv=None):
     code.add_argument("--fast-gen", dest="code", action="store_const", const="fast_gen",
                       help="i960 default output rewritten by platform/dreamcast/scripts/fast_gen.py (exact, slower on the Vita), "
                            "TGP fast mode. Without either: the host-generated code as it is")
+    ap.add_argument("--profile", nargs="?", const="", metavar="FILE",
+                    help="with --fast-inaccuracy or --fast-gen: lay the i960 chunks out by the block profile "
+                         "(default FILE: profiles/<set>.txt; scripts/profile.py). Off by default")
     args = ap.parse_args(argv)
     gpu_build = args.gpu_fast or args.gpu_gl
     if args.set != "daytona93" and not gpu_build:
@@ -178,6 +183,14 @@ def main(argv=None):
         ap.error("--free-core applies to the GPU builds (--gpu-fast or --gpu-gl)")
     if args.jobs < 1:
         ap.error("--jobs must be positive")
+    profile = None
+    if args.profile is not None:
+        if not args.code:
+            ap.error("--profile needs --fast-inaccuracy or --fast-gen (otherwise the host code is used as it is: "
+                     "make it with python3 scripts/recompile.py --profile)")
+        profile = args.profile or f"profiles/{args.set}.txt"
+        if not (ROOT / profile).is_file():
+            ap.error(f"no profile {profile} (make it with python3 scripts/profile.py --set {args.set})")
     if args.vitasdk is None:
         ap.error("set VITASDK or pass --vitasdk /path/to/vitasdk")
     sdk = args.vitasdk.expanduser().resolve()
@@ -201,7 +214,9 @@ def main(argv=None):
             ap.error("generated game code lacks the draw-distance hook; regenerate with scripts/recompile.py")
     code = "host-generated (scripts/recompile.py output as is)"
     if args.code and not args.compile_check:
-        gen, code = vita_code(host, gen, build, args.code, args.set)
+        gen, code = vita_code(host, gen, build, args.code, args.set, profile)
+        if profile:
+            code += f", i960 chunks laid out by {profile}"
     vitagl_dir = (ROOT / args.vitagl_dir).resolve()
     vitagl = vitagl_summary(vitagl_dir) if args.gpu_gl else "-"
     env = os.environ.copy()

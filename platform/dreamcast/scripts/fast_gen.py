@@ -128,8 +128,16 @@ TABLE_SEARCH = """    // (fast_gen.py) The ranges are sorted and disjoint: a bin
     if (r != std::begin(kChunks) && a <= (r - 1)->last) (r - 1)->fn(e);"""
 
 
+PROFILE_TABLE = "// m2recomp --profile: chunks laid out by the block profile, found by binary search."
+
+
 def rewrite_table(source):
-    """gen_table.cpp: gen::run finds the chunk by binary search."""
+    """gen_table.cpp: gen::run finds the chunk by binary search. A table laid
+    out by a block profile (m2recomp --profile) already does: kept as it is."""
+    if PROFILE_TABLE in source:
+        if "std::lower_bound(std::begin(kAddrs), std::end(kAddrs), a)" not in source:
+            raise SystemExit("fast_gen: unexpected gen_table.cpp")
+        return source
     if source.count(TABLE_LOOP) != 1:
         raise SystemExit("fast_gen: unexpected gen_table.cpp")
     firsts = [int(m, 16) for m in re.findall(r"^    \{0x([0-9a-f]{8})u, 0x[0-9a-f]{8}u, chunk_\d+\},$", source, re.M)]

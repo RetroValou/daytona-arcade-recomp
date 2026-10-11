@@ -249,8 +249,11 @@ if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
     add_executable(m2native tools/m2native/main.cpp ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
     target_link_libraries(m2native PRIVATE runtime)
     # The game on its own: native board runtime, no trace.
-    add_executable(m2run tools/m2run/main.cpp src/app/link_socket.cpp ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
+    add_executable(m2run tools/m2run/main.cpp tools/m2run/block_profile.cpp src/app/link_socket.cpp ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
     target_link_libraries(m2run PRIVATE runtime)
+    # m2run --profile: the generated code's M2_PROF block counters (gen_support.h).
+    # Only m2run: the game and the ports compile them to nothing.
+    target_compile_definitions(m2run PRIVATE M2_PROFILE=1)
     if(WIN32)
         target_link_libraries(m2run PRIVATE ws2_32) # link play's sockets
     endif()

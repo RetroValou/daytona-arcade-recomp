@@ -5,7 +5,13 @@
 //   m2run IMAGES_DIR FRAMES [--inputs scripts/inputs/X.txt] [--dump DIR --every N] [--wav FILE]
 //         [--aspect W:H [--hud-edges] [--stretch-backdrop]] [--draw-distance N] [--frame-skip N]
 //         [--native-audio-check] [--nvram DIR] [--save-nvram DIR] [--link-listen PORT --link-next HOST:PORT [--link-sync]]
+//         [--profile FILE]
 //
+// --profile FILE writes the block profile of the recompiled i960 code: how
+// often each basic block ran and each transfer between blocks
+// (block_profile.h; scripts/profile.py runs every scenario and sums them for
+// m2recomp --profile). m2run is built with M2_PROFILE for this; off, a block
+// costs a test of a flag. The game itself is built without it.
 // --nvram DIR starts from the app's saved settings EEPROM and backup RAM
 // (tools/common/nvram.h). --link-listen/--link-next: link play (the
 // communication board, Revision A) over TCP, as the app does: listen for the
@@ -30,6 +36,7 @@
 #include "runtime/native_sound_engine.h"
 #include "../common/nvram.h"
 #include "app/link_socket.h"
+#include "block_profile.h"
 
 #include <algorithm>
 #include <chrono>
@@ -78,12 +85,12 @@ void write_wav(const std::string &path, const std::vector<float> &mix, uint32_t 
 int main(int argc, char **argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: m2run IMAGES_DIR FRAMES [--inputs FILE] [--dump DIR --every N] [--wav FILE] "
-                             "[--aspect W:H]\n");
+                             "[--aspect W:H] [--profile FILE]\n");
         return 2;
     }
     const std::string dir = argv[1];
     const uint64_t frames = std::strtoull(argv[2], nullptr, 10);
-    std::string dump_dir, inputs_path, wav_path, nvram_dir, save_nvram_dir, link_next;
+    std::string dump_dir, inputs_path, wav_path, nvram_dir, save_nvram_dir, link_next, profile_path;
     int link_listen = 0;
     bool link_sync = false, native_check = false;
     uint64_t every = 0;
@@ -105,6 +112,7 @@ int main(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--wav")) wav_path = argv[i + 1];
         else if (!std::strcmp(argv[i], "--nvram")) nvram_dir = argv[i + 1];
         else if (!std::strcmp(argv[i], "--save-nvram")) save_nvram_dir = argv[i + 1];
+        else if (!std::strcmp(argv[i], "--profile")) profile_path = argv[i + 1];
         else if (!std::strcmp(argv[i], "--link-listen")) link_listen = std::atoi(argv[i + 1]);
         else if (!std::strcmp(argv[i], "--link-next")) link_next = argv[i + 1];
         else if (!std::strcmp(argv[i], "--draw-distance")) rt::GameLoop::set_draw_distance(std::atoi(argv[i + 1]));
@@ -143,11 +151,20 @@ int main(int argc, char **argv) {
         }
         tools::Script script;
         if (!inputs_path.empty()) script.load(inputs_path);
+        if (!profile_path.empty()) gen::prof::start();
+        // Host time by stage (rt::FrameProfile): core is the i960 and the TGP's synchronous work.
+        game.set_profile_clock([]() -> uint64_t {
+            return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count());
+        });
+        rt::FrameProfile spent;
         const auto t0 = std::chrono::steady_clock::now();
         std::vector<float> fm, pcm;
         uint64_t drive_commands = 0, drive_kinds[16] = {}; // the force feedback drive board's commands, by type
         for (uint64_t f = 0; f < frames; f++) {
             game.run_frame(script.at(game.board().frame()));
+            const rt::FrameProfile &fp = game.last_profile();
+            spent.total += fp.total, spent.geometry += fp.geometry, spent.video += fp.video, spent.sound += fp.sound;
             for (uint8_t c : std::exchange(game.board().io().drive_commands, {})) ++drive_commands, ++drive_kinds[c >> 4];
             if (native) { // the app's native audio path, frame by frame
                 const auto bytes = game.board().take_sound_bytes();
@@ -186,12 +203,19 @@ int main(int argc, char **argv) {
             }
         }
         if (!save_nvram_dir.empty()) tools::save_nvram(game, save_nvram_dir);
+        if (!profile_path.empty()) {
+            gen::prof::on = false;
+            gen::prof::write(profile_path, game.frames(), game.instructions());
+            std::printf("m2run: block profile written to %s\n", profile_path.c_str());
+        }
         const double s = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         std::printf("m2run: %" PRIu64 " frames, %" PRIu64 " i960 instructions (all native), %" PRIu64
                     " TGP instructions, %d interrupts, %" PRIu64 " bytes to the sound board; %.2f s (%.0f frames/s)\n",
                     game.frames(), game.instructions(), game.board().tgp().tgp_instructions(), game.interrupts(),
                     game.board().sound_bytes_total(), s, double(game.frames()) / s);
         std::printf("  last screen hash %016" PRIx64 "\n", game.board().video().screen_hash());
+        std::printf("  host time: core (i960, TGP) %.2f s, geometry %.2f s, video %.2f s, sound %.2f s\n", double(spent.core()) / 1e9,
+                    double(spent.geometry) / 1e9, double(spent.video) / 1e9, double(spent.sound) / 1e9);
         if (const rt::CommBoard *cb = game.board().comm_board()) {
             static const char *states[] = {"off (the game never started the board)", "waiting for the other cabinets", "up", "lost"};
             std::printf("  link: %s", states[int(cb->link())]);

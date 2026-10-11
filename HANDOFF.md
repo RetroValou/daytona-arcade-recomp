@@ -1,5 +1,67 @@
 # Handoff
 
+## i960 block profile and profile-guided chunk layout (2026-10-11)
+
+Block profile of the recompiled i960 code, and its use by m2recomp.
+
+- m2recomp emits `M2_PROF(n)` at the start of each basic block (after the
+  lockstep check). gen_support.h makes it nothing unless `M2_PROFILE` is
+  defined; only m2run is built with it (CMakeLists.txt). The game, m2native and
+  the ports compile it to nothing. The block table (`gen::block_addr`) is in
+  gen_table.cpp under `#ifdef M2_PROFILE` only.
+- `m2run ... --profile FILE`: per-block execution counts and per-transfer
+  counts between blocks (tools/m2run/block_profile.{h,cpp}, format there).
+  Checked: the sum of count x length over the blocks gives 196,665,346 for
+  race_basic, against m2run's 196,665,345 instructions (the last block was
+  cut by the end of the run).
+- `scripts/profile.py [--set daytona93|daytona]`: runs the scripts/inputs
+  scenarios (each for its own `frames N`, in parallel), all but the test-menu
+  ones (`test*.txt`) unless `--with-tests`, and sums the results into
+  `profiles/<set>.txt`, which is committed (addresses and counts only, like
+  the seeds). daytona93: 8 scenarios, 3,738 of 6,954 blocks run, 1.89 billion
+  instructions, 5,507 distinct transfers. No
+  `profiles/daytona.txt` yet: there was no Revision A ROM set here. It
+  defaults to a linked twin cabinet, so its scenarios may profile the link
+  wait unless they are given a single-cabinet NVRAM.
+- `m2recomp --profile FILE [--hot-share PERCENT]`. Off by default: only
+  `scripts/recompile.py --profile [FILE]` and `scripts/build_vita.py
+  --fast-inaccuracy|--fast-gen --profile [FILE]` pass it (FILE defaults to
+  profiles/<set>.txt). No instruction or instruction order changes. The
+  layout:
+  1. Hot chunks. Chains are runs of instructions that fall through one into
+     the next, never split. The hottest chains, by instructions executed per
+     instruction of code, are taken until they cover --hot-share (default
+     90%) of the executed instructions, wherever they are in the program. They
+     are clustered greedily, heaviest transfer first, up to `--chunk`
+     instructions, and fill the first chunks. daytona93: 90% of the executed
+     instructions fit in 3 chunks (4,046 instructions).
+  2. The rest stays in address order and is cut by dynamic programming where
+     the fewest profiled transfers cross (at most `--chunk` instructions; the
+     chunks have holes where hot chains were taken out).
+  gen_table.cpp then maps every address to its chunk (kChunkOf, binary search
+  on kAddrs) instead of address ranges; fast_gen.py keeps that table as is.
+  Transfers between blocks that leave their chunk: 12.73% with the fixed cut
+  every 1,500 instructions, 5.88% with this layout.
+- Exactness (checked with the 13-scenario profile; the layout code is the
+  same): exact mode, with and without the profile: all 13 scenarios give
+  the same i960 instruction count and the same last screen hash.
+  --fast_inaccuracy, race_basic: 196,654,082 instructions and the same hash,
+  with and without the profile.
+- m2run now also prints the host time per stage (rt::FrameProfile): on x86-64
+  race_basic, core (i960 + TGP) is about 2 s out of 30 s, video about 25 s.
+  Desktop timings of the layouts were within host noise: no gain is claimed.
+  Not yet measured on the Vita. That is the test to run: build_vita.py
+  --fast-inaccuracy with and without --profile.
+- Known trade-off, to watch on the Vita: a hot chunk's `switch (c.m_IP)`
+  spans scattered addresses, so it compiles to a compare tree over several
+  jump tables (19 in one hot chunk, GCC -O3 x86-64) instead of the single
+  table of a contiguous chunk. fast_gen.py's two-level switch also falls back
+  to one switch for such a chunk. Every ret, bx and interrupt dispatches
+  through it. If the Vita shows a loss, the first thing to try is a dense
+  switch on a per-chunk index.
+- Branch hints (`[[likely]]`/`[[unlikely]]` from the profile) were added,
+  then removed: compilers already predict these well.
+
 ## Mobile upstream rebase and GPU startup diagnostics (2026-10-07)
 
 Rebased mobile onto original alphanu1 upstream/main 0435a46; recovery branch

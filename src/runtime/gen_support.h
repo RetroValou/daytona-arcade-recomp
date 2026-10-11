@@ -10,6 +10,7 @@
 
 #include <bit>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 
@@ -55,5 +56,25 @@ inline float u2f(uint32_t u) { return std::bit_cast<float>(u); }
 bool has_code(uint32_t addr);   // generated
 void run(Env &e);               // generated: dispatches into the chunk holding c.m_IP
 uint64_t native_instructions(); // generated: instructions recompiled (all of them: there is no fallback)
+
+// Block profile (m2run --profile, tools/m2run/block_profile.h): the generated
+// code starts every basic block with M2_PROF(index). Only a build that
+// defines M2_PROFILE (m2run) counts, and only while prof::on; everywhere else
+// (the game, the ports) it is nothing.
+#ifdef M2_PROFILE
+namespace prof {
+extern bool on;
+void hit(uint32_t block);
+} // namespace prof
+size_t block_count();             // generated: basic blocks, by address
+uint32_t block_addr(size_t b);    // generated: a block's first address
+uint32_t block_length(size_t b);  // generated: its instructions
+#define M2_PROF(b)                                    \
+    do {                                              \
+        if (gen::prof::on) [[unlikely]] gen::prof::hit(b); \
+    } while (0)
+#else
+#define M2_PROF(b) ((void)0)
+#endif
 
 } // namespace gen

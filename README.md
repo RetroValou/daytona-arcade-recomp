@@ -90,6 +90,19 @@ but runs faster, above all on the PS Vita (`scripts/build_vita.py
 settings and saves. Its factory settings are a linked twin cabinet, which
 waits for a second cabinet: set a single cabinet once in test mode (F2).
 
+Block profile: `python3 scripts/profile.py` (`--set daytona` for Revision A)
+runs `m2run --profile` on the scenarios in `scripts/inputs` (all but the
+test-menu ones, `test*.txt`, unless `--with-tests`) and writes
+`profiles/<set>.txt`: how often each basic block of the game code runs, and
+how often one block leads to another. Builds do not use it unless asked:
+`python3 scripts/recompile.py --profile` (or `--profile FILE`), and for the
+Vita `scripts/build_vita.py --fast-inaccuracy --profile` (or `--fast-gen
+--profile`). The very hot code, wherever it is in the program, is then
+grouped into its own chunks, blocks that run one after the other together,
+and the rest is cut where the fewest transfers cross. The instructions are
+the same and run in the same order, so the output stays exact. The counters
+exist only in `m2run`; the game compiles them to nothing.
+
 ## Link play (the 1994 set)
 
 Revision A (`daytona`) can link two or more cabinets over a network, Wi-Fi

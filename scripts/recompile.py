@@ -3,6 +3,7 @@
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
   recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--fast_inaccuracy]
+               [--profile [FILE]]
 
 Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored):
 daytona93 (Daytona USA Deluxe '93, the default) or daytona (Revision A,
@@ -25,6 +26,13 @@ for slow targets, above all the PS Vita:
      and counts stay those of the default output (the TGP has no interrupts).
 The lockstep and trace comparisons need the default output. Off by default;
 run again without it to go back.
+
+--profile [FILE] (off by default; FILE defaults to profiles/<set>.txt, which
+scripts/profile.py makes) gives the i960 recompiler the game's block profile: the very hot
+code, wherever it is in the program, is grouped into its own chunks, blocks
+that run one after the other together, and the rest is cut where the fewest
+transfers cross. Same instructions, same order: the output stays exact.
+Without it the code is laid out by address.
 """
 
 import argparse
@@ -63,6 +71,8 @@ def main():
     ap.add_argument("--fast_inaccuracy", action="store_true",
                     help="recompiler speed options (i960 block bookkeeping and direct chunk chaining, TGP block counting): faster (PS Vita), "
                          "not interrupt-exact against MAME")
+    ap.add_argument("--profile", nargs="?", const="", metavar="FILE",
+                    help="lay the i960 chunks out by the block profile (default FILE: profiles/<set>.txt). Off by default")
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
@@ -92,6 +102,11 @@ def main():
         recomp += ["--hooks", hooks]
     if args.fast_inaccuracy:
         recomp += ["--fast_inaccuracy"]
+    if args.profile is not None:
+        profile = args.profile or os.path.join("profiles", args.set + ".txt")
+        if not os.path.exists(os.path.join(ROOT, profile)):
+            sys.exit(f"recompile: no profile {profile} (make it with python3 scripts/profile.py --set {args.set})")
+        recomp += ["--profile", profile]
     run(recomp)
     tgp = os.path.join(build, "gen", args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)
