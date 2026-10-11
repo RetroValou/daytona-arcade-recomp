@@ -18,7 +18,8 @@ platform/mobile/android/app/.cxx/
 *.rom
 *.bin
 *.ic*
-roms/
+roms/*
+!roms/.gitkeep
 rom/
 generated/
 extracted/
