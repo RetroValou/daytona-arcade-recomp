@@ -20,6 +20,9 @@ platform/mobile/android/app/.cxx/
 *.ic*
 roms/*
 !roms/.gitkeep
+# Vita icon/LiveArea images are local only (a game logo is Sega's): only the README is kept.
+platform/vita/logo_livearea/*
+!platform/vita/logo_livearea/README.md
 rom/
 generated/
 extracted/
