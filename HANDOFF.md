@@ -183,6 +183,27 @@ Findings:
   vita_code runs m2recomp without recompile.py's per-set flags and
   direct_ram/fast_gen assume Daytona's work RAM. CMake regexes have no
   `{n}` quantifier (the first title-ID check rejected every ID).
+- Vita colours, srallyc end-of-race fade to white: on the Vita only the
+  flat shadow faded, the textured scenery kept its colours. Cause: both Vita
+  renderers cache polygon colours across frames (gpu_gl palette rows keyed
+  by luma base, colour index and polygon luma; gpu_fast material palettes)
+  and never noticed the colour tables changing. Measured with a temporary
+  m2run probe (hash per frame, not committed): srallyc rewrites only the
+  colour translation RAM (0x01810000), every third frame, at frames
+  1764-1956 (before the start) and from 6931 (end-of-race fade, whole 3D to
+  white on PC at 7000); palette 3D colours and luma RAM never change after
+  boot. Fix: `Video::colour_generation()`, bumped by M2Board::ram_written
+  on every write that changes palette RAM's 3D colours (0x01802000-
+  0x018027ff), colour translation RAM or luma RAM (luma RAM now excluded
+  from M2_DC_SPEED's plain-RAM fast write page so its writes are seen); the
+  Vita renderers compare it once per frame: gpu_gl drops its palette rows
+  (rebuilt on use), gpu_fast reshades a material's 16 colours on its next
+  use. Costs one increment per changed table write. Checked on PC: the
+  counter moves at exactly the frames above (probe, not committed); srallyc
+  attract 1,800 frames still MATCH in m2native; ctest 19/19 both builds.
+  A first version compared the 178 KB of tables with a copy every frame
+  (memcmp): dropped, the bus already sees every write. vitaGL VPK built and
+  gpu_fast compile check; not yet seen on hardware.
 - m2_check.sh no longer doubles the set in output names
   (traces/check_srallyc_race, not check_srallyc_srallyc_race).
 

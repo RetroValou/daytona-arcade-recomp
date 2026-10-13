@@ -98,7 +98,10 @@ private:
         vita2d_texture view{}; // Immutable, non-owning source plus palette binding.
         std::size_t bytes = 0;
         uint64_t stamp = 0;
+        uint64_t colour_generation = 0; // colour_generation_ its palette was shaded at
     };
+    uint64_t colour_generation_ = 0; // this frame's Video::colour_generation: stale palettes are reshaded (fades)
+    void shade_palette(Material &material, const rt::GeoPoly &poly, const rt::VideoMem &mem) const;
 
     // Three bounded allocations replace hundreds of tiny, 256 KiB-rounded blocks.
     GpuMemoryArena layer_memory_{12u * 1024u * 1024u, SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW};

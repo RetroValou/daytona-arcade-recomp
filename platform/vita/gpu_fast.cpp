@@ -440,11 +440,8 @@ GpuFastRenderer::Material GpuFastRenderer::build_material(const rt::GeoPoly &pol
         ++material_drops_;
         return out;
     }
-    auto *palette = out.palette;
-    std::fill_n(palette, 256, 0u);
-    const bool transparent = (poly.texheader[0] >> 13) & 1;
-    for (uint8_t index = 0; index < 16; ++index)
-        palette[index] = (transparent && index == 0x0f) ? 0u : shade_texel(poly, mem, index, out.key.luma);
+    std::fill_n(out.palette, 256, 0u);
+    shade_palette(out, poly, mem);
     out.view = *out.source->texture;
     if (sceGxmTextureSetPalette(&out.view.gxm_tex, out.palette) < 0) {
         out.palette = nullptr;
@@ -456,11 +453,23 @@ GpuFastRenderer::Material GpuFastRenderer::build_material(const rt::GeoPoly &pol
     return out;
 }
 
+void GpuFastRenderer::shade_palette(Material &material, const rt::GeoPoly &poly, const rt::VideoMem &mem) const {
+    const bool transparent = (poly.texheader[0] >> 13) & 1;
+    for (uint8_t index = 0; index < 16; ++index)
+        material.palette[index] = (transparent && index == 0x0f) ? 0u : shade_texel(poly, mem, index, material.key.luma);
+    material.colour_generation = colour_generation_;
+}
+
 GpuFastRenderer::Material *GpuFastRenderer::material_for(const rt::GeoPoly &poly, const rt::VideoMem &mem) {
     const MaterialKey key = material_key(poly);
     ++stamp_;
     auto found = materials_.find(key);
-    if (found != materials_.end()) { found->second.stamp = stamp_; return &found->second; }
+    if (found != materials_.end()) {
+        found->second.stamp = stamp_;
+        // prepare_frame waited for the GPU: no frame in flight reads this palette.
+        if (found->second.colour_generation != colour_generation_) shade_palette(found->second, poly, mem);
+        return &found->second;
+    }
     if (materials_.size() >= kMaterialLimit) {
         cache_reset_pending_ = true;
         ++material_drops_;
@@ -478,6 +487,7 @@ GpuFastRenderer::Material *GpuFastRenderer::material_for(const rt::GeoPoly &poly
 void GpuFastRenderer::draw_polygons(rt::Video &video) {
     const auto &polys = video.gpu_polys();
     const rt::VideoMem &mem = video.gpu_mem();
+    colour_generation_ = video.colour_generation(); // material_for reshades stale palettes
     material_drops_ = material_builds_ = material_defers_ = subdivided_polys_ = 0;
     textured_draws_ = solid_draws_ = clip_changes_ = 0;
     textured_polys_ = solid_polys_ = 0;

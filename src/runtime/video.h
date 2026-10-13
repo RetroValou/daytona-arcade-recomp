@@ -32,6 +32,13 @@ public:
     // palette_w after the bus has stored the write (palram holds the new value).
     void palette_w(uint32_t offset, const uint8_t *palram, const uint8_t *colorxlat);
     void colorxlat_w(uint32_t offset) { if ((offset & 0xff) == 0x80 / 2) palette_dirty_ = true; }
+    // Counts the writes that changed a table polygon colours are computed from:
+    // palette RAM's 3D colours (entries 0x1000-0x13ff), colour translation RAM,
+    // luma RAM (the bus calls colour_tables_w). Renderers that cache polygon
+    // colours across frames (the Vita's) rebuild them when it moves: Sega
+    // Rally's fade to white rewrites colour translation RAM every third frame.
+    void colour_tables_w() { ++colour_generation_; }
+    uint64_t colour_generation() const { return colour_generation_; }
     void enable_write_tracking() { write_tracking_ = true; }
     void tile_memory_w() { tile_memory_touched_ = true; }
     void character_memory_w() { character_memory_touched_ = true; }
@@ -240,6 +247,7 @@ private:
     const uint8_t *tile_ram_, *char_ram_;
     uint32_t pens_[8192];
     bool palette_dirty_ = false;
+    uint64_t colour_generation_ = 0;
     int crtc_x_ = 0, crtc_y_ = 0, render_x_ = 90, render_y_ = -8;
     uint8_t gamma_[256];
     std::vector<uint16_t> pixmap_[4];

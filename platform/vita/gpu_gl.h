@@ -204,6 +204,7 @@ private:
     uint32_t *palette_data_ = nullptr; // its pixels, written directly
     FlatIndex<uint32_t, uint32_t, 12> palette_index_; // palette key -> row (at most kPaletteRows)
     uint32_t palette_used_ = 0;        // rows
+    uint64_t colour_generation_ = 0;   // Video::colour_generation the rows were built at (fades rebuild them)
     uint8_t gamma_[256]{};
 
     // Diagnostics

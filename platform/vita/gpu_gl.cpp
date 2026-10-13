@@ -1231,6 +1231,13 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         palette_used_ = 0;
         ++cache_resets_;
     }
+    // The rows' colours come from palette, colour translation and luma RAM: when the game
+    // rewrites them (fades), every row is stale. Rebuilt on use, like after a reset.
+    if (const uint64_t generation = video.colour_generation(); generation != colour_generation_) {
+        colour_generation_ = generation;
+        palette_index_.clear();
+        palette_used_ = 0;
+    }
 
     // Per-polygon state, cached on two levels and reused while the following polygons match:
     //   * Material: everything that depends on the header (texheader, viewport, window):

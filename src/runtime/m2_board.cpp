@@ -580,9 +580,13 @@ void M2Board::ram_written(uint32_t addr, uint32_t data, uint32_t mask) {
     if (addr >= 0x01800000 && addr <= 0x01803fff) {
         for (uint32_t lane = 0; lane < 2; lane++)
             if ((mask >> (16 * lane)) & 0xffff) video_->palette_w(((addr & 0x3fff) >> 1) + lane, palette_.data(), xlat_.data());
+        if (addr >= 0x01802000 && addr <= 0x018027ff) video_->colour_tables_w(); // 3D colours
     } else if (addr >= 0x01810000 && addr <= 0x0181bfff) {
         for (uint32_t lane = 0; lane < 2; lane++)
             if ((mask >> (16 * lane)) & 0xffff) video_->colorxlat_w(((addr - 0x01810000) >> 1) + lane);
+        video_->colour_tables_w();
+    } else if (addr >= 0x12800000 && addr <= 0x1281ffff) {
+        video_->colour_tables_w(); // luma RAM
     }
 }
 
