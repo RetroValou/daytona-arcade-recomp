@@ -12,6 +12,7 @@
 #pragma once
 
 #include "runtime/multipcm.h"
+#include "runtime/snd_board.h"
 #include "runtime/snd_gen_support.h"
 
 #include "ymfm_opn.h"
@@ -24,7 +25,7 @@
 
 namespace snd {
 
-class SoundBoard : public Devices, public ymfm::ymfm_interface {
+class SoundBoard : public Board, public Devices, public ymfm::ymfm_interface {
 public:
     // 68000 instructions per second of board time: MAME's 68000 (10 MHz)
     // runs 15.68M instructions of this program in 1200 frames at 57.5242 Hz.
@@ -37,29 +38,31 @@ public:
 
     // Command bytes the i960 wrote to its UART; they arrive one line-time
     // apart from now on.
-    void send(const uint8_t *bytes, size_t n);
+    void send(const uint8_t *bytes, size_t n) override;
     // Run the board for `seconds` of board time.
-    void advance(double seconds);
+    void advance(double seconds) override;
 
     // Rendered audio since the last take: interleaved stereo floats, already
     // at the board's mix gains (YM 0.30, each MultiPCM 0.50).
-    double fm_rate() const { return double(kYmClock) / 144; }
-    double pcm_rate() const { return double(kPcmClock) / 224; }
-    std::vector<float> take_fm() { return std::exchange(fm_out_, {}); }
-    std::vector<float> take_pcm() { return std::exchange(pcm_out_, {}); }
+    double fm_rate() const override { return double(kYmClock) / 144; }
+    double pcm_rate() const override { return double(kPcmClock) / 224; }
+    std::vector<float> take_fm() override { return std::exchange(fm_out_, {}); }
+    std::vector<float> take_pcm() override { return std::exchange(pcm_out_, {}); }
 
-    uint64_t instructions() const { return sched_.count; }
+    uint64_t instructions() const override { return sched_.count; }
     // The launcher's music and effects volumes (0..1; both 1: unchanged).
-    void set_volumes(float music, float effects) { pcm1_.set_volumes(music, effects), pcm2_.set_volumes(music, effects); }
+    void set_volumes(float music, float effects) override { pcm1_.set_volumes(music, effects), pcm2_.set_volumes(music, effects); }
     // Which driver channel owns the voice on MultiPCM `chip` (0, 1) at slot
     // code `slot` (the value the driver writes to the slot register), from
     // the driver's voice pools in its RAM; -1 if none does (the engine's
     // fixed slots).
     int voice_channel(unsigned chip, uint8_t slot) const;
     const std::vector<uint8_t> &ram() const { return cpu_.ram; } // the 68000's work RAM, 0xf00000 on (tests)
-    size_t bytes_received() const { return received_; }
+    size_t bytes_received() const override { return received_; }
 
     // Devices (the 68000's view)
+    using Devices::read;
+    using Devices::write;
     uint8_t read(uint32_t addr) override;
     void write(uint32_t addr, uint16_t data) override;
 

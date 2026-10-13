@@ -6,12 +6,18 @@
 // logged device reads fed back and the interrupts applied at the logged
 // counts, and fails on the first device access, register or PC that differs.
 //
-//   m2sndcheck SOUND_PROGRAM.bin SNDLOG
+//   m2sndcheck SOUND_PROGRAM.bin SNDLOG [--scsp SAMPLES.bin]
+//
+// --scsp: the SCSP sound board (Model 2A/2B/2C; m2sndrecomp --scsp): its map,
+// RAM at 0 holding the ROM's first 16 bytes at reset, SCSP and bank register
+// accesses as logged ("w COUNT ADDR VALUE MASK"), the sample ROMs read from
+// SAMPLES.bin (MAME does not log ROM reads).
 //
 // Test-only: the log comes from a MAME run on the user's ROMs (git-ignored).
 
 #include "runtime/snd_gen_support.h"
 
+#include <algorithm>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +49,19 @@ public:
     Replay(std::vector<Access> acc, const snd::Sched &s) : acc_(std::move(acc)), s_(s) {}
     uint8_t read(uint32_t addr) override { return uint8_t(take(false, addr, 0)); }
     void write(uint32_t addr, uint16_t data) override { take(true, addr, data); }
+    // SCSP board: samples from the image, everything else from the log
+    std::vector<uint8_t> samples;
+    uint16_t read16(uint32_t addr) override {
+        if (addr >= 0x800000) {
+            const uint32_t o = addr - 0x800000;
+            return o + 1 < samples.size() ? uint16_t(samples[o] << 8 | samples[o + 1]) : 0;
+        }
+        return uint16_t(take(false, addr, 0));
+    }
+    void write16(uint32_t addr, uint16_t data, uint16_t mask) override {
+        if (addr >= 0x600000 && addr < 0x680000) return; // the program ROM: MAME ignores and does not log it
+        take(true, addr, data & mask);
+    }
     size_t done() const { return next_; }
     size_t total() const { return acc_.size(); }
 
@@ -76,8 +95,9 @@ std::vector<uint8_t> load(const std::string &path) {
 } // namespace
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        std::fprintf(stderr, "usage: m2sndcheck SOUND_PROGRAM.bin SNDLOG\n");
+    const bool scsp = argc == 5 && !std::strcmp(argv[3], "--scsp");
+    if (argc != 3 && !scsp) {
+        std::fprintf(stderr, "usage: m2sndcheck SOUND_PROGRAM.bin SNDLOG [--scsp SAMPLES.bin]\n");
         return 2;
     }
     const std::vector<uint8_t> rom = load(argv[1]);
@@ -115,9 +135,30 @@ int main(int argc, char **argv) {
     Replay dev(std::move(acc), s);
     c.rom = rom.data();
     c.dev = &dev;
+    if (scsp) {
+        c.map = snd::kScspMap;
+        c.ram.assign(0x80000, 0);
+        std::copy_n(rom.begin(), 16, c.ram.begin()); // MAME reset_model2_scsp
+        dev.samples = load(argv[4]);
+    }
     c.reset();
     s.auto_irq = false;
 
+    // The level taken: the mask in the handler's first snapshot (logged at
+    // the same count). The logged m_int_level can already be another
+    // level's when two lines change together (srallyc race, 54,773,855:
+    // logged 2, level 1 taken).
+    {
+        // (the last of the interrupts at that count: two can nest before
+        // the first handler's first instruction, and the log is then right)
+        size_t k = 0;
+        for (size_t i = 0; i < irqs.size(); ++i) {
+            auto &[n, lv] = irqs[i];
+            if (i + 1 < irqs.size() && irqs[i + 1].first == n) continue;
+            while (k < snaps.size() && snaps[k].idx < n) ++k;
+            if (k < snaps.size() && snaps[k].idx == n) lv = int((snaps[k].sr >> 8) & 7);
+        }
+    }
     // Interrupts before the snapshot at the same count (MAME logs the
     // interrupt, then the first instruction of the handler).
     size_t irq_i = 0;

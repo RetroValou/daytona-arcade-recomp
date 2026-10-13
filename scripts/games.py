@@ -12,6 +12,8 @@ Per set:
                 after a clone is fine
   recomp        extra m2recomp options: the i960 memory map
                 (tools/m2recomp/main.cpp)
+  sndrecomp     extra m2sndrecomp options: the sound board's 68000 map
+                (--scsp for the SCSP board; tools/m2sndrecomp/main.cpp)
   vita_title_id the Vita package's title ID (4 capital letters, 5 digits);
                 sets of one game sharing a package share it
   vita_name     the Vita package's name
@@ -41,13 +43,13 @@ CONTROLS = {
 GAMES = {
     "daytona93": {
         "title": "Daytona USA", "label": "Deluxe '93",
-        "roms": ["daytona93"], "recomp": [],
+        "roms": ["daytona93"], "recomp": [], "sndrecomp": [],
         "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": True,
         "companion": "daytona", "inputs": {}, "full_range": False,
     },
     "daytona": {
         "title": "Daytona USA", "label": "Revision A, 1994",
-        "roms": ["daytona"], "recomp": [],
+        "roms": ["daytona"], "recomp": [], "sndrecomp": [],
         "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": True,
         "companion": "daytona93", "inputs": {}, "full_range": False,
     },
@@ -56,7 +58,7 @@ GAMES = {
     # srallyc ports (start IN0 0x40, one VR button, the hand brake on IN2).
     "srallyc": {
         "title": "Sega Rally Championship", "label": "Revision C",
-        "roms": ["srallyc", "srallycb"], "recomp": ["--no-mirror", "--alias", "5a0000:1000:60000"],
+        "roms": ["srallyc", "srallycb"], "recomp": ["--no-mirror", "--alias", "5a0000:1000:60000"], "sndrecomp": ["--scsp"],
         "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship", "vita_fast": False, "companion": None,
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN0", 0x20), "vr2": (":IN0", 0x20),
                    "vr3": (":IN0", 0x20), "vr4": (":IN0", 0x20), "handbrake": (":IN2", 0xFF)},

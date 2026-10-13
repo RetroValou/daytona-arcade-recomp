@@ -4,7 +4,7 @@ The runtime is the Model 2 board. A game is described in a few places, and
 the board code is not touched (design doc, Architecture, "Games"). The
 existing games are the examples to follow: `src/games/daytona.cpp`
 (original Model 2, Model 1 sound board, two sets) and `src/games/srallyc.cpp`
-(Model 2A-CRX, program copied to RAM, no sound board yet).
+(Model 2A-CRX, program copied to RAM, SCSP sound board).
 
 Below, `<set>` is the game's MAME set name, such as `srallyc`.
 
@@ -25,9 +25,10 @@ Define one `extern const rt::Game <set>_game = {...};` per set
 - `idle`: the i960 address ranges of the game's wait-for-vblank loops. Find
   them by looking at where MAME takes the vblank interrupts. Without them,
   every frame runs to the instruction cap.
-- `model1_sound`: the game has the original Model 2's Model 1 sound board
-  (load its `SoundProgram`, `Pcm1` and `Pcm2` files). Without it the game
-  runs with no sound. `native_sound`: for a Model 1 board, the driver's
+- `sound`: the sound board. `Model1` is the original Model 2's board (load
+  its `SoundProgram`, `Pcm1` and `Pcm2` files). `Scsp` is the 2A/2B/2C board
+  (load `SoundProgram` and `Samples`, and pass `--scsp` to m2sndrecomp in
+  `scripts/games.py`). `native_sound`: for a Model 1 board, the driver's
   table addresses for the native audio engine, or nullptr.
 - `io` (2A-CRX): which of the cabinet's controls (`rt::Inputs`) each
   315-5649 port and analog channel carries, from MAME's
@@ -67,6 +68,11 @@ python3 scripts/recompile.py --set <set> --build-dir build-<set>
 A jump to code with no recompiled block stops the game and names the
 address. Add that address to the seeds and recompile. Optional hooks go in
 `seeds/<set>_hooks.txt` ("ADDRESS name" lines).
+
+The sound 68000's seeds go in `seeds/<set>_snd.txt`. Collect them from a
+MAME run with `M2TRACE_SNDLOG` and `M2TRACE_SNDPCS` set (patch 0004); the
+second lists every address the 68000 executed. Check the result with
+`m2sndcheck SOUND_PROGRAM.bin SNDLOG [--scsp SAMPLES.bin]`.
 
 ## 4. Check it
 

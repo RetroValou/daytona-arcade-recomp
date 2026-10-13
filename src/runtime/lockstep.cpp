@@ -66,16 +66,12 @@ bool Lockstep::apply() {
         if (e.kind == Event::Call) {
             const size_t fn = e.fn; // the callback may add events (e moves)
             ++next_;
-#if defined(M2_DC_MEMORY) || defined(M2_FAST_GEN)
             // Each callback runs once: take it out (it may add the next one,
             // which can reuse its slot) and free the slot.
             auto call = std::move(calls_[fn]);
             calls_[fn] = nullptr;
             free_calls_.push_back(fn);
             call();
-#else
-            calls_[fn]();
-#endif
         } else if (e.kind == Event::Line) {
             ++next_;
             core_.execute_set_input(e.a, e.b);
@@ -106,11 +102,10 @@ bool Lockstep::apply() {
     return core_.m_IP != ip_before;
 }
 
-void Lockstep::add_callback(uint64_t at, std::function<void()> fn) {
+size_t Lockstep::add_callback(uint64_t at, std::function<void()> fn) {
     Event e{};
     e.kind = Event::Call;
     e.count = at;
-#if defined(M2_DC_MEMORY) || defined(M2_FAST_GEN)
     if (!free_calls_.empty()) {
         e.fn = free_calls_.back();
         free_calls_.pop_back();
@@ -119,15 +114,27 @@ void Lockstep::add_callback(uint64_t at, std::function<void()> fn) {
         e.fn = calls_.size();
         calls_.push_back(std::move(fn));
     }
-#else
-    e.fn = calls_.size();
-    calls_.push_back(std::move(fn));
-#endif
     // Before the first event at the same count or later (the log is in count order).
     auto it = log_.begin() + long(next_);
     while (it != log_.end() && it->count < at) ++it;
     log_.insert(it, e);
     refresh_next();
+    return e.fn;
+}
+
+void Lockstep::cancel_callback(size_t handle) {
+    for (size_t i = next_; i < log_.size(); i++) {
+        if (log_[i].kind != Event::Call || log_[i].fn != handle) continue;
+        log_.erase(log_.begin() + long(i));
+        calls_[handle] = nullptr;
+        free_calls_.push_back(handle);
+        if (i == next_) { // the next event changed (a pending poke still holds)
+            const uint64_t before = next_count;
+            refresh_next();
+            if (poked_) next_count = std::min(next_count, before);
+        }
+        return;
+    }
 }
 
 void Lockstep::on_take(void *ctx, int vector, uint32_t ip, bool pending) {

@@ -11,4 +11,7 @@ struct SoundBoard {
     std::vector<float> take_fm() { return std::exchange(fm, {}); }
     std::vector<float> take_pcm() { return std::exchange(pcm, {}); }
 };
+using Board = SoundBoard;
+inline double board_fm_rate() { return SoundBoard::kYmClock / 144.0; }
+inline double board_pcm_rate() { return SoundBoard::kPcmClock / 224.0; }
 }

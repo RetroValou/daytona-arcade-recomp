@@ -1,5 +1,137 @@
 # Handoff
 
+## Board timers: stale expiries piled up in the Lockstep log (2026-10-12)
+
+Review of the uncommitted work (same day): kept as general Model 2 work the
+2A-CRX map and 315-5649, the four timers, UART receive, the i960 FP ops /
+flushreg / addc / --alias, m2sndrecomp --scsp, the SCSP board, the games
+split, colour_generation (moves in 5 of 3,000 daytona93 race frames, 85 of
+6,000 srallyc: the Vita's palette rebuilds are rare). Timer `gen` removed:
+with cancel_callback the scheduled expiry is always current, and [this, n]
+fits std::function's inline storage on ARM32 (no allocation each frame).
+Seen, not changed (in HEAD): dev_read calls getenv("M2RUN_VERBOSE") on every
+TGP FIFO status read outside M2_DC_SPEED, the Vita included.
+
+Hardware perf.log (srallyc, VITAGL, before this fix): core 0 saturated by
+"i960+TGP game logic", not by sound (SoundSync 0.07 ms; the sound board 3.5
+ms on core 2). In the attract mode, before any polygon, the i960 cost grew
+by ~2.3 ms every 2 s at a constant 18.4 k instructions a frame
+(core_ms 2.7 -> 16.4 ms in 14 s); the race ran at 20 fps. A cost that grows
+with time, not with work: a growing structure.
+
+Cause: `M2Board::timer_schedule` (added with the timers for the SCSP sound
+commands) added a Lockstep callback on every reload and for every running
+timer at every `idle_until_vblank`, and left the previous one to lapse
+(gen check). Most of a frame's board time is skipped, not run, so a timer's
+count can be far ahead: at count 103 M, 34 k events in the log, 30 k of them
+more than 10 M instructions ahead (last at 1.09 G). Each add_callback scans
+and shifts past them (memmove 29 % of an m2run profile); calls_ grew without
+bound outside the fast builds (srallyc's Vita build is not fast).
+
+Fix: `Lockstep::add_callback` returns a handle; `cancel_callback` takes the
+event out and frees its slot; `Timer::expiry` holds the handle, cleared when
+the callback runs. Slot reuse (`free_calls_`) is now in every build, not
+only M2_DC_MEMORY/M2_FAST_GEN. The log no longer reaches 4,096 events in a
+12,000-frame srallyc race.
+
+Measured (m2run, this machine): srallyc race 12,000 frames 93.6 -> 57.6 s
+(frames 6,000-12,000: 9.7 -> 5.1 ms a frame), 309 -> 280 MB; 6,000 frames
+44.7 -> 29.6 s, frame dumps every 250 frames and WAV identical; daytona93
+race_basic 3,000 frames 16.0 -> 15.7 s, dumps and WAV identical. ctest 19/19
+both builds. Vita: built (`build_vita.py --set srallyc --gpu-gl`), not run
+on hardware yet; expected: Logic flat over time in perf.log.
+
+Still open: m2run's RSS still grows (195 MB at 1,500 frames, 280 MB at
+12,000) with the log bounded; not looked at.
+
+## Wrong turn, reverted: the Vita board frame not waiting on sound (2026-10-12)
+
+An earlier change made main_gpu.cpp dispatch a sound packet only when the
+worker was idle and merge later frames into a held one
+(`SoundPacket::absorb`, `kMaxCatchUp` = 4 frames, `SoundWorker::ready()`),
+on the guess that srallyc's slowdown was core 0 joining a slow sound frame.
+The hardware perf.log disproved it: SoundSync 0.07 ms a frame, the sound
+board 3.5 ms on core 2; the cost was the timers' stale Lockstep callbacks
+(section above). Reverted: it changed Daytona's audio too (gaps instead of
+waits, UART bytes of merged frames at one time) for no measured gain.
+Do not re-propose without a perf.log showing SoundSync on core 0.
+
+## Sega Rally sound: the SCSP board, and the board timers (2026-10-12)
+
+Branch vita-model2-recomp. Design doc, Audio ("SCSP sound board") and the
+Model 2 board timers paragraph next to it.
+
+Why there was no game sound traffic: srallyc's i960 sends its sound
+commands from a routine (0x5c4c60: TxRDY polled on the UART status,
+0x1c80002 bit 0, one byte per call, 50,000-tick reload) run by board timer
+interrupts (intena 0x215: timers 0 and 2). The runtime had no timers
+(Daytona never enables them), so 1 interrupt a frame instead of MAME's
+10.5, one byte sent in 3,000 frames, and "SOUND BUFFER FULL !!". The
+earlier lockstep matched MAME only because m2native replays MAME's
+interrupts.
+
+What changed:
+- M2Board: the four timers (MAME timers_r/w, model2_timer_cb) on board
+  time in 25 MHz ticks = i960 count x 434,783 / 110,000 + the vblank wait
+  skipped; GameLoop asks `idle_until_vblank()` before starting vblank, and
+  a timer interrupt due before vblank runs first. i8251 reads: status (DSR,
+  TxEMPTY, RxRDY, TxRDY = data buffer empty) and data; `receive_sound_bytes`
+  for the SCSP's MIDI output (request bit 10 when enabled).
+- `src/runtime/scsp.{h,cpp}`: MAME's SCSP + DSP transplanted (BSD-3,
+  THIRD_PARTY.md); `ScspHost` for IRQ lines, timers, MIDI out.
+  `src/runtime/scsp_board.{h,cpp}`: 68000 + SCSP, kIps 825,876 (MAME:
+  25,842,220 instructions in srallyc's 1,800-frame attract), sample ROMs at
+  0x800000 (8 MiB set: no banking), MIDI in at the line rate.
+- `snd::Board` (snd_board.h): the interface GameLoop, the app, m2run and the
+  Vita use; `snd::SoundBoard` (Model 1) implements it unchanged.
+  `GameLoop::SoundReplies`: the MIDI bytes back to the i960 (locked: the
+  Vita overlaps sound and board frames). `snd::board_fm_rate/pcm_rate`.
+- `Cpu68k` map is a `SndMap` (kModel1Map = the old constants, kScspMap);
+  Devices gains read16/write16 for the SCSP board. m2sndrecomp `--scsp`
+  (scripts/games.py `sndrecomp`); `seeds/<set>_snd.txt` passed by
+  recompile.py; m2sndrecomp emits the 68000's read before `clr` to memory
+  (MAME's core does it; the SCSP log showed it). Game record:
+  `Game::sound` (SoundBoardType None/Model1/Scsp) replaces `model1_sound`;
+  srallyc loads epr-17890a.30 and mpr-17756/17757/17886/17887 (`Samples`).
+  m2import writes samples.bin.
+- seeds/srallyc_snd.txt: four `jmp (d16,pc)` tables (16, 128, 16, 16
+  entries) from the 2,207 addresses MAME's 68000 executed in srallyc_race.
+- MAME patch 0004 (log for `:audiocpu`, SCSP/bank accesses with mask,
+  `M2TRACE_SNDPCS`). m2sndcheck `--scsp SAMPLES.bin`; the interrupt level
+  is taken from the handler's snapshot SR (the log's m_int_level was 2 for
+  a level-1 entry at race 54,773,855), except when two interrupts nest at
+  one count.
+- App: audio pacing on the PCM stream (the SCSP board's FM stream is empty).
+
+Measured:
+- m2sndcheck --scsp MATCH: attract 25,841,665 instructions, 28,903
+  interrupts, 2,229,366 device accesses; race 69,408,422 instructions,
+  110,711 interrupts, 5,209,129 accesses (traces/scsp_*.snd, git-ignored).
+- Free run: attract 1,800 frames, 25,842,651 68000 instructions (MAME
+  25,842,220); WAV RMS per second matches MAME's -wavwrite of the same
+  attract (silent to 16 s, then 254 237 212 227 282 255 225 0 137 ... vs
+  239 209 232 232 268 277 241 0 138 ...; peak 1,306 vs 1,302).
+- srallyc race 3,000 frames: 30,469 interrupts (was 2,918), 2,335 bytes to
+  the sound board (was 1), no "SOUND BUFFER FULL" at frame 2700; 10.3-10.8 s
+  on this machine with the sound board (10.3 s before, without).
+- Daytona: daytona93 race_basic 3,000 frames (and +2 draw distance) frame
+  dumps and WAV identical, after regenerating its sound code; ctest 19/19
+  both builds; Python tests 35/35; the PC app runs srallyc with reference
+  audio (PipeWire), 1,500 frames. Vita, no --release: `build_vita.py --set srallyc --gpu-gl`
+  (SRAL00094) and `--gpu-gl --fast-inaccuracy` (DAYT00093) built, no
+  warnings in the touched files; not run on hardware.
+
+Findings:
+- The SCSP 68000's driver writes the slot monitor (MSLC, 0x100408) 2 M
+  times in 1,800 frames: each costs a render up to the current count.
+- MAME's i960 sends 39 MIDI bytes in that attract, ours 31 (our board time
+  model is not MAME's; not a lockstep path).
+
+Next:
+1. Vita: run the srallyc VPK on hardware (speed with the sound worker).
+2. Hand brake in the app's controls; drive board commands for srallyc.
+3. Music/effects volumes for the SCSP board (set_volumes is a no-op).
+
 ## Games apart from the board (2026-10-12)
 
 Branch vita-model2-recomp (renamed from sega_rally_convert). Goal: a

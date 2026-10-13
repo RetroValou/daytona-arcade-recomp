@@ -18,16 +18,36 @@
 
 namespace snd {
 
-// Device side of the sound board's map: the UART, two MultiPCMs with their
-// bank registers and the YM3438. Addresses are the ones on the 68000 bus:
-// 8-bit devices sit on the odd byte (0xc20001, 0xd00001 ...), the 16-bit
-// registers (0xc40012, 0xc50000, 0xc70000) at their even address.
+// Device side of the sound board's map. Model 1 board: the UART, two
+// MultiPCMs with their bank registers and the YM3438; addresses are the ones
+// on the 68000 bus: 8-bit devices sit on the odd byte (0xc20001, 0xd00001
+// ...), the 16-bit registers (0xc40012, 0xc50000, 0xc70000) at their even
+// address (read, write). SCSP board: everything outside RAM and program ROM
+// as 16-bit accesses at even addresses with a byte-lane mask (read16,
+// write16).
 class Devices {
 public:
     virtual ~Devices() = default;
-    virtual uint8_t read(uint32_t addr) = 0;
-    virtual void write(uint32_t addr, uint16_t data) = 0;
+    virtual uint8_t read(uint32_t) { return 0; }
+    virtual void write(uint32_t, uint16_t) {}
+    virtual uint16_t read16(uint32_t) { return 0; }
+    virtual void write16(uint32_t, uint16_t, uint16_t) {}
 };
+
+// Where RAM and the program ROM sit on a sound board's 68000 bus; the rest
+// goes to Devices.
+struct SndMap {
+    uint32_t ram_base, ram_size;
+    uint32_t rom_base, rom_size;
+    uint32_t mirror_base, mirror_size, mirror_rom; // a window onto the ROM from mirror_rom on (size 0: none)
+    bool model1;                                   // Model 1 board devices (Devices::read/write), else read16/write16
+};
+// Model 1 board (MAME segam1audio_map): ROM 0x000000-0x03ffff, its upper
+// 128 KiB mirrored at 0x080000, RAM 0xf00000-0xf0ffff.
+constexpr SndMap kModel1Map = {0xf00000, 0x10000, 0x000000, 0x40000, 0x080000, 0x20000, 0x20000, true};
+// SCSP board (MAME model2_snd): RAM 0x000000-0x07ffff (shared with the
+// SCSP), program ROM 0x600000-0x67ffff.
+constexpr SndMap kScspMap = {0x000000, 0x80000, 0x600000, 0x80000, 0, 0, 0, false};
 
 struct Cpu68k {
     uint32_t d[8] = {}, a[8] = {};
@@ -37,8 +57,9 @@ struct Cpu68k {
     uint16_t sys = 0x2700;          // SR system byte: T, S, interrupt mask (flags in the variables above)
     int irq_line = 0;               // level asserted on IPL (autovectored)
 
-    std::vector<uint8_t> ram = std::vector<uint8_t>(0x10000, 0); // 0xf00000-0xf0ffff
-    const uint8_t *rom = nullptr;   // 0x000000-0x03ffff, big-endian bytes; 0x080000-0x09ffff mirrors 0x020000
+    SndMap map = kModel1Map;
+    std::vector<uint8_t> ram = std::vector<uint8_t>(0x10000, 0); // map.ram_size bytes from map.ram_base
+    const uint8_t *rom = nullptr;   // map.rom_size big-endian bytes from map.rom_base
     Devices *dev = nullptr;
 
     // Reset: SSP and PC from the vector table, supervisor, mask 7.
@@ -55,31 +76,31 @@ struct Cpu68k {
     // Memory: 24-bit bus.
     uint8_t r8(uint32_t addr) {
         addr &= 0xffffff;
-        if (addr >= 0xf00000 && addr < 0xf10000) return ram[addr - 0xf00000];
-        if (addr < 0x40000) return rom[addr];
-        if (addr >= 0x80000 && addr < 0xa0000) return rom[addr - 0x60000];
+        if (addr - map.ram_base < map.ram_size) return ram[addr - map.ram_base];
+        if (addr - map.rom_base < map.rom_size) return rom[addr - map.rom_base];
+        if (addr - map.mirror_base < map.mirror_size) return rom[addr - map.mirror_base + map.mirror_rom];
         return dev_r8(addr);
     }
     uint16_t r16(uint32_t addr) {
         addr &= 0xffffff;
         if (addr & 1) odd(addr);
-        if (addr >= 0xf00000 && addr < 0xf10000) return uint16_t(ram[addr - 0xf00000] << 8 | ram[addr - 0xf00000 + 1]);
-        if (addr < 0x40000) return uint16_t(rom[addr] << 8 | rom[addr + 1]);
-        if (addr >= 0x80000 && addr < 0xa0000) return uint16_t(rom[addr - 0x60000] << 8 | rom[addr - 0x60000 + 1]);
+        if (addr - map.ram_base < map.ram_size) return be16(&ram[addr - map.ram_base]);
+        if (addr - map.rom_base < map.rom_size) return be16(&rom[addr - map.rom_base]);
+        if (addr - map.mirror_base < map.mirror_size) return be16(&rom[addr - map.mirror_base + map.mirror_rom]);
         return dev_r16(addr);
     }
     uint32_t r32(uint32_t addr) { return uint32_t(r16(addr)) << 16 | r16(addr + 2); }
     void w8(uint32_t addr, uint32_t val) {
         addr &= 0xffffff;
-        if (addr >= 0xf00000 && addr < 0xf10000) ram[addr - 0xf00000] = uint8_t(val);
+        if (addr - map.ram_base < map.ram_size) ram[addr - map.ram_base] = uint8_t(val);
         else dev_w(addr, uint16_t(addr & 1 ? (val & 0xff) : (val & 0xff) << 8), addr & 1 ? 0x00ff : 0xff00);
     }
     void w16(uint32_t addr, uint32_t val) {
         addr &= 0xffffff;
         if (addr & 1) odd(addr);
-        if (addr >= 0xf00000 && addr < 0xf10000) {
-            ram[addr - 0xf00000] = uint8_t(val >> 8);
-            ram[addr - 0xf00000 + 1] = uint8_t(val);
+        if (addr - map.ram_base < map.ram_size) {
+            ram[addr - map.ram_base] = uint8_t(val >> 8);
+            ram[addr - map.ram_base + 1] = uint8_t(val);
         } else dev_w(addr, uint16_t(val), 0xffff);
     }
     void w32(uint32_t addr, uint32_t val) { w16(addr, val >> 16); w16(addr + 2, val); }
@@ -92,6 +113,7 @@ struct Cpu68k {
     [[noreturn]] void fatal(const std::string &what) const;
 
 private:
+    static uint16_t be16(const uint8_t *p) { return uint16_t(p[0] << 8 | p[1]); }
     uint8_t dev_r8(uint32_t addr);
     uint16_t dev_r16(uint32_t addr);
     void dev_w(uint32_t addr, uint16_t data, uint16_t mem_mask);

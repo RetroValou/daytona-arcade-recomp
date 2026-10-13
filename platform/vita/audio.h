@@ -42,15 +42,15 @@ public:
         device_ = SDL_OpenAudioDevice(nullptr, 0, &want, &got, 0);
         if (!device_) return false;
         rate_ = got.freq;
-        fm_rate_ = int(snd::SoundBoard::kYmClock / 144.0 + 0.5);
+        fm_rate_ = int(snd::board_fm_rate() + 0.5);
         fm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, fm_rate_, AUDIO_F32SYS, 2, rate_);
-        pcm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, int(snd::SoundBoard::kPcmClock / 224.0 + 0.5),
+        pcm_ = SDL_NewAudioStream(AUDIO_F32SYS, 2, int(snd::board_pcm_rate() + 0.5),
                                   AUDIO_F32SYS, 2, rate_);
         if (!fm_ || !pcm_) { close(); return false; }
         restart_locked(); // the callback is not running yet: the device starts paused
         return true; // device starts paused; prime it before playing
     }
-    void push(snd::SoundBoard &board) {
+    void push(snd::Board &board) {
         const auto fm = board.take_fm(), pcm = board.take_pcm();
         if (!device_) return; // drain the board even when the device failed
         SDL_LockAudioDevice(device_);

@@ -204,7 +204,7 @@ int main(int argc, char **argv) {
         for (int k = 0, first = 1; k < 16; k++)
             if (drive_kinds[k]) std::printf("%s%x-: %" PRIu64, first ? "" : ", ", k, drive_kinds[k]), first = 0;
         std::printf(")\n");
-        if (const snd::SoundBoard *sb = game.sound())
+        if (const snd::Board *sb = game.sound())
             std::printf("  sound board: %" PRIu64 " 68000 instructions (all native), %zu command bytes received\n", sb->instructions(),
                         sb->bytes_received());
         if (!wav_path.empty() && game.sound()) {

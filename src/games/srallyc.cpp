@@ -12,8 +12,8 @@ namespace {
 
 using namespace rom_regions;
 
-// MAME model2.cpp ROM_START(srallyc), without the SCSP sound board's ROMs
-// (no sound board yet). Not loaded either: the drive board's and comm board's
+// MAME model2.cpp ROM_START(srallyc), with the SCSP sound board's 68000
+// program and samples. Not loaded: the drive board's and comm board's
 // programs, and MODEL2A_VID_BOARD's mpr-16310/16311/16312, which MAME does
 // not use either.
 const RomLoad kSrallycRoms[] = {
@@ -35,6 +35,12 @@ const RomLoad kSrallycRoms[] = {
     {"mpr-17752.24", 0xD6AA86CE, Textures, 0x000002, 0x200000},
     {"opr-14742a.45", 0x90C6B117, CoproTables, 0x000000, 0x020000},
     {"opr-14743a.46", 0xAE7F446B, CoproTables, 0x000002, 0x020000},
+    // the sound board: its 68000 program and the SCSP's samples
+    {"epr-17890a.30", 0x5BAC3FA1, SoundProgram, 0x000000, 0x040000},
+    {"mpr-17756.31", 0x7725F111, Samples, 0x000000, 0x200000},
+    {"mpr-17757.32", 0x1616E649, Samples, 0x200000, 0x200000},
+    {"mpr-17886.36", 0x54A72923, Samples, 0x400000, 0x200000},
+    {"mpr-17887.37", 0x38C31FDD, Samples, 0x600000, 0x200000},
 };
 
 // The cabinet's wiring (MAME INPUT_PORTS(srallyc)) from rt::Inputs: IN0 coin
@@ -72,7 +78,7 @@ extern const Game srallyc_game = {
     .board = BoardType::Model2a,
     .roms = kSrallycRoms, .mirror_from = 0, .tgp = {true, 0x5ae94, 1665, 0x072484B1u},
     .idle = {{0x5a379c, 0x5a37b3}, {0, 0}},
-    .model1_sound = false, .native_sound = nullptr,
+    .sound = SoundBoardType::Scsp, .native_sound = nullptr,
     .io = {port, analog}, .link = false,
 };
 

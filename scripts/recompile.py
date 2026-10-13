@@ -81,7 +81,7 @@ def main():
     build_cmd = ["cmake", "--build", build, "--config", args.config]
     # the build directory is for one ROM set (CMake's M2_ROMSET)
     run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set])
-    if not all(os.path.exists(os.path.join(cache, f)) for f in ("tgp_program.bin", "sound_program.bin", "pcm1.bin")):
+    if not all(os.path.exists(os.path.join(cache, f)) for f in ("tgp_program.bin", "sound_program.bin", "pcm1.bin", "samples.bin")):
         if not roms:
             sys.exit(f"recompile: put your ROM set at roms/{args.set}.zip (or .7z) first")
         run(build_cmd + ["--target", "m2import"])
@@ -109,8 +109,10 @@ def main():
 
     snd = os.path.join(build, "gen", args.set + "_snd")
     os.makedirs(snd, exist_ok=True)
+    snd_seeds = os.path.join("seeds", args.set + "_snd.txt")  # the sound 68000's indirect jump targets
     run([tool(build, args.config, "m2sndrecomp"), os.path.join(cache, "sound_program.bin"),
-         os.path.join(snd, "snd_gen.cpp")])
+         os.path.join(snd, "snd_gen.cpp")] + SETS[args.set]["sndrecomp"] +
+        (["--seeds", snd_seeds] if os.path.exists(os.path.join(ROOT, snd_seeds)) else []))
 
     run(["cmake", "-S", ".", "-B", build])  # picks up the generated sources
     run(build_cmd + ["--parallel"])  # the game (daytona, m2run) and the check tools

@@ -1,0 +1,89 @@
+diff --git a/src/devices/cpu/m68000/m68000.cpp b/src/devices/cpu/m68000/m68000.cpp
+index 913b86b..3eeef59 100644
+--- a/src/devices/cpu/m68000/m68000.cpp
++++ b/src/devices/cpu/m68000/m68000.cpp
+@@ -2,6 +2,7 @@
+ // copyright-holders:Olivier Galibert
+ 
+ #include "emu.h"
++#include <set>
+ #include "m68000.h"
+ #include "m68kdasm.h"
+ 
+@@ -148,6 +149,19 @@ u64 g_m2snd_insn = 0;
+ FILE *g_m2snd_log = nullptr;
+ static const void *g_m2snd_cpu = nullptr;
+ static bool g_m2snd_snap = true;
++// M2TRACE_SNDPCS: every address the sound 68000 executed, written at exit
++// (seeds for m2sndrecomp: the targets of its indirect jumps).
++static std::set<u32> *g_m2snd_pcs = nullptr;
++static void m2snd_write_pcs()
++{
++	if(const char *path = getenv("M2TRACE_SNDPCS"); path && g_m2snd_pcs) {
++		if(FILE *f = fopen(path, "w")) {
++			for(u32 pc : *g_m2snd_pcs)
++				fprintf(f, "%06x\n", pc);
++			fclose(f);
++		}
++	}
++}
+ 
+ void m68000_device::execute_run()
+ {
+@@ -179,6 +193,8 @@ void m68000_device::execute_run()
+ 						g_m2snd_snap = false;
+ 					}
+ 					g_m2snd_insn++;
++					if(g_m2snd_pcs)
++						g_m2snd_pcs->insert(m_ipc);
+ 				}
+ 
+ 				if(debugger_enabled())
+@@ -241,9 +257,13 @@ void m68000_device::device_start()
+ {
+ 	init_decode_table();
+ 
+-	if(const char *path = getenv("M2TRACE_SNDLOG"); path && !g_m2snd_log && std::string(tag()).find("sndcpu") != std::string::npos) {
++	if(const char *path = getenv("M2TRACE_SNDLOG"); path && !g_m2snd_log && (std::string(tag()).find("sndcpu") != std::string::npos || std::string(tag()) == ":audiocpu")) {
+ 		g_m2snd_log = fopen(path, "w");
+ 		g_m2snd_cpu = this;
++		if(getenv("M2TRACE_SNDPCS")) {
++			g_m2snd_pcs = new std::set<u32>;
++			atexit(m2snd_write_pcs);
++		}
+ 	}
+ 
+ 	m_cmpild_instr_callback.resolve();
+diff --git a/src/mame/sega/model2.cpp b/src/mame/sega/model2.cpp
+index 5022cb3..b0720c7 100644
+--- a/src/mame/sega/model2.cpp
++++ b/src/mame/sega/model2.cpp
+@@ -2524,12 +2524,26 @@ void model2_state::model2snd_ctrl(u16 data)
+ 	}
+ }
+ 
++// daytona-arcade-recomp oracle (M2TRACE_SNDLOG): every SCSP and bank access
++// by the sound 68000, tagged with the index of the instruction making it.
++namespace {
++u16 m2scsp_logr(offs_t a, u16 v) {
++	if(g_m2snd_log) fprintf(g_m2snd_log, "r %llu %06x %x\n", (unsigned long long)(g_m2snd_insn - 1), a, unsigned(v));
++	return v;
++}
++void m2scsp_logw(offs_t a, unsigned v, unsigned m) {
++	if(g_m2snd_log) fprintf(g_m2snd_log, "w %llu %06x %x %x\n", (unsigned long long)(g_m2snd_insn - 1), a, v, m);
++}
++}
++
+ // We assume using the same waitstate weights as Saturn, applied to SCSP area only
+ void model2_state::model2_snd(address_map &map)
+ {
+ 	map(0x000000, 0x07ffff).before_delay(NAME([](offs_t) { return 1; })).ram().share("soundram");
+-	map(0x100000, 0x100fff).before_delay(NAME([](offs_t) { return 1; })).rw(m_scsp, FUNC(scsp_device::read), FUNC(scsp_device::write));
+-	map(0x400000, 0x400001).w(FUNC(model2_state::model2snd_ctrl));
++	map(0x100000, 0x100fff).before_delay(NAME([](offs_t) { return 1; })).lrw16(
++		NAME([this](offs_t o, u16 m) { return m2scsp_logr(0x100000 + o * 2, m_scsp->read(o)); }),
++		NAME([this](offs_t o, u16 d, u16 m) { m2scsp_logw(0x100000 + o * 2, d & m, m); m_scsp->write(o, d, m); }));
++	map(0x400000, 0x400001).lw16(NAME([this](offs_t o, u16 d, u16 m) { m2scsp_logw(0x400000, d & m, m); model2snd_ctrl(d); }));
+ 	map(0x600000, 0x67ffff).rom().region("audiocpu", 0);
+ 	map(0x800000, 0x9fffff).rom().region("samples", 0);
+ 	map(0xa00000, 0xdfffff).bankr("bank4");

@@ -37,17 +37,26 @@ bool dev_range(uint32_t a) {
 // 8-bit devices answer on the odd byte lane only; the even lane and unmapped
 // addresses read 0 (MAME's unmap value for this space).
 uint8_t Cpu68k::dev_r8(uint32_t addr) {
+    if (!map.model1) { // a 16-bit device read, the byte's lane taken
+        const uint16_t v = dev->read16(addr & ~1u);
+        return uint8_t(addr & 1 ? v : v >> 8);
+    }
     if ((addr & 1) && dev_range(addr)) return dev->read(addr);
     return 0;
 }
 
 uint16_t Cpu68k::dev_r16(uint32_t addr) {
+    if (!map.model1) return dev->read16(addr);
     if (dev_range(addr)) return dev->read(addr | 1);
     return 0;
 }
 
 void Cpu68k::dev_w(uint32_t addr, uint16_t data, uint16_t mem_mask) {
     const uint32_t even = addr & ~1u;
+    if (!map.model1) {
+        dev->write16(even, data, mem_mask);
+        return;
+    }
     if (dev_range(addr)) {
         if (mem_mask & 0x00ff) dev->write(even | 1, data & 0xff);
     } else if (even == 0xc40012 || even == 0xc50000 || even == 0xc70000) {

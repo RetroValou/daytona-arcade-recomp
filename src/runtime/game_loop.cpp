@@ -1,5 +1,8 @@
 #include "runtime/game_loop.h"
 
+#include "runtime/scsp_board.h"
+#include "runtime/sound_board.h"
+
 #include <cstdio>
 #include <fstream>
 #include <iterator>
@@ -30,11 +33,15 @@ GameLoop::GameLoop(const std::string &dir, bool sound_enabled) : GameLoop([&] {
     img.sound_program = load(dir + "/sound_program.bin");
     img.pcm1 = load(dir + "/pcm1.bin");
     img.pcm2 = load(dir + "/pcm2.bin");
+    if (game().sound == SoundBoardType::Scsp) img.samples = load(dir + "/samples.bin");
     return img;
 }(), sound_enabled) {}
 
 GameLoop::GameLoop(M2Board::Images img, bool sound_enabled) {
-    if (sound_enabled && !img.sound_program.empty()) sound_ = std::make_unique<snd::SoundBoard>(img.sound_program, img.pcm1, img.pcm2);
+    if (sound_enabled && !img.sound_program.empty()) {
+        if (img.game->sound == SoundBoardType::Scsp) sound_ = std::make_unique<snd::ScspBoard>(img.sound_program, img.samples);
+        else sound_ = std::make_unique<snd::SoundBoard>(img.sound_program, img.pcm1, img.pcm2);
+    }
     board_ = std::make_unique<M2Board>(std::move(img));
     cpu_ = std::make_unique<Cpu>(board_.get());
     ls_ = std::make_unique<Lockstep>(*cpu_);
@@ -64,7 +71,10 @@ void GameLoop::probe() {
         }
     } else {
         const uint64_t since = ls_->count - frame_start_;
-        if ((idle && since >= kMinFrame) || since >= kFrameCap) {
+        if (idle && since >= kMinFrame && since < kFrameCap && board_->idle_until_vblank()) {
+            // a timer interrupt the game enabled was due before vblank: it
+            // runs first (board time skipped the wait up to it)
+        } else if ((idle && since >= kMinFrame) || since >= kFrameCap) {
             board_->io().inputs = inputs_;
             {
                 auto sample = profiler_.measure(profiler_.frame.geometry);
@@ -85,7 +95,7 @@ void GameLoop::run_frame(const Inputs &inputs) {
 GameLoop::SoundPacket GameLoop::run_frame_sound_packet(const Inputs &inputs) {
     run_frame_deferred_sound(inputs);
     sound_frame_pending_ = false;
-    return SoundPacket(sound_.get(), std::move(pending_sound_bytes_), sound_profile_clock_);
+    return SoundPacket(sound_.get(), replies_.get(), std::move(pending_sound_bytes_), sound_profile_clock_);
 }
 
 uint64_t GameLoop::SoundPacket::execute() {
@@ -96,6 +106,7 @@ uint64_t GameLoop::SoundPacket::execute() {
     const uint64_t begin = clock_ ? clock_() : 0;
     sound_->send(bytes_.data(), bytes_.size());
     sound_->advance(1.0 / kFrameHz);
+    replies_->put(sound_->take_replies());
     const uint64_t end = clock_ ? clock_() : 0;
     return end >= begin ? end - begin : 0;
 }
@@ -106,6 +117,10 @@ void GameLoop::run_frame_deferred_sound(const Inputs &inputs) {
     auto frame_sample = profiler_.measure(profiler_.frame.total);
     inputs_ = inputs;
     frame_done_ = false;
+    if (sound_) { // what the sound board sent back during the frames it has run
+        const std::vector<uint8_t> replies = replies_->take();
+        board_->receive_sound_bytes(replies.data(), replies.size());
+    }
 #ifdef M2_FAST_GEN
     ls_->set_end(UINT64_MAX);
 #else
@@ -143,6 +158,7 @@ uint64_t GameLoop::execute_deferred_sound() {
     const uint64_t begin = sound_profile_clock_ ? sound_profile_clock_() : 0;
     sound_->send(pending_sound_bytes_.data(), pending_sound_bytes_.size());
     sound_->advance(1.0 / kFrameHz);
+    replies_->put(sound_->take_replies());
     const uint64_t end = sound_profile_clock_ ? sound_profile_clock_() : 0;
     return end >= begin ? end - begin : 0;
 }

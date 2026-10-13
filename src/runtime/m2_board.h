@@ -98,6 +98,7 @@ public:
     struct Images {
         std::vector<uint8_t> program, main_data, copro_tables, copro_data, polygons, textures;
         std::vector<uint8_t> sound_program, pcm1, pcm2; // sound board (68000 program, MultiPCM samples)
+        std::vector<uint8_t> samples;                   // SCSP sound board: the sample ROMs, as the 68000 sees them from 0x800000
         const Game *game = &rt::game();                   // the game these images are for (and its board)
 #ifdef M2_DC_MEMORY
         // The Dreamcast: program, main_data, polygons, textures and copro_data
@@ -125,6 +126,14 @@ public:
     uint16_t flags(uint32_t addr) override { return page(addr).burst ? Cpu::BURST : 0; }
 
     // Frame control, called by the runner.
+    // The game waits for vblank: board time moves on to the next timer
+    // interrupt it has enabled, if one is due before this frame's vblank
+    // (true: raised; the game runs its handler and waits again), else to
+    // the vblank. Free run only; with no enabled timer (Daytona) only board
+    // time moves.
+    bool idle_until_vblank();
+    static constexpr uint64_t kTicksPerFrame = 434783; // 25 MHz / 57.52 Hz
+    static constexpr uint64_t kInstrPerFrame = 110000; // i960 instructions MAME runs in a frame (GameLoop's cap)
     void vblank_start();       // MAME screen_vblank: geometrizer, vblank IRQ
     void vblank_end();         // screen_update
     bool in_idle_loop() const; // the game is waiting for vblank
@@ -147,6 +156,9 @@ public:
     TgpBoard &tgp() { return tgp_; }
     // Bytes sent to the sound board since the last take.
     std::vector<uint8_t> take_sound_bytes() { sound_total_ += uart_out_.size(); return std::exchange(uart_out_, {}); }
+    // Bytes the sound board sent back (the SCSP's MIDI out, on Model 2A):
+    // the UART receives them, the game reads them (RxRDY, request bit 10).
+    void receive_sound_bytes(const uint8_t *bytes, size_t n);
     uint64_t sound_bytes_total() const { return sound_total_ + uart_out_.size(); }
     std::vector<uint8_t> &backup_ram() { return backup_; }
     // Link play: the communication board on a host transport (CommBoard;
@@ -199,6 +211,24 @@ private:
 #endif
     }
     void irq_update();
+
+    // The four timers (MAME timers_r/w, model2_timer_cb): each counts down at
+    // 25 MHz from the value written and, at zero, raises request bit 2+n if
+    // that interrupt is enabled. Board time in 25 MHz ticks: the i960's
+    // instructions at MAME's rate (kInstrPerFrame of them per video frame),
+    // plus the time the game spends waiting for vblank, which the frame loop
+    // skips (idle_until_vblank).
+    struct Timer {
+        bool run = false;
+        uint32_t orig = 0;
+        uint64_t start = 0;
+        size_t expiry = kNoExpiry; // its Lockstep callback while scheduled (one at most)
+    };
+    static constexpr size_t kNoExpiry = SIZE_MAX;
+    uint64_t ticks() const { return io_now() * kTicksPerFrame / kInstrPerFrame + tick_skip_; }
+    void timer_write(unsigned n, uint32_t data, uint32_t mask);
+    void timer_schedule(unsigned n);
+    void timer_expire(unsigned n);
     void uart_write_data(uint8_t v);
     void uart_txrdy(bool state);
 
@@ -224,7 +254,9 @@ private:
 
     uint32_t intreq_ = 0, intena_ = 0;
     int8_t lines_[4] = {-1, -1, -1, -1};
-    uint32_t timervals_[4] = {0, 0, 0, 0};
+    uint32_t timervals_[4] = {0xfffff, 0xfffff, 0xfffff, 0xfffff};
+    Timer timers_[4];
+    uint64_t tick_skip_ = 0, vblank_tick_ = 0;
     uint32_t videocontrol_ = 0, zclip_ = 0;
     bool render_mode_ = false, render_test_ = false, render_unk_ = false;
     uint8_t comm_cn_ = 0, comm_fg_ = 0;
@@ -251,6 +283,7 @@ private:
 
     // i8251 UART to the sound board (transmit side)
     bool uart_txrdy_ = true, uart_shift_busy_ = false, uart_have_hold_ = false;
+    std::deque<uint8_t> uart_in_; // received, not yet read (the head is the receive buffer)
     uint8_t uart_hold_ = 0;
     std::vector<uint8_t> uart_out_;
     uint64_t sound_total_ = 0;

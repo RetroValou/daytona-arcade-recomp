@@ -54,8 +54,14 @@ public:
     // Run fn when `at` instructions have completed, before any interrupt
     // event at the same count (MAME's vblank handler parses the display list
     // before it raises the vblank line). Lockstep: call before the run
-    // starts. Free run: callbacks may add further callbacks.
-    void add_callback(uint64_t at, std::function<void()> fn);
+    // starts. Free run: callbacks may add further callbacks. Returns a
+    // handle for cancel_callback, valid until the callback runs (its slot is
+    // then reused).
+    size_t add_callback(uint64_t at, std::function<void()> fn);
+    // Take out a callback that has not run yet. A rescheduled event must
+    // cancel its old callback: one left behind stays in the log until the
+    // count reaches it, and every add_callback scans and shifts past it.
+    void cancel_callback(size_t handle);
     // Free run: an interrupt line changed; take it at the next boundary.
 #ifdef M2_FAST_GEN
     // The rewritten generated code keeps the instructions it has run since
@@ -97,13 +103,12 @@ private:
     size_t next_ = 0;
     bool free_run_ = false, poked_ = false;
     int taken_ = 0;
-#if defined(M2_DC_MEMORY) || defined(M2_FAST_GEN)
-    // Slots of calls_ already called, for reuse: free run adds a callback
-    // every 1024 instructions and calls_ never shrinks (16 bytes each on the
-    // SH-4: 1 MB by frame 220 of the attract mode). Last, so the members the
-    // generated code's inline boundary() and poke() use keep their offsets.
+    // Slots of calls_ already called or cancelled, for reuse: free run adds
+    // a callback every 1024 instructions and the board timers several a
+    // frame, and calls_ never shrinks (16 bytes each on the SH-4: 1 MB by
+    // frame 220 of the attract mode). Last, so the members the generated
+    // code's inline boundary() and poke() use keep their offsets.
     std::vector<size_t> free_calls_;
-#endif
 #ifdef M2_FAST_GEN
 public:
     uint32_t epoch = 0; // (last, like free_calls_)

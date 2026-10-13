@@ -44,7 +44,7 @@ struct GatedPacket {
         }
         return packet.execute();
     }
-    snd::SoundBoard *sound() { return packet.sound(); }
+    snd::Board *sound() { return packet.sound(); }
     void wait_started() {
         std::unique_lock<std::mutex> lock(mutex);
         changed.wait(lock, [&] { return started; });
@@ -61,7 +61,7 @@ struct ReleaseOnExit {
 struct Output {
     std::vector<float> fm, pcm;
     uint64_t instructions = 0, bytes = 0, frames = 0;
-    void push(snd::SoundBoard &board) {
+    void push(snd::Board &board) {
         fm = board.take_fm(); pcm = board.take_pcm();
         instructions = board.instructions(); bytes = board.bytes_received();
         ++frames;

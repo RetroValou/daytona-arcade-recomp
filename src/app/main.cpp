@@ -73,8 +73,8 @@ public:
     bool open(double fm_rate, double pcm_rate) {
         dev_ = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, nullptr);
         if (!dev_) return false;
-        fm_rate_ = int(fm_rate + 0.5);
-        const SDL_AudioSpec fm{SDL_AUDIO_F32, 2, fm_rate_}, pcm{SDL_AUDIO_F32, 2, int(pcm_rate + 0.5)};
+        pcm_rate_ = int(pcm_rate + 0.5);
+        const SDL_AudioSpec fm{SDL_AUDIO_F32, 2, int(fm_rate + 0.5)}, pcm{SDL_AUDIO_F32, 2, pcm_rate_};
         fm_ = SDL_CreateAudioStream(&fm, nullptr);
         pcm_ = SDL_CreateAudioStream(&pcm, nullptr);
         if (!fm_ || !pcm_ || !SDL_BindAudioStream(dev_, fm_) || !SDL_BindAudioStream(dev_, pcm_)) {
@@ -84,12 +84,14 @@ public:
     }
     // speed: the game's rate over the arcade's (Sync to display: 1.043 at 60
     // frames/s), so the sound keeps up with the game; the trim works around it.
-    void push(snd::SoundBoard &sb, float gain, double speed = 1.0) {
+    void push(snd::Board &sb, float gain, double speed = 1.0) {
         if (!fm_) return;
         const std::vector<float> fm = sb.take_fm(), pcm = sb.take_pcm();
         SDL_PutAudioStreamData(fm_, fm.data(), int(fm.size() * sizeof(float)));
         SDL_PutAudioStreamData(pcm_, pcm.data(), int(pcm.size() * sizeof(float)));
-        const double queued = double(SDL_GetAudioStreamQueued(fm_)) / (8.0 * fm_rate_);
+        // the PCM stream sets the pace: it always runs (the SCSP board's
+        // output is on it; the FM one stays empty there)
+        const double queued = double(SDL_GetAudioStreamQueued(pcm_)) / (8.0 * pcm_rate_);
         if (queued > kLatency * 4) { // a stall (window drag, debugger): drop the backlog
             SDL_ClearAudioStream(fm_);
             SDL_ClearAudioStream(pcm_);
@@ -116,7 +118,7 @@ public:
 private:
     SDL_AudioDeviceID dev_ = 0;
     SDL_AudioStream *fm_ = nullptr, *pcm_ = nullptr;
-    int fm_rate_ = 1;
+    int pcm_rate_ = 1;
 };
 
 // The launcher's link play status line.
@@ -325,12 +327,12 @@ int main(int argc, char **argv) {
                 native_audio.volume(cfg.volume);
                 native_audio.volumes(cfg.music_volume, cfg.effects_volume);
                 native_audio.mute(cfg.mute);
-            } else if (audio_initialized && rt::game().model1_sound) {
-                have_audio = audio.open(snd::SoundBoard::kYmClock / 144.0, snd::SoundBoard::kPcmClock / 224.0);
+            } else if (audio_initialized && rt::game().sound != rt::SoundBoardType::None) {
+                have_audio = audio.open(snd::board_fm_rate(), snd::board_pcm_rate());
                 if (!have_audio) std::fprintf(stderr, "daytona: reference audio unavailable (%s)\n", SDL_GetError());
             }
             game = std::make_unique<rt::GameLoop>(std::move(images), !native_active);
-            std::printf("daytona: audio backend %s\n", !rt::game().model1_sound ? "none (no sound board for this game yet)"
+            std::printf("daytona: audio backend %s\n", rt::game().sound == rt::SoundBoardType::None ? "none (no sound board for this game yet)"
                 : native_active ? "native (experimental, 48000 Hz device clock; no reference sound board)" : "reference");
             load_file(eeprom_path, game->board().io().eeprom);
             load_file(backup_path, game->board().backup_ram());

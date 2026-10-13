@@ -14,7 +14,9 @@
 #include "runtime/gen_support.h"
 #include "runtime/lockstep.h"
 #include "runtime/m2_board.h"
-#include "runtime/sound_board.h"
+#include "runtime/snd_board.h"
+
+#include <mutex>
 
 #include <cstdint>
 #include <memory>
@@ -26,6 +28,27 @@ namespace rt {
 
 class GameLoop {
 public:
+    // Bytes the sound board sent back to the i960's UART (the SCSP's MIDI
+    // output), handed from whichever thread ran the sound frame to the next
+    // board frame. Locked: on the Vita a sound frame runs while the next
+    // board frame does.
+    class SoundReplies {
+    public:
+        void put(std::vector<uint8_t> &&bytes) {
+            if (bytes.empty()) return;
+            std::lock_guard<std::mutex> lock(m_);
+            bytes_.insert(bytes_.end(), bytes.begin(), bytes.end());
+        }
+        std::vector<uint8_t> take() {
+            std::lock_guard<std::mutex> lock(m_);
+            return std::exchange(bytes_, {});
+        }
+
+    private:
+        std::mutex m_;
+        std::vector<uint8_t> bytes_;
+    };
+
     // Detached, single-use work for one sound-board frame. Only its SoundBoard
     // is shared with the GameLoop: UART bytes and clock are owned snapshots.
     // The caller must execute packets in order, never concurrently, and join
@@ -40,6 +63,7 @@ public:
         SoundPacket &operator=(SoundPacket &&other) noexcept {
             if (this != &other) {
                 sound_ = std::exchange(other.sound_, nullptr);
+                replies_ = std::exchange(other.replies_, nullptr);
                 bytes_ = std::move(other.bytes_);
                 clock_ = std::exchange(other.clock_, nullptr);
                 pending_ = std::exchange(other.pending_, false);
@@ -47,13 +71,14 @@ public:
             return *this;
         }
         uint64_t execute();
-        snd::SoundBoard *sound() const { return sound_; }
+        snd::Board *sound() const { return sound_; }
 
     private:
         friend class GameLoop;
-        SoundPacket(snd::SoundBoard *sound, std::vector<uint8_t> &&bytes, FrameProfiler::Clock clock)
-            : sound_(sound), bytes_(std::move(bytes)), clock_(clock), pending_(sound != nullptr) {}
-        snd::SoundBoard *sound_ = nullptr;
+        SoundPacket(snd::Board *sound, SoundReplies *replies, std::vector<uint8_t> &&bytes, FrameProfiler::Clock clock)
+            : sound_(sound), replies_(replies), bytes_(std::move(bytes)), clock_(clock), pending_(sound != nullptr) {}
+        snd::Board *sound_ = nullptr;
+        SoundReplies *replies_ = nullptr;
         std::vector<uint8_t> bytes_;
         FrameProfiler::Clock clock_ = nullptr;
         bool pending_ = false;
@@ -108,7 +133,7 @@ public:
         return width > kWidth ? (width - kWidth) / 2 : 0;
     }
     M2Board &board() { return *board_; }
-    snd::SoundBoard *sound() { return sound_.get(); } // null without the sound ROMs
+    snd::Board *sound() { return sound_.get(); } // null without the sound ROMs
     static constexpr double kFrameHz = 16000000.0 / (656.0 * 424.0); // the board's video timing
     uint64_t frames() const { return frames_; }
     uint64_t instructions() const { return ls_->count; }
@@ -121,7 +146,8 @@ private:
     std::unique_ptr<Cpu> cpu_;
     std::unique_ptr<Lockstep> ls_;
     std::unique_ptr<gen::Env> env_;
-    std::unique_ptr<snd::SoundBoard> sound_;
+    std::unique_ptr<snd::Board> sound_;
+    std::unique_ptr<SoundReplies> replies_ = std::make_unique<SoundReplies>();
     std::vector<uint8_t> pending_sound_bytes_;
     FrameProfiler::Clock sound_profile_clock_ = nullptr;
     bool sound_frame_pending_ = false;

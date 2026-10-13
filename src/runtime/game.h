@@ -20,6 +20,12 @@ enum class BoardType : uint8_t {
     Model2a, // Model 2A-CRX (model2a_state): 315-5649 I/O chip and 93C46 EEPROM on the bus, SCSP sound board
 };
 
+enum class SoundBoardType : uint8_t {
+    None,
+    Model1, // Model 1 sound board: 68000 + YM3438 + 2x MultiPCM (MAME segam1audio; original Model 2)
+    Scsp,   // Model 2A/2B/2C sound board: 68000 + SCSP (MAME model2_scsp)
+};
+
 // The cabinet's controls, as every frontend fills them (a driving cabinet:
 // MAME's daytona port layout). A game on another board, or with other
 // controls, maps them to its own ports in Game::io.
@@ -31,13 +37,14 @@ struct Inputs {
 
 // One ROM file: MAME's ROM_LOAD32_WORD (16-bit words into bytes 0-1, offset
 // 0, or 2-3, offset 2, of each dword) for the i960-side regions; the sound
-// regions load whole files (the 68000 program byte-swapped:
-// ROM_LOAD16_WORD_SWAP).
-enum class LoadRegion : uint8_t { Program, MainData, CoproData, Polygons, Textures, CoproTables, SoundProgram, Pcm1, Pcm2 };
+// regions load whole files (the 68000 program and the SCSP samples
+// byte-swapped: ROM_LOAD16_WORD_SWAP).
+enum class LoadRegion : uint8_t { Program, MainData, CoproData, Polygons, Textures, CoproTables, SoundProgram, Pcm1, Pcm2, Samples };
 namespace rom_regions { // for the ROM tables in src/games: `using namespace rom_regions;`
 inline constexpr LoadRegion Program = LoadRegion::Program, MainData = LoadRegion::MainData, CoproData = LoadRegion::CoproData,
                            Polygons = LoadRegion::Polygons, Textures = LoadRegion::Textures, CoproTables = LoadRegion::CoproTables,
-                           SoundProgram = LoadRegion::SoundProgram, Pcm1 = LoadRegion::Pcm1, Pcm2 = LoadRegion::Pcm2;
+                           SoundProgram = LoadRegion::SoundProgram, Pcm1 = LoadRegion::Pcm1, Pcm2 = LoadRegion::Pcm2,
+                           Samples = LoadRegion::Samples;
 } // namespace rom_regions
 struct RomLoad {
     const char *file;
@@ -87,10 +94,9 @@ struct Game {
     // frame ends when the game idles in one. Unused entries are {0, 0}.
     Range idle[2];
 
-    // Has the Model 1 sound board (68000 + YM3438 + 2x MultiPCM, MAME
-    // segam1audio), and the native audio engine's tables for its driver
-    // (nullptr: the recompiled sound board only).
-    bool model1_sound;
+    // The sound board, and (Model 1 only) the native audio engine's tables
+    // for its driver (nullptr: the recompiled sound board only).
+    SoundBoardType sound;
     const SoundLayout *native_sound;
 
     CrxInputs io;    // Model 2A-CRX boards only

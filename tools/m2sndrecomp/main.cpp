@@ -1,6 +1,12 @@
 // m2sndrecomp: the sound CPU's 68000 static recompiler (design doc, sound).
 //
-//   m2sndrecomp SOUND_PROGRAM.bin OUT.cpp [--seeds FILE]
+//   m2sndrecomp SOUND_PROGRAM.bin OUT.cpp [--seeds FILE] [--scsp]
+//
+// --scsp: the Model 2A/2B/2C SCSP sound board's map (MAME model2_snd): the
+// program ROM at 0x600000; RAM at 0, where the board copies the ROM's first
+// 16 bytes (stack and reset PC) at reset, so the vectors are read from the
+// ROM image. Default: the Model 1 sound board's (ROM at 0, upper 128 KiB
+// mirrored at 0x080000).
 //
 // Decodes every instruction reachable from the 68000 vector table plus any
 // seed addresses (src/m68k/reach) and emits native C++, one block per
@@ -197,7 +203,12 @@ struct Emitter {
         case Op::Moveq: b.add("D[" + std::to_string(in.dst.reg) + "] = snd::logic<4>(c, " + hex(in.src.imm) + ");"); break;
         case Op::Lea: b.add("A[" + std::to_string(in.dst.reg) + "] = " + addr(b, in.src, 4) + ";"); break;
         case Op::Pea: { const std::string a = addr(b, in.src, 4); b.add("c.push32(" + a + ");"); break; }
-        case Op::Clr: { Operand dst = operand(b, in.dst, sz); b.add(dst.write("snd::logic<" + Z + ">(c, 0)")); break; }
+        case Op::Clr: { // to memory, the 68000 reads the operand first (MAME's core too: a device sees the read)
+            Operand dst = operand(b, in.dst, sz);
+            if (in.dst.is_mem()) b.add("(void)" + dst.value() + ";");
+            b.add(dst.write("snd::logic<" + Z + ">(c, 0)"));
+            break;
+        }
         case Op::Tst: { Operand src = operand(b, in.src, sz); b.add("snd::logic<" + Z + ">(c, " + src.value() + ");"); break; }
         case Op::Not: unary("snd::logic<" + Z + ">(c, ~$)"); break;
         case Op::Neg: unary("snd::neg<" + Z + ">(c, $)"); break;
@@ -410,7 +421,7 @@ std::vector<uint8_t> load(const std::string &path) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: m2sndrecomp SOUND_PROGRAM.bin OUT.cpp [--seeds FILE]\n");
+        std::fprintf(stderr, "usage: m2sndrecomp SOUND_PROGRAM.bin OUT.cpp [--seeds FILE] [--scsp]\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
@@ -428,22 +439,30 @@ int main(int argc, char **argv) {
         return 0;
     }
     std::vector<uint32_t> seeds;
+    bool scsp = false;
     for (int i = 3; i < argc; ++i)
-        if (!std::strcmp(argv[i], "--seeds") && i + 1 < argc) {
+        if (!std::strcmp(argv[i], "--scsp")) scsp = true;
+        else if (!std::strcmp(argv[i], "--seeds") && i + 1 < argc) {
             std::ifstream f(argv[++i]);
             std::string l;
             while (std::getline(f, l))
                 if (!l.empty() && l[0] != '#') seeds.push_back(uint32_t(std::strtoul(l.c_str(), nullptr, 16)));
         }
 
-    // Sound board map: ROM at 0, its upper 128 KiB mirrored at 0x080000.
+    // Model 1 sound board: ROM at 0, its upper 128 KiB mirrored at 0x080000.
+    // SCSP board: ROM at 0x600000.
+    const uint32_t rom_base = scsp ? 0x600000 : 0, rom_size = scsp ? 0x80000 : 0x40000;
     auto read = [&](uint32_t a) -> std::optional<uint16_t> {
         a &= 0xffffff;
-        if (a >= 0x80000 && a < 0xa0000) a -= 0x60000;
-        if (a + 1 >= img.size() || a >= 0x40000) return std::nullopt;
+        if (!scsp && a >= 0x80000 && a < 0xa0000) a -= 0x60000;
+        if (a < rom_base || a - rom_base >= rom_size || a - rom_base + 1 >= img.size()) return std::nullopt;
+        a -= rom_base;
         return uint16_t(img[a] << 8 | img[a + 1]);
     };
-    std::vector<uint32_t> all = m68k::vector_seeds(read);
+    // The vector table: at 0 on the bus (Model 1), or the ROM's own, which the
+    // SCSP board's program copies to RAM at 0.
+    auto vectors = [&](uint32_t a) -> std::optional<uint16_t> { return scsp && a < 0x400 ? read(rom_base + a) : read(a); };
+    std::vector<uint32_t> all = m68k::vector_seeds(vectors);
     all.insert(all.end(), seeds.begin(), seeds.end());
     const m68k::ReachResult r = m68k::reach(all, read);
 

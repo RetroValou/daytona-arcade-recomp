@@ -11,6 +11,8 @@
 
 #include "runtime/m2_board.h"
 
+#include <algorithm>
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -347,6 +349,7 @@ void M2Board::irq_update() {
 }
 
 void M2Board::vblank_start() {
+    vblank_tick_ = ticks();
     // 60 Hz mode or an even frame: the geometrizer starts a new frame
     if ((videocontrol_ & 1) == 0 || (frame_ & 1) == 0) {
 #ifdef M2_DC_SPEED
@@ -411,6 +414,69 @@ bool M2Board::in_idle_loop() const {
     return false;
 }
 
+// --- timers ------------------------------------------------------------------
+
+void M2Board::timer_write(unsigned n, uint32_t data, uint32_t mask) {
+    timervals_[n] = (timervals_[n] & ~mask) | (data & mask);
+    Timer &t = timers_[n];
+    t.orig = timervals_[n];
+    t.start = ticks();
+    t.run = true;
+    timer_schedule(n);
+}
+
+// Expire when the instruction count reaches the timer's tick (the count
+// that board time reaches it at, with no further idle skip). The previous
+// expiry is cancelled, not left to lapse: it is rescheduled every frame (the
+// idle skip moves board time) and on every reload, and most of a frame's
+// board time is skipped, not run, so its count can be far ahead (10^9 with
+// a long reload): stale ones piled up in the Lockstep log (30 k by frame
+// 3,500 of srallyc, every insert shifting them). So the one scheduled is
+// always current; [this, n] also fits std::function's inline storage (no
+// allocation per reschedule on the Vita's 32-bit ARM).
+void M2Board::timer_schedule(unsigned n) {
+    Timer &t = timers_[n];
+    if (t.expiry != kNoExpiry) ls_->cancel_callback(std::exchange(t.expiry, kNoExpiry));
+    if (!t.run) return;
+    const uint64_t due = t.start + t.orig, skip = std::min(due, tick_skip_);
+    const uint64_t count = ((due - skip) * kInstrPerFrame + kTicksPerFrame - 1) / kTicksPerFrame;
+    t.expiry = ls_->add_callback(std::max(count, io_now() + 1), [this, n] {
+        timers_[n].expiry = kNoExpiry; // (its slot is free from here)
+        timer_expire(n);
+    });
+}
+
+void M2Board::timer_expire(unsigned n) { // model2_timer_cb
+    Timer &t = timers_[n];
+    if (!t.run) return;
+    const uint32_t line = 1u << (n + 2);
+    if (intena_ & line) {
+        intreq_ |= line;
+        irq_update();
+    }
+    timervals_[n] = 0xfffff;
+    t.run = false;
+}
+
+bool M2Board::idle_until_vblank() {
+    const uint64_t target = vblank_tick_ + kTicksPerFrame, now = ticks();
+    int first = -1;
+    uint64_t first_due = UINT64_MAX;
+    for (unsigned n = 0; n < 4; n++) {
+        const Timer &t = timers_[n];
+        if (t.run && (intena_ & (1u << (n + 2))) && t.start + t.orig < first_due) {
+            first = int(n);
+            first_due = t.start + t.orig;
+        }
+    }
+    const bool fire = first >= 0 && first_due <= target;
+    const uint64_t to = fire ? first_due : target;
+    if (to > now) tick_skip_ += to - now;
+    if (fire) timer_expire(unsigned(first));
+    for (unsigned n = 0; n < 4; n++) timer_schedule(n); // the skip moved their counts
+    return fire;
+}
+
 // --- sound UART (i8251, transmit side) ------------------------------------------
 // The game sends bytes from its IRQ3 handler whenever TxRDY is set. With no
 // clock, a byte moves to the shifter and out at once; the sound runtime
@@ -449,6 +515,16 @@ void M2Board::uart_shift_done() {
     uart_txrdy(true);
 }
 
+void M2Board::receive_sound_bytes(const uint8_t *bytes, size_t n) {
+    if (!n) return;
+    uart_in_.insert(uart_in_.end(), bytes, bytes + n);
+    // MAME sound_ready_w: RxRDY (or TxRDY) sets request bit 10 if enabled
+    if (intena_ & (1u << 10)) {
+        intreq_ |= 1u << 10;
+        irq_update();
+    }
+}
+
 // --- device registers --------------------------------------------------------
 
 uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
@@ -481,7 +557,11 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
         const uint32_t o = addr - 0x00980030;
         return uint32_t(id[o]) | uint32_t(id[o + 1]) << 8 | uint32_t(id[o + 2]) << 16 | uint32_t(id[o + 3]) << 24;
     }
-    if (addr >= 0x00f00000 && addr <= 0x00f0000f) return timervals_[(addr >> 2) & 3];
+    if (addr >= 0x00f00000 && addr <= 0x00f0000f) { // timers_r: the current count while running
+        const unsigned n = (addr >> 2) & 3;
+        if (timers_[n].run) timervals_[n] = timers_[n].orig - uint32_t(ticks() - timers_[n].start);
+        return timervals_[n];
+    }
     if ((addr & ~0x10000u) == 0x01a04000) { // cn_r, fg_r
         if (comm_board_) // fg_r takes frames in: only when that lane is read
             return uint32_t(comm_board_->cn_r()) | ((mask & 0xff0000) ? uint32_t(comm_board_->fg_r()) << 16 : 0);
@@ -496,6 +576,20 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
                    ((mask & 0x00ff0000) ? uint32_t(io_.crx_read(i + 1, now)) << 16 : 0);
         }
         return uint32_t(io_.read(i)) | uint32_t(io_.read(i + 1)) << 16;
+    }
+    if (addr >= 0x01c80000 && addr <= 0x01c80003) { // i8251 (MAME read/status_r/data_r), umask16 0x00ff
+        uint32_t v = 0;
+        if (mask & 0x00ff0000) { // status: DSR (unconnected: 1), TxEMPTY, RxRDY, TxRDY (data buffer empty)
+            const bool tx_empty = !uart_have_hold_ && !uart_shift_busy_;
+            v |= uint32_t(0x80 | (tx_empty ? 4 : 0) | (uart_in_.empty() ? 0 : 2) | (uart_have_hold_ ? 0 : 1)) << 16;
+        }
+        if (mask & 0x000000ff) { // data: reading takes the received byte (RxRDY clears when none is left)
+            if (!uart_in_.empty()) {
+                v |= uart_in_.front();
+                uart_in_.pop_front();
+            }
+        }
+        return v;
     }
     if (addr >= 0x10000000 && addr <= 0x101fffff) return uint32_t(render_unk_) << 14 | uint32_t(render_mode_) << 2 | uint32_t(render_test_);
     if (addr >= 0x10400000 && addr <= 0x105fffff) return uint32_t(geo_->polys.size()); // polygon_count_r
@@ -517,7 +611,7 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
     case 0x00e80000: intreq_ &= data | ~mask; irq_update(); return; // irq_ack_w
     case 0x00e80004: {                                                // irq_enable_w (MAME delays 80 ns)
         intena_ = (intena_ & ~mask) | (data & mask);
-        if (uart_txrdy_ && (intena_ & (1u << 10))) intreq_ |= 1u << 10; // irq_mask_delayed_update
+        if ((uart_txrdy_ || !uart_in_.empty()) && (intena_ & (1u << 10))) intreq_ |= 1u << 10; // irq_mask_delayed_update
         irq_update();
         return;
     }
@@ -525,11 +619,9 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
     default: break;
     }
     if (addr >= 0x00f00000 && addr <= 0x00f0000f) {
-        // timers_w: count down at 25 MHz and raise request bit 2+n. Daytona
-        // reloads timer 0 each frame and never enables its interrupt, so the
-        // value is kept without a clock.
-        uint32_t &t = timervals_[(addr >> 2) & 3];
-        t = (t & ~mask) | (data & mask);
+        // timers_w. Daytona reloads timer 0 each frame and never enables its
+        // interrupt; Sega Rally runs its sound UART polling from timer 0 and 2.
+        timer_write((addr >> 2) & 3, data, mask);
         return;
     }
     if ((addr & ~0x100000u) == 0x01040000) { if (mask & 0xffff) video_->xhout_w(uint16_t(data)); return; }

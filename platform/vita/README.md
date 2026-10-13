@@ -232,9 +232,10 @@ Wi-Fi operation and executable switching require hardware validation.
 ### Sega Rally Championship (srallyc), a separate app
 
 Sega Rally is its own package with its own title ID, SRAL00094 (Daytona's is
-DAYT00093), so both apps can be installed side by side. It has no sound
-yet (no SCSP sound board; the native audio option is Daytona's only); vitaGL
-or GXM builds only. `--fast-inaccuracy` and `--fast-gen` are Daytona-only:
+DAYT00093), so both apps can be installed side by side. Its sound is the
+SCSP sound board (reference audio: the recompiled 68000 and MAME's SCSP, on
+the sound worker; the native audio option is Daytona's only); vitaGL or GXM
+builds only. `--fast-inaccuracy` and `--fast-gen` are Daytona-only:
 
 ```sh
 python3 scripts/recompile.py --set srallyc --build-dir build-srallyc

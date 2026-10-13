@@ -117,6 +117,8 @@ add_library(runtime STATIC
     src/runtime/native_sample_mixer.cpp
     src/runtime/native_sound_sequencer.cpp
     src/runtime/native_sound_engine.cpp
+    src/runtime/scsp.cpp
+    src/runtime/scsp_board.cpp
     src/runtime/comm_board.cpp
     # every game's record and hooks (runtime/game.h)
     src/games/games.cpp

@@ -26,7 +26,7 @@ Sega Rally Championship is a separate app (title ID SRAL00094, beside Daytona's
 DAYT00093): after `python3 scripts/recompile.py --set srallyc --build-dir build-srallyc`,
 `python3 scripts/build_vita.py --set srallyc --gpu-gl --release` gives
 `build/vita-srallyc/daytona_vita.vpk`; its ROM goes to `ux0:data/srallyc/srallyc.zip`.
-No sound yet (no SCSP sound board).
+Sound: the SCSP sound board (recompiled 68000 and MAME's SCSP), reference audio only; the native audio engine is Daytona's.
 
 ## How it runs
 

@@ -45,10 +45,13 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
     img.textures.assign(0x1000000, 0);
     img.copro_tables.assign(0x40000, 0);
     const Game &set = game();
-    if (set.model1_sound) {
+    if (set.sound == SoundBoardType::Model1) {
         img.sound_program.assign(0x40000, 0);
         img.pcm1.assign(0x400000, 0);
         img.pcm2.assign(0x400000, 0);
+    } else if (set.sound == SoundBoardType::Scsp) { // MAME's "audiocpu" and "samples" regions
+        img.sound_program.assign(0x80000, 0);
+        img.samples.assign(0x800000, 0);
     } // else no sound board: the images stay empty
     for (const RomLoad &l : set.roms) {
         const std::vector<uint8_t> data = z->read(l.file); // CRC against the archive's own
@@ -66,6 +69,12 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
             for (uint32_t i = 0; i < l.size; i += 2) {
                 img.sound_program[l.offset + i] = data[i + 1];
                 img.sound_program[l.offset + i + 1] = data[i];
+            }
+            continue;
+        case LoadRegion::Samples: // 16-bit big-endian words, byte-swapped in the files
+            for (uint32_t i = 0; i < l.size; i += 2) {
+                img.samples[l.offset + i] = data[i + 1];
+                img.samples[l.offset + i + 1] = data[i];
             }
             continue;
         case LoadRegion::Pcm1: std::copy(data.begin(), data.end(), img.pcm1.begin() + l.offset); continue;
