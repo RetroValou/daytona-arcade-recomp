@@ -1,5 +1,11 @@
 # Handoff
 
+## README for the fork (2026-10-13)
+
+README.md now introduces this project: a Model 2 static recompiler for the
+PS Vita, based on daytona-arcade-recomp, with Daytona USA and Sega Rally.
+The previous README is kept unchanged as README_fork.md.
+
 ## Sega Rally on the Vita with --fast-inaccuracy (2026-10-12)
 
 `scripts/games.py` `vita_fast` is now the list of build_vita.py code modes
