@@ -1,5 +1,13 @@
 # Handoff
 
+## Sega Rally Championship (srallyc, Model 2A-CRX) bring-up (2026-10-11)
+
+What changed:
+- m2recomp templates: `flushreg` (MAME's, `rt::Cpu::flushreg`), every FP
+  opcode MAME implements but `movre`, with fp0-fp3, long reals and FP
+  literals (MAME's double expressions; design doc, Floating point), and
+  `addc` with the silicon's carry (Open decisions).
+
 ## Vita icon/LiveArea images, app name always "Daytona USA" (2026-10-12)
 
 Images in `platform/vita/logo_livearea/` (icon0, bg, startup, template.xml; not

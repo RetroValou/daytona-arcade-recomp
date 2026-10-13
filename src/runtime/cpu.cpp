@@ -294,6 +294,23 @@ void Cpu::do_call(uint32_t adr, int type, uint32_t stack)
 	m_r[I960_SP]  = m_r[I960_FP] + 64;
 }
 
+// MAME i960 opcode 0x66d (flushreg): the cached frames to memory, cache emptied.
+void Cpu::flushreg()
+{
+	if (m_rcache_pos > 4)
+	{
+		m_rcache_pos = 4;
+	}
+	for (int t1 = 0; t1 < m_rcache_pos; t1++)
+	{
+		for (int i = 0; i < 0x10; i++)
+		{
+			bus->write_dword(m_rcache_frame_addr[t1] + (i * sizeof(uint32_t)), m_rcache[t1][i]);
+		}
+	}
+	m_rcache_pos = 0;
+}
+
 void Cpu::do_ret_0()
 {
 //  int type = m_r[I960_PFP] & 7;

@@ -1,6 +1,14 @@
 // m2recomp: the i960 static recompiler (design doc, i960 static recompiler).
 //
 //   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]
+//            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]...
+//
+// The image is the program ROM at address 0. model2o mirrors its upper
+// 128 KiB at 0x00220000; --no-mirror drops that (Model 2A: RAM there).
+// --alias: guest addresses GUEST..GUEST+LENGTH-1 hold the image's bytes from
+// OFFSET (hex), for code the game copies to RAM and runs there (srallyc:
+// 0x5a0000:0x1000:0x60000, its boot copy at 0x514). The recompiled code
+// assumes the game never rewrites that RAM.
 //
 // --hooks: "ADDRESS name" lines; the generated code calls rt::hook_<name>(c)
 // just before the instruction at ADDRESS (enhancements: see
@@ -187,6 +195,45 @@ struct Emitter {
         auto two = [&](const std::string &v) { // read both sources first, as MAME does
             body += "{ const uint32_t t1 = " + s1(in) + ", t2 = " + s2(in) + "; " + d + " = " + v + "; }";
         };
+        // MAME get_1_rif / get_2_rif (l: get_..._rifl): a g/l register (a
+        // single; l: a long real in the even/odd pair), fp0-fp3, or the FP
+        // literals +1.0 (0x16) and +0.0 (any other).
+        auto fsrc = [&](bool m, unsigned r, bool l) -> std::string {
+            if (!m)
+                return l ? "gen::u2d(uint64_t(" + R(r & 0x1e) + ") | uint64_t(" + R((r & 0x1e) + 1) + ") << 32)"
+                         : "double(gen::u2f(" + R(r) + "))";
+            if (r < 4) return "c.m_fp[" + std::to_string(r) + "]";
+            return r == 0x16 ? "1.0" : "0.0";
+        };
+        // MAME set_rif / set_rifl: a register (through float; l: the pair), or
+        // fp0-fp3. MAME stops on any other literal destination; so does this.
+        auto fstore = [&](const std::string &v, bool l) -> std::optional<std::string> {
+            if (!in.m3)
+                return l ? "{ const uint64_t v = gen::d2u(" + v + "); " + R(in.dst & 0x1e) + " = uint32_t(v); " +
+                               R((in.dst & 0x1e) + 1) + " = uint32_t(v >> 32); }"
+                         : d + " = gen::f2u(float(" + v + "));";
+            if (in.dst < 4) return "c.m_fp[" + std::to_string(in.dst) + "] = " + v + ";";
+            return std::nullopt;
+        };
+        auto fset = [&](const std::string &v, bool l) {
+            const auto st = fstore(v, l);
+            if (st) body = *st;
+            return st.has_value();
+        };
+        auto fop1 = [&](const std::string &v, bool l) { // t1 = src1
+            const auto st = fstore(v, l);
+            if (st) body = "{ const double t1 = " + fsrc(in.m1, in.src1, l) + "; " + *st + " }";
+            return st.has_value();
+        };
+        // t1 = src1, t2 = src2 (src1_real false: src1 is an integer the
+        // expression reads itself; only t2 is a real)
+        auto fop2 = [&](const std::string &v, bool l, bool src1_real = true) {
+            const auto st = fstore(v, l);
+            if (st)
+                body = "{ " + (src1_real ? "const double t1 = " + fsrc(in.m1, in.src1, l) + "; " : std::string()) +
+                       "const double t2 = " + fsrc(in.m2, in.src2, l) + "; " + *st + " }";
+            return st.has_value();
+        };
         const uint32_t tgt = in.target, tgt_masked = in.target & ~3u; // bxx/bxx_s mask the target, b/bal/call/bbc/bbs do not
 
         switch (in.fmt) {
@@ -303,6 +350,13 @@ struct Emitter {
                                "if ((t1 & 0xff000000) == (t2 & 0xff000000) || (t1 & 0x00ff0000) == (t2 & 0x00ff0000) || "
                                "(t1 & 0x0000ff00) == (t2 & 0x0000ff00) || (t1 & 0x000000ff) == (t2 & 0x000000ff)) AC |= 2; }"; break; // scanbyte
             case 0x5ae: body = "{ const uint32_t t1 = " + s1(in) + " & 0x1f, t2 = " + s2(in) + "; AC = (t2 & (1u << t1)) ? ((AC & ~7u) | 2u) : (AC & ~7u); }"; break; // chkbit
+            // addc: the silicon's carry out of a 33-bit sum (HANDOFF, Open
+            // decisions). MAME sums in 32 bits and never sets carry; a trace
+            // diff there is expected. Overflow as MAME computes it.
+            case 0x5b0: body = "{ const uint32_t t1 = " + s1(in) + ", t2 = " + s2(in) +
+                               "; const uint64_t res = uint64_t(t2) + uint64_t(t1) + ((AC >> 1) & 1); " + d +
+                               " = uint32_t(res & 0xffffffff); AC &= ~0x3u; AC |= (res & (uint64_t(1) << 32)) ? 0x2u : 0u; "
+                               "AC |= ((res ^ t1) & (res ^ t2) & 0x80000000) ? 1u : 0u; }"; break;
             case 0x5cc: set(s1(in)); break;                                // mov
             case 0x5dc: case 0x5ec: case 0x5fc: {                          // movl/movt/movq
                 const int n = code == 0x5dc ? 2 : code == 0x5ec ? 3 : 4;
@@ -327,6 +381,7 @@ struct Emitter {
             case 0x655: body = "{ const uint32_t t1 = c.m_PC, t2 = " + s2(in) + "; c.m_PC = (c.m_PC & ~t2) | (" + d + " & t2); " + d +
                                " = t1; c.m_IP = " + hex(next) + "; if ((t1 >> 16 & 0x1f) > (c.m_PC >> 16 & 0x1f)) c.check_pending_irqs(); }";
                         exit = "if (c.m_IP != " + hex(next) + ") goto dispatch;"; break; // modpc
+            case 0x66d: body = "c.flushreg();"; break; // flushreg (MAME's, src/runtime/cpu.cpp)
             case 0x670: body = "{ const uint64_t p = uint64_t(" + s1(in) + ") * uint64_t(" + s2(in) + "); " + d + " = uint32_t(p); " +
                                R(in.dst + 1) + " = uint32_t(p >> 32); }"; break; // emul
             case 0x671: {                                                  // ediv
@@ -336,16 +391,46 @@ struct Emitter {
                        d + " = rem; " + R(in.dst + 1) + " = quo; }";
                 break;
             }
-            case 0x674: if (in.m3) return unsupported(in);                  // cvtir: integer src1, real dst
-                        set("gen::f2u(float(double(int32_t(" + s1(in) + "))))"); break;
-            case 0x677: if (in.m2 || in.m3) return unsupported(in);         // scaler: integer src1, real src2/dst
-                        set("gen::f2u(float(double(gen::u2f(" + R(in.src2) + ")) * std::pow(2.0, double(int32_t(" + s1(in) + ")))))"); break;
-            case 0x685: if (in.m1 || in.m2) return unsupported(in);         // cmpr
-                        body = "AC = (AC & ~7u) | gen::cc_d(double(gen::u2f(" + R(in.src1) + ")), double(gen::u2f(" + R(in.src2) + ")));"; break; // cmpr
-            case 0x6c0: if (in.m1) return unsupported(in);                  // cvtri: real src1, integer dst
-                        set("uint32_t(int32_t(gen::round_to_int(double(gen::u2f(" + R(in.src1) + ")), AC)))"); break; // cvtri
-            case 0x6c2: if (in.m1) return unsupported(in);                  // cvtzri
-                        set("uint32_t(int32_t(double(gen::u2f(" + R(in.src1) + "))))"); break; // cvtzri
+            // FP, as MAME computes it: reals in host double (fp0-fp3 are
+            // doubles, c.m_fp), singles in g/l registers through float, long
+            // reals in register pairs; the operand forms of get_1_rif /
+            // get_2_rif / set_rif and their ...rifl forms (see fsrc / fset).
+            // Both sources are read before the destination is written.
+            case 0x674: if (!fset("double(int32_t(" + s1(in) + "))", false)) return unsupported(in); break; // cvtir
+            case 0x675: if (!fset("double(int32_t(" + s1(in) + "))", true)) return unsupported(in); break;  // cvtilr
+            case 0x676: if (!fop2("t2 * std::pow(2.0, double(int32_t(" + s1(in) + ")))", true, false)) return unsupported(in); break; // scalerl
+            case 0x677: if (!fop2("t2 * std::pow(2.0, double(int32_t(" + s1(in) + ")))", false, false)) return unsupported(in); break; // scaler
+            case 0x680: case 0x690: if (!fop2("std::atan2(t2, t1)", code == 0x690)) return unsupported(in); break; // atanr(l)
+            case 0x681: if (!fop2("t2 * std::log2(t1 + 1.0)", false)) return unsupported(in); break;              // logepr
+            case 0x682: case 0x692: if (!fop2("t2 * std::log2(t1)", code == 0x692)) return unsupported(in); break; // logr(l)
+            case 0x683: if (!fop2("std::fmod(t2, t1)", false)) return unsupported(in); break;                     // remr
+            case 0x685: case 0x695: {                                                                              // cmpr(l)
+                const bool l = code == 0x695;
+                body = "{ const double t1 = " + fsrc(in.m1, in.src1, l) + ", t2 = " + fsrc(in.m2, in.src2, l) +
+                       "; AC = (AC & ~7u) | gen::cc_d(t1, t2); }";
+                break;
+            }
+            case 0x688: case 0x698: if (!fop1("std::sqrt(t1)", code == 0x698)) return unsupported(in); break;      // sqrtr(l)
+            case 0x689: case 0x699: if (!fop1("std::pow(2.0, t1) - 1.0", code == 0x699)) return unsupported(in); break; // expr(l)
+            case 0x68a: case 0x69a: if (!fop1("std::logb(t1)", code == 0x69a)) return unsupported(in); break;      // logbnr(l)
+            case 0x68b: case 0x69b: if (!fop1("gen::round_to_int(t1, AC)", code == 0x69b)) return unsupported(in); break; // roundr(l)
+            case 0x68c: case 0x69c: if (!fop1("std::sin(t1)", code == 0x69c)) return unsupported(in); break;       // sinr(l)
+            case 0x68d: case 0x69d: if (!fop1("std::cos(t1)", code == 0x69d)) return unsupported(in); break;       // cosr(l)
+            case 0x68e: case 0x69e: if (!fop1("std::tan(t1)", code == 0x69e)) return unsupported(in); break;       // tanr(l)
+            case 0x6c0: case 0x6c1: case 0x6c2: case 0x6c3: {                // cvtri, cvtril, cvtzri, cvtzril
+                if (in.m3) return unsupported(in);
+                const bool round = code == 0x6c0 || code == 0x6c1, wide = code & 1;
+                const std::string v = round ? "gen::round_to_int(t1, AC)" : "t1";
+                body = "{ const double t1 = " + fsrc(in.m1, in.src1, false) + "; ";
+                if (wide) // MAME set_ri64: the destination pair from dst as given
+                    body += "const uint64_t v = uint64_t(int64_t(" + v + ")); " + d + " = uint32_t(v); " + R(in.dst + 1) +
+                            " = uint32_t(v >> 32); }";
+                else
+                    body += d + " = uint32_t(int32_t(" + v + ")); }";
+                break;
+            }
+            case 0x6c9: case 0x6d9: if (!fop1("t1", code == 0x6d9)) return unsupported(in); break;  // movr, movrl
+            case 0x6e2: if (!fop2("t2 >= 0.0 ? std::fabs(t1) : -std::fabs(t1)", true)) return unsupported(in); break; // cpysre
             case 0x701: two("t2 * t1"); break;                             // mulo
             case 0x708: two("t2 % t1"); break;                             // remo (MAME: undefined on 0)
             case 0x70b: two("t1 == 0 ? 0u : t2 / t1"); break;              // divo (MAME: 0 on divide by zero)
@@ -354,10 +439,10 @@ struct Emitter {
             case 0x749: two("uint32_t([](int32_t a, int32_t b) { int32_t r = a - (a / b) * b; "
                             "if ((b ^ a) < 0 && r != 0) r += b; return r; }(int32_t(t2), int32_t(t1)))"); break; // modi (sign of src1)
             case 0x74b: two("uint32_t(int32_t(t2) / int32_t(t1))"); break; // divi
-            case 0x78d: if (in.m1 || in.m2 || in.m3) return unsupported(in); // subr: reals in registers (MAME: double, then float)
-                        set("gen::f2u(float(double(gen::u2f(" + R(in.src2) + ")) - double(gen::u2f(" + R(in.src1) + "))))"); break;
-            case 0x78f: if (in.m1 || in.m2 || in.m3) return unsupported(in); // addr
-                        set("gen::f2u(float(double(gen::u2f(" + R(in.src2) + ")) + double(gen::u2f(" + R(in.src1) + "))))"); break;
+            case 0x78b: case 0x79b: if (!fop2("t2 / t1", code == 0x79b)) return unsupported(in); break; // divr(l)
+            case 0x78c: case 0x79c: if (!fop2("t2 * t1", code == 0x79c)) return unsupported(in); break; // mulr(l)
+            case 0x78d: case 0x79d: if (!fop2("t2 - t1", code == 0x79d)) return unsupported(in); break; // subr(l)
+            case 0x78f: case 0x79f: if (!fop2("t2 + t1", code == 0x79f)) return unsupported(in); break; // addr(l)
             default: return unsupported(in);
             }
             break;
@@ -435,14 +520,19 @@ std::vector<uint32_t> load_seeds(const std::string &path) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]\n");
+        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]"
+                             " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]...\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
     const std::string out = argv[2];
     std::vector<uint32_t> seeds;
     size_t chunk = 1500;
-    bool blocks = false, chain = false;
+    bool blocks = false, chain = false, mirror = true;
+    struct Alias {
+        uint32_t guest, offset, length;
+    };
+    std::vector<Alias> aliases;
     for (int i = 3; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--seeds") && i + 1 < argc) {
             auto s = load_seeds(argv[++i]);
@@ -451,6 +541,16 @@ int main(int argc, char **argv) {
             load_hooks(argv[++i]);
         } else if (!std::strcmp(argv[i], "--chunk") && i + 1 < argc) {
             chunk = std::strtoul(argv[++i], nullptr, 0);
+        } else if (!std::strcmp(argv[i], "--no-mirror")) {
+            mirror = false;
+        } else if (!std::strcmp(argv[i], "--alias") && i + 1 < argc) {
+            Alias al{};
+            if (std::sscanf(argv[++i], "%x:%x:%x", &al.guest, &al.offset, &al.length) != 3 || !al.length ||
+                uint64_t(al.offset) + al.length > img.size()) {
+                std::fprintf(stderr, "m2recomp: bad --alias %s (GUEST:OFFSET:LENGTH, hex, inside the image)\n", argv[i]);
+                return 2;
+            }
+            aliases.push_back(al);
         } else if (!std::strcmp(argv[i], "--fast_inaccuracy")) {
             blocks = true; // 1. block bookkeeping
             chain = true;  // 2. direct chaining
@@ -460,12 +560,16 @@ int main(int argc, char **argv) {
         }
     }
 
-    // model2o: program ROM at 0, its upper 128 KiB mirrored at 0x00220000.
     auto read = [&](uint32_t a) -> std::optional<uint32_t> {
         uint64_t off;
         if (a < img.size()) off = a;
-        else if (a >= 0x220000 && a < 0x240000) off = a - 0x200000;
-        else return std::nullopt;
+        else if (mirror && a >= 0x220000 && a < 0x240000) off = a - 0x200000;
+        else {
+            const auto al = std::find_if(aliases.begin(), aliases.end(),
+                                         [a](const Alias &x) { return a >= x.guest && a - x.guest < x.length; });
+            if (al == aliases.end()) return std::nullopt;
+            off = uint64_t(al->offset) + (a - al->guest);
+        }
         if (off + 4 > img.size()) return std::nullopt;
         uint32_t v;
         std::memcpy(&v, &img[off], 4);

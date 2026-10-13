@@ -49,6 +49,8 @@ inline void wram_w16(rt::Cpu &c, uint32_t o, uint16_t v) { std::memcpy(M2_AL(c.w
 inline void wram_w8(rt::Cpu &c, uint32_t o, uint8_t v) { c.work_ram[o] = v; }
 #endif
 inline float u2f(uint32_t u) { return std::bit_cast<float>(u); }
+inline double u2d(uint64_t u) { return std::bit_cast<double>(u); }
+inline uint64_t d2u(double d) { return std::bit_cast<uint64_t>(d); }
 
 // Recompiled code entry points (generated): run from c.m_IP until it leaves
 // recompiled code or the lockstep run ends.

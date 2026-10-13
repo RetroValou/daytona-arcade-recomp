@@ -110,6 +110,7 @@ public:
     void do_call(uint32_t adr, int type, uint32_t stack);
     void do_ret_0();
     void do_ret();
+    void flushreg();
     void standard_irq_callback(int, uint32_t) {}
 
 #ifdef M2_FAST_GEN

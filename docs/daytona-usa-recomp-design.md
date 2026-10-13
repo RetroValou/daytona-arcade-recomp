@@ -140,6 +140,8 @@ The KB's FPU works in 80-bit extended precision, which ARM64 hosts lack. Any FP 
 - `fast_*`: native host float operations, round to nearest only; this is what recompiled code runs, at native speed. Legal only because `tests/test_fp --exhaustive` proves them bit-identical to `ref_*`: every 2^32 input for cvtri, cvtzri and cvtir, and every 2^32 single for scaler at 11 boundary exponents, 0 mismatches (about 5 minutes on 4 cores). A fast path that rounds like MAME (`std::round`) fails it with 130,905 mismatches in the quick run.
 - A different rounding mode, or FP on fp0-fp3, would not have a proven fast path and must go through `ref_*` until one is proven.
 
+**Sega Rally (`srallyc`) as built.** Its i960 code uses the whole KB FPU: `fp0`-`fp3`, long reals in register pairs, FP literals, arithmetic (`addr`/`subr`/`mulr`/`divr` and their `...rl` forms), `sqrtr`, `atanr`, `sinr`, `logbnr`, `remr`, `cpysre` and the long conversions (measured in the generated code: 5,683 FP instructions among the 45,307 the static pass reaches, `movr`/`movrl` 3,227 of them; a few are TGP program words seed_scan took for code). There is no proven fast path or extF80 model for these, so `m2recomp` emits MAME's expressions (`get_1_rif`/`set_rif` and the `rifl` forms, host `double`, `fp0`-`fp3` as `double` in `rt::Cpu::m_fp`), the same choice its `addr`/`subr` templates already made. This keeps the lockstep diff against MAME meaningful, departs from the paragraph above, and widens the FP-oracle open question. Transcendentals (`sin`, `atan2`, `log2`, `pow`) depend on the host libm, so results can differ across platforms where MAME's x86 glibc output is the reference. Daytona's generated code is unchanged by this (same instruction counts and screen hashes over 4,000 frames of attract and of a race).
+
 **MAME is not a bit-exact FP oracle.** MAME's i960 holds `fp0`-`fp3` as host `double` (`i960.h`, `double m_fp[4]`) and computes in `double`. Wherever Daytona's results depend on the extra bits of extended precision, correct extF80 output and MAME's output disagree, and the lockstep diff will report it. Unresolved; see Open questions.
 
 **Interrupts and faults**
@@ -150,6 +152,8 @@ The KB's FPU works in 80-bit extended precision, which ARM64 hosts lack. Any FP 
 **Code outside ROM**
 
 If the game copies routines into RAM or patches code, the tracer will show execution from RAM. Those regions are recompiled from a RAM snapshot taken after the copy and checked by hash at runtime; a mismatch is a hard error.
+
+As built for Sega Rally (`srallyc`): its boot (ROM `0x514`) copies ROM `0x1000`-`0x60fff` word for word to work RAM `0x5a0000`-`0x5fffff`, then runs almost all of its code from there. The copy is static and complete, so `m2recomp --alias 5a0000:1000:60000` recompiles those addresses from the ROM image itself; no snapshot is needed. The runtime hash check is not built yet: the code assumes the game never rewrites that RAM, which is unverified. The same RAM holds data the game reads (the TGP program and its length word at `0x5fb898`), so a check has to cover only the recompiled instruction words.
 
 ## Geometry (TGP) and rendering
 
