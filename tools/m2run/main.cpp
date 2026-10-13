@@ -26,6 +26,8 @@
 // limit.
 
 #include "runtime/game_loop.h"
+#include "runtime/i960_profile.h"
+#include "runtime/tgp_profile.h"
 #include "../common/input_script.h"
 #include "runtime/native_sound_engine.h"
 #include "../common/nvram.h"
@@ -145,6 +147,27 @@ int main(int argc, char **argv) {
         }
         tools::Script script;
         if (!inputs_path.empty()) script.load(inputs_path);
+#ifdef M2_TGP_PROFILE
+        // TGP profiling (recompile.py --tgp-profile): steady_clock in ns.
+        rt::tgp_profile.clock = [] {
+            return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count());
+        };
+        rt::tgp_profile.ticks_per_second = 1000000000u;
+        const rt::TgpBench tgp_bench = rt::tgp_microbench(game.board().tgp());
+        rt::TgpProfileReport tgp_report;
+        tgp_report.start(game.board().tgp().tgp_instructions());
+#endif
+#ifdef M2_I960_PROFILE
+        // i960 profiling (recompile.py --i960-profile): steady_clock in ns.
+        rt::i960_profile.clock = [] {
+            return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count());
+        };
+        rt::i960_profile.ticks_per_second = 1000000000u;
+        rt::I960ProfileReport i960_report;
+        i960_report.start(game.instructions(), uint64_t(game.interrupts()));
+#endif
         const auto t0 = std::chrono::steady_clock::now();
         std::vector<float> fm, pcm;
         uint64_t drive_commands = 0, drive_kinds[16] = {}; // the force feedback drive board's commands, by type
@@ -194,6 +217,27 @@ int main(int argc, char **argv) {
                     game.frames(), game.instructions(), game.board().tgp().tgp_instructions(), game.interrupts(),
                     game.board().sound_bytes_total(), s, double(game.frames()) / s);
         std::printf("  last screen hash %016" PRIx64 "\n", game.board().video().screen_hash());
+#ifdef M2_I960_PROFILE
+        {
+            static char report[16384];
+#ifdef M2_TGP_PROFILE
+            const double tgp_ms = tgp_report.ms_per_frame(game.frames(), tgp_bench);
+#else
+            const double tgp_ms = -1.0;
+#endif
+            i960_report.format(report, sizeof report, game.frames(), game.instructions(), uint64_t(game.interrupts()), 0,
+                               tgp_ms, s * 1000.0 / double(game.frames() ? game.frames() : 1), "the whole m2run frame");
+            std::fputs(report, stdout);
+        }
+#endif
+#ifdef M2_TGP_PROFILE
+        {
+            static char report[16384];
+            tgp_report.format(report, sizeof report, game.frames(), game.board().tgp().tgp_instructions(), 0,
+                              s * 1000.0 / double(game.frames() ? game.frames() : 1), "the whole m2run frame", tgp_bench);
+            std::fputs(report, stdout);
+        }
+#endif
         if (const rt::CommBoard *cb = game.board().comm_board()) {
             static const char *states[] = {"off (the game never started the board)", "waiting for the other cabinets", "up", "lost"};
             std::printf("  link: %s", states[int(cb->link())]);

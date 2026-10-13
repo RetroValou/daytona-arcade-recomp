@@ -141,6 +141,7 @@ public:
 
 private:
     void probe();
+    void run_generated(); // gen::run (timed with M2_I960_PROFILE)
     FrameProfiler profiler_;
     std::unique_ptr<M2Board> board_;
     std::unique_ptr<Cpu> cpu_;

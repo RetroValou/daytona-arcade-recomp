@@ -1,5 +1,6 @@
 #include "runtime/game_loop.h"
 
+#include "runtime/i960_profile.h"
 #include "runtime/scsp_board.h"
 #include "runtime/sound_board.h"
 
@@ -111,6 +112,18 @@ uint64_t GameLoop::SoundPacket::execute() {
     return end >= begin ? end - begin : 0;
 }
 
+void GameLoop::run_generated() {
+#ifdef M2_I960_PROFILE
+    I960Profile &prof = i960_profile;
+    const uint64_t start = prof.clock ? prof.clock() : 0;
+    gen::run(*env_);
+    if (prof.clock) prof.ticks += prof.clock() - start;
+    ++prof.runs;
+#else
+    gen::run(*env_);
+#endif
+}
+
 void GameLoop::run_frame_deferred_sound(const Inputs &inputs) {
     if (sound_frame_pending_) throw Fatal("previous sound frame must complete before advancing the board");
     profiler_.reset();
@@ -132,7 +145,7 @@ void GameLoop::run_frame_deferred_sound(const Inputs &inputs) {
         // run that did nothing (where the IP has no code, run returns at once).
         const uint64_t count = ls_->count;
         const uint32_t ip = cpu_->m_IP;
-        gen::run(*env_);
+        run_generated();
         if (ls_->count == count && cpu_->m_IP == ip && !frame_done_ && !gen::has_code(ip)) {
 #else
         if (!gen::has_code(cpu_->m_IP)) {
@@ -142,7 +155,7 @@ void GameLoop::run_frame_deferred_sound(const Inputs &inputs) {
             throw Fatal(b);
         }
 #ifndef M2_FAST_GEN
-        gen::run(*env_);
+        run_generated();
 #endif
     }
     // Transfer the UART bytes on the owning thread. The sound worker never

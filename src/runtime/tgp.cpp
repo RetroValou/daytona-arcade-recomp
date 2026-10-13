@@ -8,6 +8,7 @@
 // kept as the licence requires). See THIRD_PARTY.md.
 
 #include "runtime/tgp.h"
+#include "runtime/tgp_profile.h"
 
 namespace rt {
 
@@ -15,6 +16,10 @@ namespace rt {
 // banked window, hiding the table ports (MAME's copro_tgp_bank view).
 uint32_t Tgp::io_r(uint16_t ea) {
     if (bank_reg & 0xc00000) return bus->mem_r((bank_reg & 0xff0000) | ea);
+#ifdef M2_TGP_PROFILE
+    if (ea >= 0x20 && ea <= 0x2b) ++tgp_profile.table_r[ea < 0x24 ? 0 : ea < 0x28 ? 1 : ea < 0x2a ? 2 : 3];
+    else ++tgp_profile.io_unmapped;
+#endif
     switch (ea) {
     case 0x20: case 0x21: case 0x22: case 0x23: { // copro_sincos_r
         const uint32_t ang = sincos_base + (ea - 0x20) * 0x4000;
@@ -64,6 +69,9 @@ uint32_t Tgp::io_r(uint16_t ea) {
 
 void Tgp::io_w(uint16_t ea, uint32_t v) {
     if (bank_reg & 0xc00000) { bus->mem_w((bank_reg & 0xff0000) | ea, v); return; }
+#ifdef M2_TGP_PROFILE
+    ++(ea >= 0x20 && ea <= 0x2b ? tgp_profile.table_w : tgp_profile.io_unmapped);
+#endif
     switch (ea) {
     case 0x20: case 0x21: case 0x22: case 0x23: sincos_base = v; break;
     case 0x24: case 0x25: case 0x26: case 0x27:

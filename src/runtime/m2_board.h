@@ -195,6 +195,9 @@ private:
     Page &page(uint32_t addr) { return pages_[addr >> kPageBits]; }
 #endif
     void map(uint32_t start, uint32_t end, Kind k, uint8_t *base, uint32_t mirror = 0, bool burst = true);
+#ifdef M2_I960_PROFILE
+    void prof_bus(uint32_t addr, bool write); // i960 profiling: the call's region (i960_profile.h)
+#endif
 
     // Device dword access: data in its byte lanes, mask = lanes accessed.
     uint32_t dev_read(uint32_t addr, uint32_t mask);

@@ -1,7 +1,7 @@
 // m2recomp: the i960 static recompiler (design doc, i960 static recompiler).
 //
 //   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]
-//            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]...
+//            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile]
 //
 // The image is the program ROM at address 0. model2o mirrors its upper
 // 128 KiB at 0x00220000; --no-mirror drops that (Model 2A: RAM there).
@@ -51,6 +51,15 @@
 // that address. Same instructions in the same order: this part alone keeps
 // the output exact.
 //
+// --profile (scripts/recompile.py and build_vita.py --i960-profile): counts
+// the executions of every basic block (one increment at its end; the blocks
+// --fast_inaccuracy would make, also without it, for the counters only), the
+// dispatches, the chunk entries and the lockstep slow paths, and writes a
+// table of what each block holds (bus loads and stores, ALU, multiplies,
+// divides, branches, calls, FP; I960BlockInfo in src/runtime/i960_profile.h).
+// The code must be built with M2_I960_PROFILE, whose runtime reports them.
+// Results and counts are unchanged.
+//
 // There is no fallback: an instruction without a native template fails the
 // recompile, listed by address and mnemonic. At run time, control reaching an
 // address that was not recompiled is a hard error naming it (add it to the
@@ -65,8 +74,10 @@
 
 #include "i960/decode.h"
 #include "i960/reach.h"
+#include "runtime/i960_profile.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -146,6 +157,58 @@ inline bool block_boundary(rt::Lockstep &ls) {
 
 )";
 
+// --profile: what an instruction does (I960Op counts), by the same codes
+// Emitter::emit uses.
+std::array<uint8_t, rt::kI960Ops> classify(const Insn &in) {
+    std::array<uint8_t, rt::kI960Ops> k{};
+    auto add = [&](rt::I960Op op, int n = 1) { k[op] = uint8_t(k[op] + n); };
+    const uint16_t code = in.fmt == i960::Format::Reg ? in.op->code : uint16_t(in.word >> 24);
+    switch (in.fmt) {
+    case i960::Format::Ctrl:
+        if (code == 0x08 || code == 0x0b) add(rt::I960OpBranch);
+        else if (code == 0x09) add(rt::I960OpCall);
+        else if (code == 0x0a) add(rt::I960OpRet), add(rt::I960OpIndirect);
+        else add(rt::I960OpCond);
+        break;
+    case i960::Format::Cobr:
+        add(rt::I960OpCompare);
+        if (code >= 0x30) add(rt::I960OpCond);
+        break;
+    case i960::Format::Mem:
+        switch (code) {
+        case 0x80: case 0x88: case 0x90: case 0xc0: case 0xc8: add(rt::I960OpLoad); break;
+        case 0x82: case 0x8a: case 0x92: case 0xc2: case 0xca: add(rt::I960OpStore); break;
+        case 0x98: add(rt::I960OpLoad, 2); break;
+        case 0xa0: add(rt::I960OpLoad, 3); break;
+        case 0xb0: add(rt::I960OpLoad, 4); break;
+        case 0x9a: add(rt::I960OpStore, 2); break;
+        case 0xa2: add(rt::I960OpStore, 3); break;
+        case 0xb2: add(rt::I960OpStore, 4); break;
+        case 0x84: case 0x85: add(rt::I960OpIndirect); break;
+        case 0x86: add(rt::I960OpCall), add(rt::I960OpIndirect); break;
+        default: add(rt::I960OpAlu); break; // lda
+        }
+        break;
+    case i960::Format::Reg:
+        if ((code >= 0x5a0 && code <= 0x5a7) || code == 0x5ac || code == 0x5ae) add(rt::I960OpCompare);
+        else if (code == 0x600) add(rt::I960OpSys), add(rt::I960OpLoad), add(rt::I960OpStore);
+        else if (code == 0x602) add(rt::I960OpSys), add(rt::I960OpLoad, 4), add(rt::I960OpStore, 4);
+        else if (code == 0x645 || code == 0x655 || code == 0x66d) add(rt::I960OpSys);
+        else if (code == 0x670 || code == 0x701 || code == 0x741) add(rt::I960OpMul);
+        else if (code == 0x671 || code == 0x708 || code == 0x70b || code == 0x748 || code == 0x749 || code == 0x74b)
+            add(rt::I960OpDiv);
+        else if (code == 0x676 || code == 0x677 || (code >= 0x680 && code <= 0x684) || (code >= 0x688 && code <= 0x68a) ||
+                 (code >= 0x68c && code <= 0x68e) || (code >= 0x690 && code <= 0x692) ||
+                 (code >= 0x698 && code <= 0x69a) || (code >= 0x69c && code <= 0x69e))
+            add(rt::I960OpFpMath);
+        else if (code >= 0x674) add(rt::I960OpFp);
+        else add(rt::I960OpAlu);
+        break;
+    default: break;
+    }
+    return k;
+}
+
 // Enhancement hooks: address -> name (rt::hook_<name>), from --hooks.
 std::map<uint32_t, std::string> g_hooks;
 
@@ -161,6 +224,7 @@ struct Emitter {
     unsigned block_end = 0;                // a block's last instruction: the block's length
     std::set<uint32_t> *targets = nullptr; // analysis pass: records every direct transfer target
     bool exits = false;                    // after emit(): the instruction has an explicit exit
+    std::string block_counter{};           // --profile: emitted at a counted block's last instruction
 
     // Transfer to a known address: a goto when it is in this chunk.
     std::string jump(uint32_t t) const {
@@ -459,6 +523,7 @@ struct Emitter {
         if (!body.empty()) line(body);
         if (!blocks) line("++ls.count;");
         else if (block_end) line(block_end == 1 ? "++ls.count;" : "ls.count += " + std::to_string(block_end) + "u;");
+        if (!block_counter.empty()) line(block_counter);
         if (!exit.empty()) line(exit);
         if (body.find("cond") != std::string::npos) line("}");
         return falls;
@@ -521,14 +586,14 @@ std::vector<uint32_t> load_seeds(const std::string &path) {
 int main(int argc, char **argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]"
-                             " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]...\n");
+                              " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile]\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
     const std::string out = argv[2];
     std::vector<uint32_t> seeds;
     size_t chunk = 1500;
-    bool blocks = false, chain = false, mirror = true;
+    bool blocks = false, chain = false, mirror = true, profile = false;
     struct Alias {
         uint32_t guest, offset, length;
     };
@@ -551,6 +616,8 @@ int main(int argc, char **argv) {
                 return 2;
             }
             aliases.push_back(al);
+        } else if (!std::strcmp(argv[i], "--profile")) {
+            profile = true;
         } else if (!std::strcmp(argv[i], "--fast_inaccuracy")) {
             blocks = true; // 1. block bookkeeping
             chain = true;  // 2. direct chaining
@@ -583,9 +650,10 @@ int main(int argc, char **argv) {
     for (const auto &[a, in] : r.insns) insns.push_back(&in);
 
     // --fast_inaccuracy: block starts. An analysis pass over every instruction records
-    // the direct transfer targets and the instructions that end a block.
+    // the direct transfer targets and the instructions that end a block
+    // (--profile: the counted blocks, the same with or without --fast_inaccuracy).
     std::set<uint32_t> leaders;
-    if (blocks) {
+    if (blocks || profile) {
         std::set<uint32_t> targets, none;
         std::vector<std::string> ignored; // reported by the real pass
         for (const Insn *in : insns) {
@@ -598,6 +666,7 @@ int main(int argc, char **argv) {
         for (const auto &h : g_hooks) leaders.insert(h.first);
     }
     size_t block_count = 0;
+    std::vector<rt::I960BlockInfo> prof_blocks; // --profile: every counted block, numbered across the chunks
 
     uint64_t native = 0;
     std::vector<std::string> missing;
@@ -612,13 +681,15 @@ int main(int argc, char **argv) {
         // lead[i] starts a block, pos[i] = instructions before it in its block,
         // len[i] = its block's length.
         const size_t n = end - start;
-        std::vector<char> lead(n, 1);
+        std::vector<char> lead(n, 1), plead(n, 1); // plead: --profile's block starts
         std::vector<unsigned> pos(n, 0), len(n, 1);
-        if (blocks) {
+        if (blocks || profile)
             for (size_t i = 1; i < n; ++i) {
                 const Insn &prev = *insns[start + i - 1], &in = *insns[start + i];
-                lead[i] = leaders.count(in.addr) || prev.addr + prev.length != in.addr;
+                plead[i] = leaders.count(in.addr) || prev.addr + prev.length != in.addr;
             }
+        if (blocks) {
+            lead = plead;
             for (size_t i = 0, b = 0; i < n; ++i) {
                 if (lead[i]) b = i, ++block_count;
                 pos[i] = unsigned(i - b);
@@ -629,12 +700,25 @@ int main(int argc, char **argv) {
         std::snprintf(name, sizeof name, "chunk_%03zu", ci);
         em.o << "// Generated by m2recomp. Derived from the game: never commit.\n";
         if (blocks) em.o << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
-        em.o << "#include \"runtime/gen_support.h\"\n\n" << "namespace gen {\n\n";
-        if (blocks) em.o << kBlockBoundary;
+        if (profile) em.o << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
+        em.o << "#include \"runtime/gen_support.h\"\n";
+        if (profile) em.o << "#include \"runtime/i960_profile.h\"\n";
+        em.o << "\nnamespace gen {\n\n";
+        if (blocks) {
+            std::string b = kBlockBoundary;
+            if (profile) {
+                const std::string at = "    const uint64_t now = ls.count;\n";
+                b.replace(b.find(at), 0, "    ++rt::i960gen::events;\n");
+            }
+            em.o << b;
+        }
         em.o << "void " << name << "(Env &e) {\n"
              << "    rt::Cpu &c = e.c;\n    rt::Lockstep &ls = e.ls;\n"
-             << "    uint32_t *const R = c.m_r;\n    uint32_t &AC = c.m_AC;\n"
-             << "dispatch:\n    if (ls.finished()) return;\n    switch (c.m_IP) {\n";
+             << "    uint32_t *const R = c.m_r;\n    uint32_t &AC = c.m_AC;\n";
+        if (profile) em.o << "    uint64_t *const PH = rt::i960gen::block_hits;\n";
+        em.o << "dispatch:\n";
+        if (profile) em.o << "    ++rt::i960gen::dispatches;\n";
+        em.o << "    if (ls.finished()) return;\n    switch (c.m_IP) {\n";
         for (size_t i = 0; i < n; ++i) {
             const uint32_t a = insns[start + i]->addr;
             em.o << "    case " << hex(a) << ": ";
@@ -648,6 +732,15 @@ int main(int argc, char **argv) {
             const size_t i = k - start;
             em.leader = lead[i] != 0;
             em.block_end = blocks && (i + 1 == n || lead[i + 1]) ? len[i] : 0;
+            em.block_counter.clear();
+            if (profile) {
+                if (plead[i]) prof_blocks.push_back({in.addr, 0, {}});
+                rt::I960BlockInfo &bi = prof_blocks.back();
+                ++bi.length;
+                const auto ops = classify(in);
+                for (int op = 0; op < rt::kI960Ops; op++) bi.ops[op] = uint8_t(std::min(255, bi.ops[op] + ops[size_t(op)]));
+                if (i + 1 == n || plead[i + 1]) em.block_counter = "++PH[" + std::to_string(prof_blocks.size() - 1) + "];";
+            }
             const bool falls = em.emit(in);
             const uint32_t next = in.addr + in.length;
             const bool next_is_following = k + 1 < end && insns[k + 1]->addr == next;
@@ -664,8 +757,24 @@ int main(int argc, char **argv) {
     t << "// Generated by m2recomp. Derived from the game: never commit.\n";
     if (blocks) t << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
     if (chain) t << "// --fast_inaccuracy: gen::run chains chunks itself.\n";
-    t << "#include \"runtime/gen_support.h\"\n\n"
-      << "#include <algorithm>\n\nnamespace gen {\n\n";
+    if (profile) t << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
+    t << "#include \"runtime/gen_support.h\"\n";
+    if (profile) t << "#include \"runtime/i960_profile.h\"\n";
+    t << "\n#include <algorithm>\n\n";
+    if (profile) {
+        t << "#ifndef M2_I960_PROFILE\n#error \"i960 code generated with m2recomp --profile: build with M2_I960_PROFILE\"\n#endif\n"
+          << "namespace rt::i960gen {\n// Block: first address, instructions, contents (rt::I960Op order).\n"
+          << "const I960BlockInfo blocks[] = {\n";
+        for (const rt::I960BlockInfo &bi : prof_blocks) {
+            t << "    {" << hex(bi.start) << ", " << bi.length << ", {";
+            for (int k = 0; k < rt::kI960Ops; k++) t << (k ? "," : "") << unsigned(bi.ops[k]);
+            t << "}},\n";
+        }
+        t << "};\nconst uint32_t block_count = " << prof_blocks.size() << ";\n"
+          << "uint64_t block_hits[" << prof_blocks.size() << "];\nuint64_t dispatches, chunk_entries, events;\n"
+          << "} // namespace rt::i960gen\n\n";
+    }
+    t << "namespace gen {\n\n";
     for (size_t i = 0; i < ranges.size(); ++i) t << "void chunk_" << (i < 10 ? "00" : i < 100 ? "0" : "") << i << "(Env &);\n";
     t << "\nnamespace {\nconst uint32_t kAddrs[] = {\n";
     for (const Insn *in : insns) t << "    " << hex(in->addr) << ",\n";
@@ -695,13 +804,15 @@ int main(int argc, char **argv) {
           << "    do {\n"
           << "        const Range *r = chunk_of(e.c.m_IP);\n"
           << "        if (!r || r == prev) return;\n"
+          << (profile ? "        ++rt::i960gen::chunk_entries;\n" : "")
           << "        r->fn(e);\n"
           << "        prev = r;\n"
           << "    } while (!e.ls.finished());\n"
           << "}\n\n";
     } else {
         t << "void run(Env &e) {\n    const uint32_t a = e.c.m_IP;\n"
-          << "    for (const Range &r : kChunks)\n        if (a >= r.first && a <= r.last) { r.fn(e); return; }\n}\n\n";
+          << "    for (const Range &r : kChunks)\n        if (a >= r.first && a <= r.last) { "
+          << (profile ? "++rt::i960gen::chunk_entries; " : "") << "r.fn(e); return; }\n}\n\n";
     }
     t
       << "uint64_t native_instructions() { return " << native << "ull; }\n\n} // namespace gen\n";
@@ -714,6 +825,7 @@ int main(int argc, char **argv) {
 
     std::printf("m2recomp: %zu instructions from %zu seeds -> %zu chunks in %s, all native; %zu indirect sites\n",
                 insns.size(), all.size(), ranges.size(), out.c_str(), r.indirect_sites.size());
+    if (profile) std::printf("m2recomp: --profile: %zu blocks counted\n", prof_blocks.size());
     if (blocks)
         std::printf("m2recomp: --fast_inaccuracy: %zu basic blocks, %.2f instructions per block (not interrupt-exact), "
                     "direct chunk chaining\n",

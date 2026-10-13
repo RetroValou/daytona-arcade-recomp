@@ -145,6 +145,7 @@ public:
                double(now - window_start_) >= seconds * double(ticks_per_second);
     }
     uint64_t loops() const { return loops_; }
+    uint64_t total(Section s) const { return totals_[size_t(s)]; }
 
     struct Header {
         unsigned index = 0;

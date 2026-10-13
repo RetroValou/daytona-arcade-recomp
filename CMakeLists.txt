@@ -100,6 +100,8 @@ endif()
 add_library(runtime STATIC
     src/runtime/cpu.cpp
     src/runtime/tgp.cpp
+    src/runtime/tgp_profile.cpp
+    src/runtime/i960_profile.cpp
     src/runtime/m2_tgp_board.cpp
     src/runtime/geo.cpp
     src/runtime/raster.cpp
@@ -127,6 +129,18 @@ add_library(runtime STATIC
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
+# TGP profiling (src/runtime/tgp_profile.h; recompile.py --tgp-profile): needs TGP
+# code generated with m2tgprecomp --profile. m2run prints the report.
+option(M2_TGP_PROFILE "TGP time, work and hot blocks (m2tgprecomp --profile code)" OFF)
+if(M2_TGP_PROFILE)
+    target_compile_definitions(runtime PUBLIC M2_TGP_PROFILE=1)
+endif()
+# i960 profiling (src/runtime/i960_profile.h; recompile.py --i960-profile): needs i960
+# code generated with m2recomp --profile. m2run prints the report.
+option(M2_I960_PROFILE "i960 time, work, bus calls and hot blocks (m2recomp --profile code)" OFF)
+if(M2_I960_PROFILE)
+    target_compile_definitions(runtime PUBLIC M2_I960_PROFILE=1)
+endif()
 # 7z ROM sets: the 7-Zip LZMA SDK's decoder (public-domain files only),
 # fetched by scripts/setup.py into extern/lzma.
 set(LZMA_DIR ${CMAKE_SOURCE_DIR}/extern/lzma/C)

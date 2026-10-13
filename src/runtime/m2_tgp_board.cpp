@@ -95,7 +95,17 @@ void TgpBoard::fifo_w(uint32_t data) {
 }
 
 void TgpBoard::run_tgp() {
-    if (booted_) tgpgen::run(tgp_, UINT64_MAX); // until it waits on an empty input FIFO
+    if (!booted_) return;
+#ifdef M2_TGP_PROFILE
+    TgpProfile &prof = tgp_profile;
+    const uint64_t count = tgp_.count, start = prof.clock ? prof.clock() : 0;
+#endif
+    tgpgen::run(tgp_, UINT64_MAX); // until it waits on an empty input FIFO
+#ifdef M2_TGP_PROFILE
+    if (prof.clock) prof.ticks += prof.clock() - start;
+    ++prof.runs;
+    if (tgp_.count == count) ++prof.empty_runs;
+#endif
 }
 
 uint32_t TgpBoard::fifo_r() {
@@ -119,6 +129,9 @@ bool TgpBoard::fifo_pop(uint32_t &v) {
 }
 
 uint32_t TgpBoard::mem_r(uint32_t adr) {
+#ifdef M2_TGP_PROFILE
+    ++(adr & 0x800000 ? tgp_profile.bank_r_rom : adr & 0x400000 ? tgp_profile.bank_r_buffer : tgp_profile.bank_r_none);
+#endif
 #ifdef M2_DC_MEMORY
     if (adr & 0x800000) return rom_->dword(RomRegion::CoproData, (adr & 0x1fffff) * 4);
 #else
@@ -129,6 +142,9 @@ uint32_t TgpBoard::mem_r(uint32_t adr) {
 }
 
 void TgpBoard::mem_w(uint32_t adr, uint32_t v) {
+#ifdef M2_TGP_PROFILE
+    ++tgp_profile.bank_w;
+#endif
     if (adr & 0x400000) buffer_[adr & 0x7fff] = v;
 }
 

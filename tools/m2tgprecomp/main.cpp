@@ -1,6 +1,6 @@
 // m2tgprecomp: static recompiler for the TGP (Fujitsu MB86234) program.
 //
-//   m2tgprecomp TGP_PROGRAM.bin OUT.cpp [--fast_inaccuracy]
+//   m2tgprecomp TGP_PROGRAM.bin OUT.cpp [--fast_inaccuracy] [--profile]
 //
 // The TGP has no ROM of its own: at boot the i960 uploads a program (2,024
 // words for Daytona, stored in the game's data ROM; scripts/m2import.py
@@ -35,11 +35,20 @@
 // with Tgp::hook set: m2tgpcheck's per-instruction check), takes the default
 // code, unchanged.
 //
+// --profile (scripts/recompile.py and build_vita.py --tgp-profile): counts
+// the executions of every basic block (one increment at its end) and of the
+// dispatch switch, and writes a table of what each block holds (FIFO words,
+// I/O and memory accesses, ALU operations by kind, branches; TgpBlockInfo in
+// src/runtime/tgp_profile.h). The code must be built with M2_TGP_PROFILE,
+// whose runtime reports them. Results and counts are unchanged.
+//
 // The output is derived from the game: write it under build/ (git-ignored),
 // never commit it.
 
 #include "runtime/tgp.h"
+#include "runtime/tgp_profile.h"
 
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -76,6 +85,7 @@ struct Insn {
     bool computed = false;      // taken branch to a computed address (t.pc)
     bool cond_branch = false;   // branch is conditional (else: always taken)
     bool pushes = false;        // bsif/bsul: pc+1 is a return address
+    std::array<uint8_t, rt::kTgpOps> ops{}; // what it does (--profile's block contents)
 };
 
 std::string stall_check(uint32_t reg, uint32_t pc) {
@@ -89,14 +99,36 @@ Insn decode(uint32_t pc, uint32_t o) {
     const uint32_t type = (o >> 26) & 0x3f;
     auto bad = [&](const std::string &w) { in.known = false; in.why = w; return in; };
     in.known = true;
+    // --profile's contents: register-file FIFO and bank accesses, memory, ALU.
+    auto cnt = [&](rt::TgpOp k) { ++in.ops[k]; };
+    auto rr = [&](uint32_t reg) { if ((reg & 0x3f) == 0x21) cnt(rt::TgpOpFifoIn); };
+    auto wr = [&](uint32_t reg) {
+        if ((reg & 0x3f) == 0x22) cnt(rt::TgpOpFifoOut);
+        else if ((reg & 0x3f) == 0x23) cnt(rt::TgpOpBankW);
+    };
+    auto alu_ops = [&](uint32_t alu) {
+        switch (alu) {
+        case 0x00: break;
+        case 0x05: case 0x06: case 0x07: case 0x0c: case 0x13: case 0x14: cnt(rt::TgpOpFpAdd); break;
+        case 0x08: case 0x0d: cnt(rt::TgpOpFpMul); break;
+        case 0x09: case 0x0a: cnt(rt::TgpOpFpAdd); cnt(rt::TgpOpFpMul); break;
+        case 0x10: cnt(rt::TgpOpFpDiv); break;
+        case 0x0f: cnt(rt::TgpOpFpToInt); break;
+        case 0x0e: cnt(rt::TgpOpIntToFp); break;
+        default: cnt(rt::TgpOpIntAlu); break;
+        }
+    };
 
     if (type == 0x00 || type == 0x07) {
         const uint32_t r1 = o & 0x1ff, r2 = (o >> 9) & 0x1ff, alu = (o >> 21) & 0x1f, op = (o >> 18) & 7;
         if (!rt::Tgp::alu_known(alu)) return bad("alu op " + hx(alu) + " unimplemented in MAME");
         const std::string A = hx(alu), R1 = hx(r1), R2 = hx(r2);
         std::string b = "t.alu_pre<" + A + ">();";
+        alu_ops(alu);
         if (type == 0x00) { // lab
             std::string v1, v2;
+            cnt(rt::TgpOpDataR);
+            cnt(op == 0 || op == 1 ? rt::TgpOpIoR : rt::TgpOpDataR);
             if (op == 0 || op == 1) {
                 v1 = "t.data_r(t.ea_pre_0<" + R1 + ">())";
                 v2 = "t.io_r(t.ea_pre_1<" + R2 + ">())";
@@ -117,52 +149,64 @@ Insn decode(uint32_t pc, uint32_t o) {
         std::string m;
         switch (op) {
         case 0: case 1:
+            cnt(rt::TgpOpDataR), cnt(rt::TgpOpIoW);
             m = " { const uint32_t v = t.data_r(t.ea_pre_0<" + R1 + ">()); t.ea_post_0<" + R1 + ">();" + P1 +
                 " t.write_mem_io_1<" + R2 + ">(v); }";
             break;
         case 2:
+            cnt(rt::TgpOpIoR), cnt(rt::TgpOpDataW);
             m = " { const uint32_t v = t.io_r(t.ea_pre_0<" + R1 + ">()); t.ea_post_0<" + R1 + ">();" + P1 +
                 " t.write_mem_internal_1<" + R2 + ">(v, false); }";
             break;
         case 3:
+            cnt(rt::TgpOpDataR), cnt(rt::TgpOpDataW);
             m = " { const uint32_t v = t.data_r(t.ea_pre_0<" + R1 + ">()); t.ea_post_0<" + R1 + ">();" + P1 +
                 " t.write_mem_internal_1<" + R2 + ">(v, true); }";
             break;
         case 4:
+            cnt(rt::TgpOpDataR), cnt(rt::TgpOpDataW);
             m = " { const uint32_t v = t.data_r(uint16_t(t.ea_pre_0<" + R1 + ">() + 0x200)); t.ea_post_0<" + R1 + ">();" + P1 +
                 " t.write_mem_internal_1<" + R2 + ">(v, false); }";
             break;
         case 5:
+            cnt(rt::TgpOpProgR), cnt(rt::TgpOpDataW);
             m = " { const uint32_t v = t.prog_r(t.ea_pre_0<" + R1 + ">()); t.ea_post_0<" + R1 + ">();" + P1 +
                 " t.write_mem_internal_1<" + R2 + ">(v, false); }";
             break;
         case 7:
             switch (r2 >> 6) {
             case 0:
+                rr(r2), cnt(rt::TgpOpDataW);
                 m = " { const uint32_t v = t.read_reg<" + R2 + ">();" + stall_check(r2, pc) + P1 +
                     " t.write_mem_internal_1<" + R1 + ">(v, false); }";
                 break;
             case 1:
+                rr(r2), cnt(rt::TgpOpIoW);
                 m = " { const uint32_t v = t.read_reg<" + R2 + ">();" + stall_check(r2, pc) + P1 +
                     " t.write_mem_io_1<" + R1 + ">(v); }";
                 break;
             case 2:
+                cnt(rt::TgpOpDataR), wr(r2);
                 m = " { const uint32_t v = t.data_r(uint16_t(t.ea_pre_1<" + R1 + ">() + 0x200)); t.ea_post_1<" + R1 + ">();" +
                     P1 + " t.write_reg<" + R2 + ">(v); }";
                 break;
             case 3:
+                cnt(rt::TgpOpDataR), wr(r2);
                 m = " { const uint32_t v = t.data_r(t.ea_pre_1<" + R1 + ">()); t.ea_post_1<" + R1 + ">();" + P1 +
                     " t.write_reg<" + R2 + ">(v); }";
                 break;
             case 4:
+                cnt(rt::TgpOpIoR), wr(r2);
                 m = " { const uint32_t v = t.io_r(t.ea_pre_1<" + R1 + ">()); t.ea_post_1<" + R1 + ">();" + P1 +
                     " t.write_reg<" + R2 + ">(v); }";
                 break;
             case 5:
+                cnt(rt::TgpOpProgR), wr(r2);
                 m = " { const uint32_t v = t.prog_r(t.ea_pre_0<" + R1 + ">()); t.ea_post_0<" + R1 + ">();" + P1 +
                     " t.write_reg<" + R2 + ">(v); }";
                 break;
             case 6:
+                rr(r1), wr(r2);
                 m = " { const uint32_t v = t.read_reg<" + R1 + ">();" + stall_check(r1, pc) + P1 +
                     " t.write_reg<" + R2 + ">(v); }";
                 break;
@@ -194,6 +238,7 @@ Insn decode(uint32_t pc, uint32_t o) {
         if (!rt::Tgp::alu_known(alu)) return bad("alu op " + hx(alu) + " unimplemented in MAME");
         const std::string A = hx(alu);
         std::string b = "t.alu_pre<" + A + ">();";
+        alu_ops(alu);
         switch (sub2) {
         case 0: // clr0
             if (o & 0x0004) b += " t.a = 0;";
@@ -203,6 +248,8 @@ Insn decode(uint32_t pc, uint32_t o) {
         case 1: break; // clr1: MAME does nothing (flag mapping unknown)
         case 2: // rep: MAME skips the ALU post and the repeat check
             in.is_rep = true;
+            cnt(rt::TgpOpRep);
+            if (o & 0x8000) rr(o);
             if (o & 0x8000)
                 in.body = b + " { const uint8_t n = uint8_t(t.read_reg<" + hx(o & 0x3f) + ">());" + stall_check(o, pc) + " t.r = n; }";
             else
@@ -215,6 +262,7 @@ Insn decode(uint32_t pc, uint32_t o) {
         return in;
     }
     if (type >= 0x10 && type <= 0x1f) { // ldi
+        wr((o >> 24) & 0x3f);
         in.body = "t.write_reg<" + hx((o >> 24) & 0x3f) + ">(" + hx(rt::Tgp::sext24(o)) + ");";
         return in;
     }
@@ -225,6 +273,9 @@ Insn decode(uint32_t pc, uint32_t o) {
         const std::string C = hx(cond);
         const std::string ea = hx(o & 0x1ff);
         in.cond_branch = !(cond == 0x16 && !invert);
+        cnt(sub == 1 || sub == 3 || sub == 5 ? rt::TgpOpComputed : rt::TgpOpBranch);
+        if (sub == 1 || sub == 3) { if (o & 0x4000) rr(o); else cnt(rt::TgpOpDataR); }
+        if (sub == 6) { cnt(rt::TgpOpDataR); wr((o >> 9) & 0x3f); }
         std::string b = "const bool c = " + std::string(invert ? "!" : "") + "t.cond<" + C + ">(); if (c) {";
         switch (sub) {
         case 0: b += " }"; in.const_target = int(data); break;
@@ -258,10 +309,14 @@ Insn decode(uint32_t pc, uint32_t o) {
 } // namespace
 
 int main(int argc, char **argv) {
-    bool fast = false;
-    if (argc == 4 && !std::strcmp(argv[3], "--fast_inaccuracy")) fast = true;
-    else if (argc != 3) {
-        std::fprintf(stderr, "usage: m2tgprecomp TGP_PROGRAM.bin OUT.cpp [--fast_inaccuracy]\n");
+    bool fast = false, profile = false, usage = argc < 3;
+    for (int i = 3; i < argc; i++) {
+        if (!std::strcmp(argv[i], "--fast_inaccuracy")) fast = true;
+        else if (!std::strcmp(argv[i], "--profile")) profile = true;
+        else usage = true;
+    }
+    if (usage) {
+        std::fprintf(stderr, "usage: m2tgprecomp TGP_PROGRAM.bin OUT.cpp [--fast_inaccuracy] [--profile]\n");
         return 2;
     }
     std::ifstream f(argv[1], std::ios::binary);
@@ -330,6 +385,17 @@ int main(int argc, char **argv) {
     }
     for (uint32_t pc = n; pc-- > 0;) len[pc] = !lead[pc + 1] ? len[pc + 1] : pos[pc] + 1;
 
+    // --profile: each word's block and each block's contents.
+    std::vector<uint32_t> block_of(n);
+    std::vector<rt::TgpBlockInfo> block_info;
+    for (uint32_t pc = 0; pc < n; pc++) {
+        if (lead[pc]) block_info.push_back({uint16_t(pc), 0, {}});
+        rt::TgpBlockInfo &bi = block_info.back();
+        block_of[pc] = uint32_t(block_info.size() - 1);
+        ++bi.length;
+        for (int k = 0; k < rt::kTgpOps; k++) bi.ops[k] = uint8_t(std::min(255, bi.ops[k] + ins[pc].ops[size_t(k)]));
+    }
+
     auto with_stall = [](std::string body, const std::string &fix) {
         for (size_t at; (at = body.find("@STALL@")) != std::string::npos;) body.replace(at, 7, fix);
         return body;
@@ -339,6 +405,7 @@ int main(int argc, char **argv) {
     // budget, hook); otherwise --fast_inaccuracy's block-counted copy.
     auto emit_program = [&](std::ostringstream &o, bool counted) {
         o << "dispatch:\n";
+        if (profile) o << "    ++dispatches;\n";
         if (counted) o << "    if (t.count >= budget) return;\n";
         o << "    switch (t.pc) {\n";
         for (uint32_t pc = 0; pc < n; pc++) {
@@ -369,6 +436,7 @@ int main(int argc, char **argv) {
             std::string count;
             if (counted) count = "++t.count; M2TGP_HOOK(" + hx(pc) + ");";
             else if (block_end) count = len[pc] == 1 ? "++t.count;" : "t.count += " + std::to_string(len[pc]) + "u;";
+            if (profile && block_end) count += " ++block_hits[" + std::to_string(block_of[pc]) + "];";
             const std::string fix = counted || !pos[pc] ? "" : " t.count += " + std::to_string(pos[pc]) + "u;";
             o << "    { " << with_stall(in.body, fix) << "\n      " << count << "\n";
             if (after_rep) o << "      if (t.r != 1) { t.r--; goto L_" << std::hex << pc << std::dec << "; }\n";
@@ -388,12 +456,27 @@ int main(int argc, char **argv) {
     o << "// Generated by m2tgprecomp from the TGP program the i960 uploads.\n"
          "// Derived from the game: never commit.\n";
     if (fast) o << "// --fast_inaccuracy: block-counted copy for the calls without a budget.\n";
-    o << "#include \"runtime/tgp.h\"\n\n"
+    if (profile) o << "// --profile: block and dispatch counters (M2_TGP_PROFILE).\n";
+    o << "#include \"runtime/tgp.h\"\n";
+    if (profile) o << "#include \"runtime/tgp_profile.h\"\n";
+    o << "\n"
          "// Test builds (M2TGP_WITH_HOOK) call Tgp::hook after every instruction.\n"
          "#ifdef M2TGP_WITH_HOOK\n#define M2TGP_HOOK(pc) if (t.hook) t.hook(t, pc)\n#else\n#define M2TGP_HOOK(pc)\n#endif\n\n"
          "namespace rt::tgpgen {\n\n"
       << "const uint32_t program_crc32 = " << hx(crc32(raw)) << ";\n"
       << "const uint32_t program_words = " << n << ";\n\n";
+    if (profile) {
+        o << "#ifndef M2_TGP_PROFILE\n#error \"TGP code generated with m2tgprecomp --profile: build with M2_TGP_PROFILE\"\n#endif\n"
+          << "// Block: first word, instructions, contents (rt::TgpOp order).\n"
+          << "const TgpBlockInfo blocks[] = {\n";
+        for (const rt::TgpBlockInfo &bi : block_info) {
+            o << "    {" << hx(bi.start) << ", " << bi.length << ", {";
+            for (int k = 0; k < rt::kTgpOps; k++) o << (k ? "," : "") << unsigned(bi.ops[k]);
+            o << "}},\n";
+        }
+        o << "};\nconst uint32_t block_count = " << block_info.size() << ";\n"
+          << "uint64_t block_hits[" << block_info.size() << "];\nuint64_t dispatches;\n\n";
+    }
     if (!fast) {
         o << "void run(Tgp &t, uint64_t budget) {\n";
         emit_program(o, true);
@@ -424,6 +507,7 @@ int main(int argc, char **argv) {
     for (auto &i : ins) known += i.known;
     std::printf("m2tgprecomp: %u words, %zu instructions MAME implements, %zu reachable by constant flow; all native\n", n,
                 known, seen.size());
+    if (profile) std::printf("m2tgprecomp: --profile: %zu blocks counted\n", block_info.size());
     if (fast)
         std::printf("m2tgprecomp: --fast_inaccuracy: %zu basic blocks, %.2f words per block, unbudgeted calls count per block\n",
                     blocks, double(n) / double(blocks));

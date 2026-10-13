@@ -84,7 +84,7 @@ def direct_ram(folder):
     print(f"build_vita: {stats['wram']} work-RAM accesses direct", flush=True)
 
 
-def vita_code(host, gen, build, mode, game):
+def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=False):
     """The game code of the Vita build, made here from the host build's tools and ROM
     cache (scripts/recompile.py, run once in any mode): the host's own generated code
     and the desktop build are left as they are. Into BUILD_DIR/gen_vita:
@@ -97,7 +97,8 @@ def vita_code(host, gen, build, mode, game):
 
     TGP always m2tgprecomp --fast_inaccuracy: the game's unbudgeted calls counted once
     per basic block, without the budget test; exact (the TGP has no interrupts). The
-    68000 code as the host generated it."""
+    68000 code as the host generated it. tgp_profile: the TGP code with m2tgprecomp's
+    block counters (--profile); i960_profile: the i960 code with m2recomp's (--profile)."""
     cache = host / "rom_cache" / game
     i960_tool, tgp_tool = host_tool(host, "m2recomp"), host_tool(host, "m2tgprecomp")
     for need in (i960_tool, tgp_tool, cache / "program.bin", cache / "tgp_program.bin"):
@@ -113,6 +114,8 @@ def vita_code(host, gen, build, mode, game):
         i960 += ["--hooks", f"seeds/{game}_hooks.txt"]
     if mode != "fast_gen":
         i960.append("--fast_inaccuracy")
+    if i960_profile:
+        i960.append("--profile")
     run(i960, os.environ)
     i960_out = tmp / "i960"
     if mode == "fast_inaccuracy":
@@ -120,7 +123,8 @@ def vita_code(host, gen, build, mode, game):
     elif mode == "fast_gen":
         run([sys.executable, ROOT / FAST_GEN, i960_out, tmp / "i960_fast_gen"], os.environ)
         i960_out = tmp / "i960_fast_gen"
-    run([tgp_tool, cache / "tgp_program.bin", tmp / "tgp/tgp_gen.cpp", "--fast_inaccuracy"], os.environ)
+    run([tgp_tool, cache / "tgp_program.bin", tmp / "tgp/tgp_gen.cpp", "--fast_inaccuracy",
+         *(["--profile"] if tgp_profile else [])], os.environ)
     out = build / "gen_vita"
     sync(i960_out, out / game)
     sync(tmp / "tgp", out / f"{game}_tgp")
@@ -183,6 +187,12 @@ def main(argv=None):
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
     mode.add_argument("--release", action="store_true", help="fastest build: no diagnostic logging + link-time optimization (LTO; longer link, more host memory)")
+    ap.add_argument("--tgp-profile", action="store_true",
+                    help="TGP profiling in perf.log (time, work, unit costs, hottest blocks; src/runtime/tgp_profile.h); "
+                         "implies --diagnostics, needs --fast-inaccuracy or --fast-gen (the TGP code is made here)")
+    ap.add_argument("--i960-profile", action="store_true",
+                    help="i960 profiling in perf.log (time, work, bus calls by region, hottest blocks; "
+                         "src/runtime/i960_profile.h); implies --diagnostics, needs --fast-inaccuracy (the i960 code is made here)")
     code = ap.add_mutually_exclusive_group()
     code.add_argument("--fast-inaccuracy", dest="code", action="store_const", const="fast_inaccuracy",
                       help="Vita game code made here (BUILD_DIR/gen_vita): i960 m2recomp --fast_inaccuracy with direct "
@@ -194,9 +204,13 @@ def main(argv=None):
     game = GAMES[args.set]
     if args.host_build_dir is None:
         args.host_build_dir = Path(host_build_dir(args.set))
+    if args.tgp_profile or args.i960_profile:
+        args.diagnostics = True  # checked against --release below
     if args.build_dir is None:
         same_app = game["vita_title_id"] == GAMES[DEFAULT]["vita_title_id"]
         args.build_dir = Path("build/vita" if same_app else "build/vita-" + args.set)
+        if args.diagnostics:  # its own build directory: the release one is left as it is
+            args.build_dir = Path(str(args.build_dir) + "-diag")
     if args.title_id and not re.fullmatch(r"[A-Z]{4}[0-9]{5}", args.title_id):
         ap.error("--title-id must be 4 capital letters and 5 digits")
     gpu_build = args.gpu_fast or args.gpu_gl
@@ -208,6 +222,17 @@ def main(argv=None):
         # Only the modes checked on the set (scripts/games.py vita_fast).
         flag = "--" + args.code.replace("_", "-")
         ap.error(f"{flag} has not been checked on {args.set}; build it without it (the host-generated code)")
+    for flag, on in (("--tgp-profile", args.tgp_profile), ("--i960-profile", args.i960_profile)):
+        if not on:
+            continue
+        if args.release:
+            ap.error(f"{flag} writes perf.log: it needs --diagnostics, not --release")
+        if not args.code:
+            ap.error(f"{flag} makes the game code here: add --fast-inaccuracy" + (" or --fast-gen" if flag == "--tgp-profile" else ""))
+        if not gpu_build:
+            ap.error(f"{flag} reports in perf.log: --gpu-fast or --gpu-gl")
+    if args.i960_profile and args.code == "fast_gen":
+        ap.error("--i960-profile needs --fast-inaccuracy (fast_gen.py does not know the block counters)")
     if args.free_core and not gpu_build:
         ap.error("--free-core applies to the GPU builds (--gpu-fast or --gpu-gl)")
     if args.jobs < 1:
@@ -238,10 +263,18 @@ def main(argv=None):
         missing = sorted(n for n in names if not any(f"rt::hook_{n}(" in text for text in sources))
         if missing:
             ap.error(f"generated game code lacks the hooks {', '.join(missing)}; regenerate with scripts/recompile.py")
-    title_id = args.title_id or game["vita_title_id"]
+    # A diagnostics build is its own app (title ID with a 9 as its first digit,
+    # "(diagnostics)" in its name), installed next to the release, not over it.
+    title_id = args.title_id or (game["vita_title_id"][:4] + "9" + game["vita_title_id"][5:] if args.diagnostics
+                                 else game["vita_title_id"])
+    app_name = game["vita_name"] + (" (diagnostics)" if args.diagnostics and not args.title_id else "")
     code = "host-generated (scripts/recompile.py output as is)"
     if args.code and not args.compile_check:
-        gen, code = vita_code(host, gen, build, args.code, args.set)
+        gen, code = vita_code(host, gen, build, args.code, args.set, args.tgp_profile, args.i960_profile)
+        if args.tgp_profile:
+            code += ", TGP block counters (--tgp-profile)"
+        if args.i960_profile:
+            code += ", i960 block counters (--i960-profile)"
     vitagl_dir = (ROOT / args.vitagl_dir).resolve()
     vitagl = vitagl_summary(vitagl_dir) if args.gpu_gl else "-"
     env = os.environ.copy()
@@ -252,12 +285,14 @@ def main(argv=None):
          f"-DDAYTONA_GEN_ROOT={gen}",
          f"-DDAYTONA_VITA_ROMSET={args.set}",
          f"-DDAYTONA_VITA_TITLEID={title_id}",
-         f"-DDAYTONA_VITA_GAME_NAME={game['vita_name']}",
+         f"-DDAYTONA_VITA_GAME_NAME={app_name}",
          f"-DDAYTONA_VITA_COMPANION={game['companion'] or ''}",
          f"-DDAYTONA_VITA_REV_A_SELF={(ROOT / args.revision_a_self).resolve() if args.revision_a_self else ''}",
          f"-DDAYTONA_VITA_RENDER_OPT={'OFF' if args.reference_renderer else 'ON'}",
          f"-DDAYTONA_VITA_FAST_PATHS={'OFF' if args.no_fast_paths else 'ON'}",
          f"-DDAYTONA_VITA_DIAGNOSTICS={'ON' if args.diagnostics else 'OFF'}",
+         f"-DDAYTONA_VITA_TGP_PROFILE={'ON' if args.tgp_profile else 'OFF'}",
+         f"-DDAYTONA_VITA_I960_PROFILE={'ON' if args.i960_profile else 'OFF'}",
          f"-DDAYTONA_VITA_LTO={'ON' if args.release else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_FAST={'ON' if args.gpu_fast else 'OFF'}",
          f"-DDAYTONA_VITA_GPU_GL={'ON' if args.gpu_gl else 'OFF'}",

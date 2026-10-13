@@ -7,6 +7,7 @@
 
 #include "runtime/rom_source.h"
 #include "runtime/tgp.h"
+#include "runtime/tgp_profile.h"
 
 #include <cstdint>
 #include <deque>
@@ -47,6 +48,7 @@ public:
     uint32_t *buffer_data() { return buffer_; }             // the geometrizer reads its display list here
     uint32_t geo_read_start() const { return geo_read_start_; }
     uint64_t tgp_instructions() const { return tgp_.count; }
+    const uint32_t *table_data() const { return tables_.data(); } // copro_tgp_tables (TGP profiling's benchmark)
     bool booted() const { return booted_; }
     // Run the TGP until it waits on an empty input FIFO. The game polls the
     // TGP's mailbox in buffer RAM for results; the TGP must have caught up.

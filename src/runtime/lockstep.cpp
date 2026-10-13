@@ -1,4 +1,5 @@
 #include "runtime/lockstep.h"
+#include "runtime/i960_profile.h"
 
 #include <cinttypes>
 #include <cstdio>
@@ -71,7 +72,15 @@ bool Lockstep::apply() {
             auto call = std::move(calls_[fn]);
             calls_[fn] = nullptr;
             free_calls_.push_back(fn);
+#ifdef M2_I960_PROFILE
+            I960Profile &prof = i960_profile;
+            const uint64_t start = prof.clock ? prof.clock() : 0;
             call();
+            if (prof.clock) prof.board_ticks += prof.clock() - start;
+            ++prof.board_calls;
+#else
+            call();
+#endif
         } else if (e.kind == Event::Line) {
             ++next_;
             core_.execute_set_input(e.a, e.b);

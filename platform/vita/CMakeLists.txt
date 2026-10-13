@@ -134,7 +134,7 @@ target_compile_options(vita_ymfm PRIVATE -w)
 # The same native runtime as the desktop; no refcore or interpreter is linked.
 # geo.cpp is replaced by its Vita version (platform/vita/src/runtime/geo.cpp),
 # which compiles the original unchanged and runs it on its own core.
-set(RUNTIME_FILES cpu tgp m2_tgp_board raster video m2_board game_loop zip rom_import
+set(RUNTIME_FILES cpu tgp tgp_profile i960_profile m2_tgp_board raster video m2_board game_loop zip rom_import
     archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
     scsp scsp_board comm_board)
 set(RUNTIME_SOURCES)
@@ -167,6 +167,18 @@ target_compile_definitions(vita_runtime PUBLIC M2_FAST_GEN=1)
 option(DAYTONA_VITA_FAST_PATHS "Shared runtime fast paths (M2_FAST_BUS/TGP/CPU/GEO)" ON)
 if(DAYTONA_VITA_FAST_PATHS)
     target_compile_definitions(vita_runtime PUBLIC M2_FAST_BUS=1 M2_FAST_TGP=1 M2_FAST_CPU=1 M2_FAST_GEO=1)
+endif()
+# TGP profiling (build_vita.py --tgp-profile, src/runtime/tgp_profile.h): a TGP section
+# in perf.log (diagnostics builds); the TGP code is generated with m2tgprecomp --profile.
+option(DAYTONA_VITA_TGP_PROFILE "TGP time, work and hot blocks in perf.log" OFF)
+if(DAYTONA_VITA_TGP_PROFILE)
+    target_compile_definitions(vita_runtime PUBLIC M2_TGP_PROFILE=1)
+endif()
+# i960 profiling (build_vita.py --i960-profile, src/runtime/i960_profile.h): an i960 section
+# in perf.log (diagnostics builds); the i960 code is generated with m2recomp --profile.
+option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in perf.log" OFF)
+if(DAYTONA_VITA_I960_PROFILE)
+    target_compile_definitions(vita_runtime PUBLIC M2_I960_PROFILE=1)
 endif()
 option(DAYTONA_VITA_RENDER_OPT "Exact tile/layer caching and optimized CPU rasterizer" ON)
 if(DAYTONA_VITA_RENDER_OPT)

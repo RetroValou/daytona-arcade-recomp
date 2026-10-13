@@ -10,6 +10,7 @@
 // THIRD_PARTY.md.
 
 #include "runtime/m2_board.h"
+#include "runtime/i960_profile.h"
 
 #include <algorithm>
 
@@ -707,7 +708,25 @@ uint32_t M2Board::fetch(uint32_t addr) {
     return v;
 }
 
+#ifdef M2_I960_PROFILE
+void M2Board::prof_bus(uint32_t addr, bool write) {
+    I960BusRegion r;
+    if ((addr & 0xffff8000u) == 0x00880000u || (addr & ~3u) == 0x00980004u || addr - 0x00900000u < 0x80000u) r = BusTgp;
+    else switch (page(addr).kind) {
+        case Ram: r = addr - 0x00500000u < 0x100000u ? BusWorkRam : BusRam; break;
+        case Rom: r = BusRom; break;
+        case Tex: r = BusTex; break;
+        case Dev: r = BusDev; break;
+        default: r = BusUnmapped; break;
+        }
+    ++(write ? i960_profile.bus_w : i960_profile.bus_r)[r];
+}
+#endif
+
 uint8_t M2Board::read_byte(uint32_t addr) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, false);
+#endif
 #ifdef M2_FAST_BUS
     if ((addr >> kPageBits) == fast_read_page_ && addr != 0x00500000u) return fast_read_base_[addr & 0xfff];
 #endif
@@ -760,6 +779,9 @@ uint8_t M2Board::read_byte(uint32_t addr) {
 }
 
 uint16_t M2Board::read_word(uint32_t addr) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, false);
+#endif
     addr &= ~1u;
 #ifdef M2_FAST_BUS
     if ((addr >> kPageBits) == fast_read_page_) {
@@ -794,6 +816,9 @@ uint16_t M2Board::read_word(uint32_t addr) {
 }
 
 uint32_t M2Board::read_dword(uint32_t addr) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, false);
+#endif
     addr &= ~3u;
 #ifdef M2_FAST_BUS
     // The TGP's FIFO, status and buffer RAM (dev_read's answers), without the
@@ -837,6 +862,9 @@ uint32_t M2Board::read_dword(uint32_t addr) {
 }
 
 void M2Board::write_byte(uint32_t addr, uint8_t data) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, true);
+#endif
 #ifdef M2_FAST_BUS
     if ((addr >> kPageBits) == fast_write_page_) {
         fast_write_base_[addr & 0xfff] = data;
@@ -863,6 +891,9 @@ void M2Board::write_byte(uint32_t addr, uint8_t data) {
 }
 
 void M2Board::write_word(uint32_t addr, uint16_t data) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, true);
+#endif
     addr &= ~1u;
 #ifdef M2_FAST_BUS
     if ((addr >> kPageBits) == fast_write_page_) {
@@ -889,6 +920,9 @@ void M2Board::write_word(uint32_t addr, uint16_t data) {
 }
 
 void M2Board::write_dword(uint32_t addr, uint32_t data) {
+#ifdef M2_I960_PROFILE
+    prof_bus(addr, true);
+#endif
     addr &= ~3u;
 #ifdef M2_FAST_BUS
     // The TGP's function port and FIFO (dev_write's, all lanes written),

@@ -2,7 +2,7 @@
 """Recompile the game's i960 code, its TGP program and the sound board's 68000
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
-  recompile.py [--set SET] [--build-dir build] [--config Release] [--fast_inaccuracy]
+  recompile.py [--set SET] [--build-dir build] [--config Release] [--fast_inaccuracy] [--tgp-profile] [--i960-profile]
 
 Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored),
 or under one of the other archive names scripts/games.py gives that set (a
@@ -25,6 +25,11 @@ for slow targets, above all the PS Vita:
   3. for calls without an instruction budget (the game's): the instruction
      count once per basic block and no budget test at each branch. Results
      and counts stay those of the default output (the TGP has no interrupts).
+--tgp-profile: TGP code with block counters (m2tgprecomp --profile) and the
+runtime's TGP profiling (CMake M2_TGP_PROFILE): m2run prints where the TGP's
+time goes (src/runtime/tgp_profile.h). Results unchanged; run again without
+it to go back. --i960-profile: the same for the i960 (m2recomp --profile,
+CMake M2_I960_PROFILE, src/runtime/i960_profile.h).
 The lockstep and trace comparisons need the default output. Off by default;
 run again without it to go back.
 """
@@ -35,6 +40,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from build_jobs import build_jobs  # noqa: E402
 from games import DEFAULT, GAMES  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -72,6 +78,10 @@ def main():
     ap.add_argument("--fast_inaccuracy", action="store_true",
                     help="recompiler speed options (i960 block bookkeeping and direct chunk chaining, TGP block counting): faster (PS Vita), "
                          "not interrupt-exact against MAME")
+    ap.add_argument("--tgp-profile", action="store_true",
+                    help="TGP profiling: block counters in the TGP code, time and work report in m2run")
+    ap.add_argument("--i960-profile", action="store_true",
+                    help="i960 profiling: block counters in the i960 code, time, work and bus report in m2run")
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
@@ -79,8 +89,14 @@ def main():
     roms = [r for r in roms if os.path.exists(r)]
 
     build_cmd = ["cmake", "--build", build, "--config", args.config]
-    # the build directory is for one ROM set (CMake's M2_ROMSET)
-    run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set])
+    # the build directory is for one ROM set (CMake's M2_ROMSET); a new one gets
+    # --config as its build type, as setup.py does (none is -O0, where SoftFloat's
+    # inline helpers are not emitted and test_fp does not link)
+    fresh = not os.path.exists(os.path.join(build, "CMakeCache.txt"))
+    run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set,
+         "-DM2_TGP_PROFILE=" + ("ON" if args.tgp_profile else "OFF"),
+         "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF")] +
+        (["-DCMAKE_BUILD_TYPE=" + args.config] if fresh else []))
     if not all(os.path.exists(os.path.join(cache, f)) for f in ("tgp_program.bin", "sound_program.bin", "pcm1.bin", "samples.bin")):
         if not roms:
             sys.exit(f"recompile: put your ROM set at roms/{args.set}.zip (or .7z) first")
@@ -101,11 +117,14 @@ def main():
         recomp += ["--hooks", hooks]
     if args.fast_inaccuracy:
         recomp += ["--fast_inaccuracy"]
+    if args.i960_profile:
+        recomp += ["--profile"]
     run(recomp)
     tgp = os.path.join(build, "gen", args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)
     run([tool(build, args.config, "m2tgprecomp"), os.path.join(cache, "tgp_program.bin"),
-         os.path.join(tgp, "tgp_gen.cpp")] + (["--fast_inaccuracy"] if args.fast_inaccuracy else []))
+         os.path.join(tgp, "tgp_gen.cpp")] + (["--fast_inaccuracy"] if args.fast_inaccuracy else []) +
+        (["--profile"] if args.tgp_profile else []))
 
     snd = os.path.join(build, "gen", args.set + "_snd")
     os.makedirs(snd, exist_ok=True)
@@ -115,7 +134,7 @@ def main():
         (["--seeds", snd_seeds] if os.path.exists(os.path.join(ROOT, snd_seeds)) else []))
 
     run(["cmake", "-S", ".", "-B", build])  # picks up the generated sources
-    run(build_cmd + ["--parallel"])  # the game (daytona, m2run) and the check tools
+    run(build_cmd + ["--parallel", str(build_jobs())])  # the game (daytona, m2run) and the check tools
 
 
 if __name__ == "__main__":

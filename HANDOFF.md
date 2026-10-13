@@ -1,5 +1,76 @@
 # Handoff
 
+## i960 and TGP profiling for the Vita's optimisation choices (2026-10-13)
+
+Measurement only: what the i960 and the TGP cost on the Vita, to choose
+what to optimise. With both flags off the runtime and the generated code
+are unchanged.
+
+`--tgp-profile` / `--i960-profile` on recompile.py (CMake M2_TGP_PROFILE /
+M2_I960_PROFILE, m2run prints the reports) and on build_vita.py
+(DAYTONA_VITA_TGP_PROFILE / DAYTONA_VITA_I960_PROFILE, sections in each
+perf.log report; imply --diagnostics, need --fast-inaccuracy, the TGP one
+also takes --fast-gen, and a GPU build).
+- TGP (src/runtime/tgp_profile.h): m2tgprecomp --profile counts each basic
+  block at its end and writes its contents (FIFO, I/O, data RAM, FP by kind,
+  branches); the runtime times run_tgp, counts table ports and banks, and
+  micro-benchmarks unit costs at game start.
+- i960 (src/runtime/i960_profile.h): m2recomp --profile, the same per block
+  (bus loads/stores in words, ALU, mul, div, compares, branches, calls/rets,
+  indirect, FP, libm, sys), dispatches, chunk entries, lockstep slow paths.
+  The runtime times gen::run (GameLoop::run_generated) and, inside it, the
+  Lockstep callbacks (board events: vblank, rendering in m2run, timers),
+  and counts M2Board bus calls by region (work RAM, other RAM, ROM,
+  texture, TGP, devices). "i960 alone" = gen::run - callbacks - TGP.
+
+Diagnostics Vita builds (build_vita.py --diagnostics, or a profile flag) are
+their own app: title ID with a 9 as first digit (DAYT90093, SRAL90094), name
+"... (diagnostics)", build dir build/vita-diag (or vita-SET-diag); the
+release install and build are left alone. Same ux0:data/SET folder.
+
+PC (this machine, Release, race 3,000 frames, both profilers): counts, last
+screen hash, the 12 frame dumps and the WAV identical to the build without
+(daytona93 race_basic: 79,926,273 i960, 61,962,319 TGP, 5d4b1b641acf6f5b;
+srallyc race, TGP only: 4b73fca0c3d6b13e). ctest 19/19, Python 37/37.
+Daytona: i960 alone 0.163 ms a frame, 26,642 instructions, 6.1 ns each;
+board callbacks inside gen::run 3.53 ms; TGP 0.036 ms, 2 ns per instruction.
+i960 per frame: 5,346 blocks of 5.0 instructions, 1,020 dispatches, 298
+calls, 300 rets, 55 divides; 12,623 bus calls (work RAM 6,339, TGP 2,739,
+ROM 1,783). Hottest i960 block 0x12b0 (2 instructions, 1,199 runs a frame,
+9 %: a wait loop).
+
+Vita hardware, Daytona, TGP profile only (extern/result_perf_vita, not
+committed): full speed (57.3-57.6 fps), core 0 busy 50-88 % in the race.
+TGP 0.9-3.0 ms a frame = 20-36 % of the i960+TGP lines; ~48,000 TGP
+instructions a frame at 46-54 ns = 20-24 cycles each (PC: 1.8-2 ns).
+Known costs (FP, tables, banks, FIFO) explain 6 %: the rest is the code
+around each instruction. Likely (from the generated code, not yet checked in
+ARM assembly): the TGP's registers are struct fields that alias data[]
+(uint32_t both), so every data RAM store forces reloads; the ALU flags
+(stset_fp, st) are computed for every op though rarely read; alu_r1/r2 go
+through memory; one-instruction rep loops (blocks 262, 269: 1,872 runs a
+frame) pay a whole block end each turn. Ideas for m2tgprecomp (bit-exact):
+block-local copies of a,b,d,p,st,x0/x1..., dead flag elimination, rep as a
+C loop. Expected 1-2 ms a frame in the race, to be measured.
+The Vita micro-benchmark is not usable: fp add+mul and fifo read 0.0 ns
+(the loop is optimised away or below the 14 ns loop cost); the clock read
+costs 0.69 us there (~0.15-0.2 ms a frame around the TGP's runs).
+fpscr on the Vita is 0x83000010 (bit 24, flush to zero, looks set): not
+checked against MAME's denormals.
+
+Next: run the Daytona probe VPK (both profiles) on the Vita, read the i960
+section: cycles per i960 instruction, the share of bus calls, the hottest
+blocks; then pick the first optimisation (TGP block-local registers or the
+i960's).
+
+`scripts/build_jobs.py`: recompile.py and setup.py passed a bare
+`--parallel` (make -j unbounded): a fresh srallyc build started 433 compilers
+at once (~26 GB) and the OOM killer took the desktop down. Now min(CPUs,
+available MB / 600), M2_BUILD_JOBS overrides. recompile.py now gives a new
+build directory its build type (--config, Release), as setup.py does: with
+none (-O0) test_fp and fp_vs_mame do not link (SoftFloat's INLINE_LEVEL=5
+helpers are not emitted), which is how build-srallyc was broken.
+
 ## README for the fork (2026-10-13)
 
 README.md now introduces this project: a Model 2 static recompiler for the

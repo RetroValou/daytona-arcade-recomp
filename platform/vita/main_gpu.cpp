@@ -22,6 +22,8 @@
 #include "gpu_text.h"
 #include "imgui_vita.h"
 #include "runtime/game_loop.h"
+#include "runtime/i960_profile.h"
+#include "runtime/tgp_profile.h"
 #include "runtime/game.h"
 #include "runtime/test_hold.h"
 #include "runtime/rom_import.h"
@@ -587,6 +589,15 @@ int main(int, char **) {
 
     // Per-core profiling (perf.log, diagnostics builds). Reports cover gameplay only.
     vita::CoreProfiler core_profile;
+#ifdef M2_TGP_PROFILE
+    // TGP profiling (build_vita.py --tgp-profile): a TGP section in each perf.log report.
+    rt::TgpBench tgp_bench;
+    rt::TgpProfileReport tgp_report;
+#endif
+#ifdef M2_I960_PROFILE
+    // i960 profiling (build_vita.py --i960-profile): an i960 section in each perf.log report.
+    rt::I960ProfileReport i960_report;
+#endif
     vita::PerfLog perf_file;
     unsigned perf_index = 0;
     unsigned audio_gaps_seen = 0; // reference audio underruns already reported
@@ -831,6 +842,17 @@ int main(int, char **) {
                         active_native_audio ? "AUDIO_DEVICE_48000" : "GAME_FRAME", int(game->sound() != nullptr));
             });
             game->set_profile_clock(kProfile ? ticks_us : nullptr);
+#ifdef M2_TGP_PROFILE
+            rt::tgp_profile.clock = ticks_us;
+            rt::tgp_profile.ticks_per_second = 1000000u;
+            tgp_bench = rt::tgp_microbench(game->board().tgp()); // about 0.1 s, once per game start
+            tgp_report.start(game->board().tgp().tgp_instructions());
+#endif
+#ifdef M2_I960_PROFILE
+            rt::i960_profile.clock = ticks_us;
+            rt::i960_profile.ticks_per_second = 1000000u;
+            i960_report.start(game->instructions(), uint64_t(game->interrupts()));
+#endif
             load_nv("ioboard_eeprom.bin", game->board().io().eeprom);
             load_nv("backup_ram.bin", game->board().backup_ram());
             if (settings.link_enabled) {
@@ -1273,6 +1295,12 @@ int main(int, char **) {
             // (ROM import, pause) restarts the window.
             if (!game || menu || menu_at_start) {
                 core_profile.reset(ticks_us());
+#ifdef M2_TGP_PROFILE
+                if (game) tgp_report.start(game->board().tgp().tgp_instructions());
+#endif
+#ifdef M2_I960_PROFILE
+                if (game) i960_report.start(game->instructions(), uint64_t(game->interrupts()));
+#endif
             } else {
                 core_profile.add(P::GeoParse, geo_delta.worker_ticks);
                 core_profile.add(P::Log, perf_log_pending_us);
@@ -1313,7 +1341,32 @@ int main(int, char **) {
                     h.sound_threaded = sound_worker.threaded();
                     h.native_audio = active_native_audio;
                     static char report[vita::PerfLog::kCapacity];
-                    const size_t size = core_profile.format(report, sizeof report, h, 1000000u);
+                    size_t size = core_profile.format(report, sizeof report, h, 1000000u);
+#ifdef M2_I960_PROFILE
+                    {
+                        const double frames = double(c.board_frames ? c.board_frames : 1);
+                        const double logic_ms = double(core_profile.total(P::Logic) + core_profile.total(P::Irq)) / 1000.0 / frames;
+#ifdef M2_TGP_PROFILE
+                        const double tgp_ms = tgp_report.ms_per_frame(c.board_frames, tgp_bench);
+#else
+                        const double tgp_ms = -1.0;
+#endif
+                        size += i960_report.format(report + size, sizeof report - size, c.board_frames, game->instructions(),
+                                                   uint64_t(game->interrupts()), h.cpu_mhz, tgp_ms, logic_ms,
+                                                   "the i960+TGP lines (game logic + vblank handler)");
+                        i960_report.start(game->instructions(), uint64_t(game->interrupts()));
+                    }
+#endif
+#ifdef M2_TGP_PROFILE
+                    {
+                        const double frames = double(c.board_frames ? c.board_frames : 1);
+                        const double logic_ms = double(core_profile.total(P::Logic) + core_profile.total(P::Irq)) / 1000.0 / frames;
+                        size += tgp_report.format(report + size, sizeof report - size, c.board_frames,
+                                                  game->board().tgp().tgp_instructions(), h.cpu_mhz, logic_ms,
+                                                  "the i960+TGP lines (game logic + vblank handler)", tgp_bench);
+                        tgp_report.start(game->board().tgp().tgp_instructions());
+                    }
+#endif
                     perf_file.submit(report, size);
                     const uint64_t reported = ticks_us();
                     perf_log_pending_us = reported - loop_end;

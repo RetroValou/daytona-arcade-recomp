@@ -203,7 +203,9 @@ def configure_and_build(build, romset="daytona93"):
         run(cmd)
     else:
         run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + romset])
-    run(["cmake", "--build", build, "--config", "Release", "--parallel"])
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    from build_jobs import build_jobs  # bounded: a bare --parallel is make -j
+    run(["cmake", "--build", build, "--config", "Release", "--parallel", str(build_jobs())])
 
 
 def main():
