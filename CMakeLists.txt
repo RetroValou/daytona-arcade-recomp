@@ -87,13 +87,14 @@ target_include_directories(trace PUBLIC src)
 # Runtime the recompiled game runs on: i960 context and services (call/ret,
 # interrupts, memory; MAME's semantics, transplanted, BSD-3), replay bus and
 # lockstep. No instruction interpreter.
-# The ROM set the game is recompiled from: daytona93 (Daytona USA Deluxe '93,
-# the default) or daytona (Revision A, 1994). One set per build directory:
-# its generated code, seeds and saves are its own.
-set(M2_ROMSET daytona93 CACHE STRING "MAME ROM set to recompile: daytona93 or daytona")
-set_property(CACHE M2_ROMSET PROPERTY STRINGS daytona93 daytona)
-if(NOT M2_ROMSET MATCHES "^(daytona93|daytona)$")
-    message(FATAL_ERROR "M2_ROMSET must be daytona93 or daytona, not ${M2_ROMSET}")
+# The ROM set the game is recompiled from (MAME's name, daytona93 by
+# default). One set per build directory: its generated code, seeds and saves
+# are its own. A set is known when it has a seed file (seeds/<set>.txt), a
+# record in src/games/ and an entry in scripts/games.py
+# (docs/adding-a-game.md).
+set(M2_ROMSET daytona93 CACHE STRING "MAME ROM set to recompile (scripts/games.py lists them)")
+if(NOT M2_ROMSET MATCHES "^[a-z0-9_]+$" OR NOT EXISTS ${CMAKE_SOURCE_DIR}/seeds/${M2_ROMSET}.txt)
+    message(FATAL_ERROR "M2_ROMSET ${M2_ROMSET}: no seeds/${M2_ROMSET}.txt; known sets are listed in scripts/games.py")
 endif()
 
 add_library(runtime STATIC
@@ -116,8 +117,11 @@ add_library(runtime STATIC
     src/runtime/native_sample_mixer.cpp
     src/runtime/native_sound_sequencer.cpp
     src/runtime/native_sound_engine.cpp
-    src/runtime/enhance.cpp
     src/runtime/comm_board.cpp
+    # every game's record and hooks (runtime/game.h)
+    src/games/games.cpp
+    src/games/daytona.cpp
+    src/games/srallyc.cpp
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
@@ -465,12 +469,14 @@ if(M2_VITA_TESTS)
 
     add_executable(test_vita_async_log tests/test_vita_async_log.cpp)
     target_include_directories(test_vita_async_log PRIVATE tests/vita_log_shim)
+    target_compile_definitions(test_vita_async_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     target_link_libraries(test_vita_async_log PRIVATE Threads::Threads)
     add_test(NAME vita_async_log COMMAND test_vita_async_log)
     set_tests_properties(vita_async_log PROPERTIES TIMEOUT 20)
 
     add_executable(test_vita_log tests/test_vita_log.cpp)
     target_include_directories(test_vita_log PRIVATE tests/vita_log_shim)
+    target_compile_definitions(test_vita_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     add_test(NAME vita_log COMMAND test_vita_log)
 endif()
 

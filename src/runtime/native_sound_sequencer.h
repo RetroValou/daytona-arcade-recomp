@@ -1,5 +1,6 @@
-// Direct command and music-event sequencing for the imported Daytona sound
-// data. No processor context, instruction execution, chip registers or timers.
+// Direct command and music-event sequencing for the imported Model 1 sound
+// driver's data (the game's: where its tables are is rt::SoundLayout, from
+// the game's record in src/games/). No processor context, instruction execution, chip registers or timers.
 // Tables and sequences remain in the user's immutable imported ROM image.
 #pragma once
 
@@ -7,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+
+#include "runtime/game.h"
 
 namespace snd {
 
@@ -34,7 +37,7 @@ public:
 
     // The immutable ROM must outlive this sequencer. All time is measured in
     // output samples, so music continues independently of graphics cadence.
-    explicit NativeSoundSequencer(const std::vector<uint8_t> &program, uint32_t output_rate = 48000);
+    NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout, uint32_t output_rate = 48000);
     void set_sink(Sink sink, void *context) { sink_ = sink; context_ = context; }
     void reset();
     void send(const uint8_t *data, size_t bytes);
@@ -65,7 +68,7 @@ private:
     };
     const std::vector<uint8_t> &program_;
     uint32_t output_rate_;
-    uint32_t shift_ = 0; // where the tables are: daytona93's layout, or Revision A's (0x48 on)
+    rt::SoundLayout t_; // where the driver's tables are
     Sink sink_ = nullptr;
     void *context_ = nullptr;
     Stats stats_;

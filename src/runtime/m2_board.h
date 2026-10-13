@@ -16,6 +16,7 @@
 #include "runtime/cpu.h"
 #include "runtime/geo.h"
 #include "runtime/lockstep.h"
+#include "runtime/game.h"
 #include "runtime/m2_tgp_board.h"
 #include "runtime/video.h"
 
@@ -31,31 +32,65 @@
 
 namespace rt {
 
-struct Inputs {
-    uint8_t steer = 0x80, accel = 0x20, brake = 0x20; // ADC values, 0x20-0xe0
-    uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;       // switches, active low (MAME IN0/IN1/IN2 layout)
-};
-
-// The I/O board's side of the MB8421 dual-port RAM (2 KB): the game writes a
-// command to byte 0x20 and the board answers. 1: latch the inputs into bytes
-// 0-10. 3: copy the 128-byte settings EEPROM to bytes 0x100-0x17f. 2: store
-// bytes 0x100-0x17f to the EEPROM. The byte returns to 0 when done. Byte 0x11
-// is the force feedback drive board's command (rt::DriveBoard): each byte
-// written is queued for the host (found by logging the game's writes: it
-// carries the drive board's command set).
+// The game's inputs, settings EEPROM and drive board commands, on either
+// board. Model 2 (original): the Model 1 I/O board's side of the MB8421
+// dual-port RAM (2 KB, read/write): the game writes a command to byte 0x20
+// and the board answers. 1: latch the inputs into bytes 0-10. 3: copy the
+// 128-byte settings EEPROM to bytes 0x100-0x17f. 2: store bytes 0x100-0x17f
+// to the EEPROM. The byte returns to 0 when done. Byte 0x11 is the force
+// feedback drive board's command (rt::DriveBoard): each byte written is
+// queued for the host (found by logging the game's writes: it carries the
+// drive board's command set).
+//
+// Model 2A-CRX: the 315-5649 I/O chip on the bus (crx_read/crx_write; MAME
+// sega_315_5649_device and model2a_state's port callbacks): ports A-G,
+// direction register, analog mux. Port A drives the 93C46 settings EEPROM
+// (64 x 16 bits, the same 128 bytes as `eeprom`, word n in bytes 2n-2n+1
+// little-endian) and the input mode; port B reads IN0 (or, in that mode,
+// the EEPROM's data out), C IN1, D IN2, G the DIP switches; port E is the
+// drive board's command (queued as above), F the lamps; analog channels 0-2
+// are the wheel, accelerator and brake.
+//
+// Which of the game's controls each port and analog channel carries is the
+// game's (Game::io, src/games/).
 class IoBoard {
 public:
     uint8_t read(uint32_t index) const { return ram_[index & 0x7ff]; }
     void write(uint32_t index, uint8_t v);
+    // 315-5649 registers 0x00-0x0f. `now`: i960 instructions so far (the
+    // EEPROM's write cycle time, which the game polls by reading).
+    uint8_t crx_read(uint32_t offset, uint64_t now);
+    void crx_write(uint32_t offset, uint8_t v, uint64_t now);
     Inputs inputs;
+    CrxInputs wiring{}; // Model 2A-CRX: the game's ports and analog channels (Game::io)
     std::array<uint8_t, 128> eeprom;
     bool eeprom_dirty = false;
-    std::vector<uint8_t> drive_commands; // written to byte 0x11 since last taken (at most kMaxDrive kept)
+    std::vector<uint8_t> drive_commands; // written to byte 0x11 (2A: port E) since last taken (at most kMaxDrive kept)
     static constexpr size_t kMaxDrive = 256;
     IoBoard() { ram_.fill(0); eeprom.fill(0xff); }
 
 private:
     std::array<uint8_t, 0x800> ram_;
+
+    // 315-5649
+    uint8_t port_[7] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    uint8_t port_config_ = 0xff, mode_ = 0, analog_channel_ = 0;
+    bool ctrl_mode_ = false; // port A bit 0: port B reads the EEPROM
+    uint8_t port_in(uint32_t offset, uint64_t now);
+    void eeprom_pins(uint8_t port_a, uint64_t now);
+
+    // 93C46 (MAME eeprom_serial_93cxx_device, 16-bit, 6 address bits)
+    enum class EeState : uint8_t { Reset, WaitStart, Command, Reading, WaitData, Completion };
+    EeState ee_state_ = EeState::Reset;
+    bool ee_cs_ = false, ee_clk_ = false, ee_di_ = false, ee_locked_ = true;
+    uint32_t ee_bits_ = 0, ee_accum_ = 0, ee_shift_ = 0;
+    uint8_t ee_command_ = 0, ee_address_ = 0;
+    uint64_t ee_done_at_ = 0, ee_now_ = 0; // ee_now_: the time of the pin write being handled
+    bool ee_ready(uint64_t now) const { return now >= ee_done_at_; }
+    bool ee_do(uint64_t now) const;
+    uint16_t ee_word(uint32_t a) const { return uint16_t(eeprom[a * 2] | eeprom[a * 2 + 1] << 8); }
+    void ee_set_word(uint32_t a, uint16_t v);
+    void ee_clock();
 };
 
 class M2Board : public Bus {
@@ -63,6 +98,7 @@ public:
     struct Images {
         std::vector<uint8_t> program, main_data, copro_tables, copro_data, polygons, textures;
         std::vector<uint8_t> sound_program, pcm1, pcm2; // sound board (68000 program, MultiPCM samples)
+        const Game *game = &rt::game();                   // the game these images are for (and its board)
 #ifdef M2_DC_MEMORY
         // The Dreamcast: program, main_data, polygons, textures and copro_data
         // are read through rom (those images stay empty); texture RAM (tex0
@@ -154,6 +190,14 @@ private:
     void ram_written(uint32_t addr, uint32_t data, uint32_t mask); // video registers kept in RAM pages
     void tex_write(const Page &p, uint32_t addr, uint32_t lane_data);
 
+    bool crx() const { return img_.game->board == BoardType::Model2a; }
+    uint64_t io_now() const { // i960 instructions so far, for the 315-5649's EEPROM
+#ifdef M2_FAST_GEN
+        return ls_->now();
+#else
+        return ls_->count;
+#endif
+    }
     void irq_update();
     void uart_write_data(uint8_t v);
     void uart_txrdy(bool state);

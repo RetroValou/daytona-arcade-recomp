@@ -119,11 +119,13 @@ int main(int argc, char **argv) {
         rt::GameLoop game(dir, !native_check);
         std::unique_ptr<snd::NativeSoundEngine> native;
         if (native_check) {
+            if (!rt::game().native_sound) throw std::runtime_error(std::string(rt::game().set) + " has no native audio (src/games/)");
             auto file = [&](const char *name) {
                 std::ifstream f(dir + "/" + name, std::ios::binary);
                 return std::vector<uint8_t>{std::istreambuf_iterator<char>(f), {}};
             };
-            native = std::make_unique<snd::NativeSoundEngine>(file("sound_program.bin"), file("pcm1.bin"), file("pcm2.bin"));
+            native = std::make_unique<snd::NativeSoundEngine>(file("sound_program.bin"), file("pcm1.bin"), file("pcm2.bin"),
+                                                              *rt::game().native_sound);
         }
         std::vector<float> native_out;
         uint64_t native_rendered = 0;

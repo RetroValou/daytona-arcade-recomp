@@ -26,6 +26,7 @@
 #include "app/native_audio.h"
 #include "runtime/native_sound_engine.h"
 #include "runtime/game_loop.h"
+#include "runtime/game.h"
 #include "runtime/rom_import.h"
 
 #include "backends/imgui_impl_sdl3.h"
@@ -202,7 +203,7 @@ int main(int argc, char **argv) {
     }
 
     // the name graphics overlays and drivers see (patches/sdl3: Vulkan's application name)
-    SDL_SetAppMetadata("Daytona USA", nullptr, "daytona-recomp");
+    SDL_SetAppMetadata(rt::game().title, nullptr, "daytona-recomp");
 #ifdef M2_MOBILE
     // Mobile shells are landscape-only and always occupy the display.
     SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
@@ -225,7 +226,7 @@ int main(int argc, char **argv) {
     constexpr int W = rt::GameLoop::kWidth, H = rt::GameLoop::kHeight;
     const int kMaxW = W + 2 * rt::GameLoop::wide_margin(app::Config::kMaxAspect);
     int screen_w = W; // this frame's width: W, or wider with widescreen
-    SDL_Window *window = SDL_CreateWindow("Daytona USA", W * 2, H * 2,
+    SDL_Window *window = SDL_CreateWindow(rt::game().title, W * 2, H * 2,
                                           SDL_WINDOW_RESIZABLE | (cfg.fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (!window) return fail("SDL_CreateWindow");
     app::apply_fullscreen_mode(window, cfg.fullscreen_mode);
@@ -312,25 +313,25 @@ int main(int argc, char **argv) {
         link.reset();
         have_audio = false;
         native_fault = false;
-        native_active = cfg.native_audio;
+        native_active = cfg.native_audio && rt::game().native_sound; // the game's driver tables known (else reference, or no sound board)
         try {
             auto images = rt::import_rom_set(cfg.rom_path);
             if (native_active) {
                 if (!audio_initialized) throw std::runtime_error("Native audio needs an available audio device.");
                 auto engine = std::make_unique<snd::NativeSoundEngine>(std::move(images.sound_program),
-                    std::move(images.pcm1), std::move(images.pcm2));
+                    std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound);
                 if (!native_audio.open(std::move(engine)))
                     throw std::runtime_error(std::string("Cannot open native audio: ") + SDL_GetError());
                 native_audio.volume(cfg.volume);
                 native_audio.volumes(cfg.music_volume, cfg.effects_volume);
                 native_audio.mute(cfg.mute);
-            } else if (audio_initialized) {
+            } else if (audio_initialized && rt::game().model1_sound) {
                 have_audio = audio.open(snd::SoundBoard::kYmClock / 144.0, snd::SoundBoard::kPcmClock / 224.0);
                 if (!have_audio) std::fprintf(stderr, "daytona: reference audio unavailable (%s)\n", SDL_GetError());
             }
             game = std::make_unique<rt::GameLoop>(std::move(images), !native_active);
-            std::printf("daytona: audio backend %s\n", native_active
-                ? "native (experimental, 48000 Hz device clock; no reference sound board)" : "reference");
+            std::printf("daytona: audio backend %s\n", !rt::game().model1_sound ? "none (no sound board for this game yet)"
+                : native_active ? "native (experimental, 48000 Hz device clock; no reference sound board)" : "reference");
             load_file(eeprom_path, game->board().io().eeprom);
             load_file(backup_path, game->board().backup_ram());
             if (cfg.link) { // link play: the communication board on TCP

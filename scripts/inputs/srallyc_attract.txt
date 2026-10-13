@@ -1,0 +1,2 @@
+# srallyc attract with no input: boot, EEPROM setup, title (1200), attract race (1500).
+frames 1800

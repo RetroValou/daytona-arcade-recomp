@@ -1,0 +1,12 @@
+# srallyc: coin up, start, confirm the select screens, hold the accelerator.
+# Frames at 57.52 Hz. Attract runs by 1200; default settings take 2 coins per
+# credit (CREDIT n/2). Start confirms on the select screens.
+frames 6000
+1300-1309 coin=1
+1340-1349 coin=1
+1450-1459 start=1
+1700-1709 start=1
+1900-1909 start=1
+2100-2109 start=1
+2300-2309 start=1
+1450-5999 accel=0xe0

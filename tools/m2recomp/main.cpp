@@ -11,8 +11,8 @@
 // assumes the game never rewrites that RAM.
 //
 // --hooks: "ADDRESS name" lines; the generated code calls rt::hook_<name>(c)
-// just before the instruction at ADDRESS (enhancements: see
-// src/runtime/enhance.h). A hook that is off does nothing.
+// just before the instruction at ADDRESS (each game's hooks: see
+// src/games/hooks.h). A hook that is off does nothing.
 //
 // Decodes every instruction reachable from the boot record plus the seed
 // addresses (src/i960/reach) and emits native C++: each instruction's

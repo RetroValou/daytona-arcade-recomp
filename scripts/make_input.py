@@ -15,29 +15,42 @@ matches the machine's fields exactly. SCRIPT is a text file:
 Names: coin, service, test, start, vr1..vr4 (1 = pressed), gear0..gear4
 (1 = selected), steer, accel, brake (raw 0x20-0xe0 ADC values). Unscripted
 controls rest at their recorded defaults. Later lines override earlier ones.
+
+The header's game picks the layout: scripts/games.py's ports for that set
+(srallyc: start is IN0 0x40, every vrN its one VR button, handbrake IN2),
+and, for a game whose analog inputs are 0x00-0xff ("full_range"),
+steer/accel/brake rescaled from 0x20-0xe0 as the runtime does (the game's
+Game::io): one script drives every game.
 """
 
+import os
 import struct
 import sys
 
-# name -> (port, mask); digital unless listed in ANALOG.
-CONTROLS = {
-    "coin": (":IN0", 0x01), "service": (":IN0", 0x08), "test": (":IN0", 0x04),
-    "start": (":IN0", 0x10),
-    "vr1": (":IN0", 0x20), "vr2": (":IN0", 0x40), "vr3": (":IN0", 0x80), "vr4": (":IN1", 0x01),
-    "gear0": (":GEARS", 0x01), "gear1": (":GEARS", 0x02), "gear2": (":GEARS", 0x04),
-    "gear3": (":GEARS", 0x08), "gear4": (":GEARS", 0x10),
-    "steer": (":STEER", 0xFF), "accel": (":ACCEL", 0xFF), "brake": (":BRAKE", 0xFF),
-}
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import games  # noqa: E402
+
 ANALOG = {"steer", "accel", "brake"}
+
+
+def game_entry(game):
+    """The scripts/games.py set a header's game name is (or begins with)."""
+    if game in games.GAMES:
+        return game
+    return next((g for g in sorted(games.GAMES, key=len, reverse=True) if game.startswith(g)), game)
+
+
+def full_range(v):
+    """The common ADC range 0x20-0xe0 to 0x00-0xff (src/games/srallyc.cpp)."""
+    return max(0, min(255, (v - 0x20) * 255 // 0xC0))
 
 
 def read_header(blob):
     assert blob[:4] == b"M2IN" and struct.unpack_from("<I", blob, 4)[0] == 1, "not an M2IN v1 stream"
     p = 8
     n = struct.unpack_from("<H", blob, p)[0]
-    head_start = p
-    p += 2 + n  # game
+    game = blob[p + 2:p + 2 + n].decode()
+    p += 2 + n
     nf = struct.unpack_from("<H", blob, p)[0]
     p += 2
     fields = []
@@ -48,12 +61,15 @@ def read_header(blob):
         mask, defv, analog = struct.unpack_from("<IIB", blob, p)
         p += 9
         fields.append((port, mask, defv, bool(analog)))
-    return blob[:p], fields
+    return blob[:p], game, fields
 
 
 def main():
     header_path, script_path, out_path = sys.argv[1:4]
-    header, fields = read_header(open(header_path, "rb").read())
+    header, game, fields = read_header(open(header_path, "rb").read())
+    game = game_entry(game)
+    controls = games.controls(game)
+    rescale = games.GAMES.get(game, {}).get("full_range", False)
     index = {(port, mask): i for i, (port, mask, _, _) in enumerate(fields)}
 
     total = 0
@@ -70,14 +86,14 @@ def main():
         lo, _, hi = rng.partition("-")
         lo, hi = int(lo), int(hi or lo)
         name, _, val = assign.partition("=")
-        if name not in CONTROLS:
+        if name not in controls:
             sys.exit(f"{script_path}:{lineno}: unknown control {name}")
-        port, mask = CONTROLS[name]
+        port, mask = controls[name]
         fi = index[(port, mask)]
         _, _, defv, analog = fields[fi]
         v = int(val, 0)
         if analog:
-            raw = v & mask
+            raw = (full_range(v) if rescale and name in ANALOG else v) & mask
         else:  # digital: pressed flips the field away from its default
             raw = (defv ^ mask) if v else defv
         events.append((lo, hi, fi, raw))

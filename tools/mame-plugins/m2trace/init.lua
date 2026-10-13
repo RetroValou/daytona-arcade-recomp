@@ -262,6 +262,13 @@ local function on_start()
 	cpu = manager.machine.devices[":maincpu"]
 	space = cpu.spaces["program"]
 	screen = manager.machine.screens[":screen"]
+	-- Model 2A-CRX and later (the 315-5649 I/O chip, tag "io"): work RAM is
+	-- 0x200000-0x23ffff (model2a_crx_mem); IN2 is an input (srallyc's hand
+	-- brake).
+	if manager.machine.devices[":io"] then
+		REGIONS[1] = { 0x00200000, 0x0023ffff }
+		INPUT_PORTS[#INPUT_PORTS + 1] = ":IN2"
+	end
 
 	if cfg.out then
 		out = io.open(cfg.out, "wb")

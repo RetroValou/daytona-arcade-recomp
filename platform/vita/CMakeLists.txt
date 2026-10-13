@@ -70,17 +70,31 @@ set_source_files_properties(gpu_gl.cpp PROPERTIES COMPILE_DEFINITIONS
 set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE}")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
-set(DAYTONA_VITA_ROMSET "daytona93" CACHE STRING "Native game set: daytona93 or daytona")
-set_property(CACHE DAYTONA_VITA_ROMSET PROPERTY STRINGS daytona93 daytona)
-if(NOT DAYTONA_VITA_ROMSET MATCHES "^(daytona93|daytona)$")
-    message(FATAL_ERROR "Unsupported Vita ROM set")
+# The game: any set of scripts/games.py (its seeds/<set>.txt must exist).
+# build_vita.py passes the set, its package's title ID and name, and the
+# companion set's file name from there.
+set(DAYTONA_VITA_ROMSET "daytona93" CACHE STRING "Native game set (scripts/games.py)")
+if(NOT DAYTONA_VITA_ROMSET MATCHES "^[a-z0-9_]+$" OR NOT EXISTS "${DAYTONA_ROOT}/seeds/${DAYTONA_VITA_ROMSET}.txt")
+    message(FATAL_ERROR "Unknown Vita ROM set ${DAYTONA_VITA_ROMSET}: no seeds/${DAYTONA_VITA_ROMSET}.txt")
 endif()
-set(DAYTONA_VITA_REV_A_SELF "" CACHE FILEPATH "Optional Revision A SELF to bundle with daytona93")
+# A game's two sets in one package (Daytona): the companion set's SELF,
+# bundled as <companion>.self, which the launcher switches to.
+set(DAYTONA_VITA_REV_A_SELF "" CACHE FILEPATH "Optional companion set's SELF to bundle (Daytona: Revision A's)")
+set(DAYTONA_VITA_COMPANION "daytona" CACHE STRING "The companion set bundled with DAYTONA_VITA_REV_A_SELF")
+# The old CPU frontend (main.cpp) only knows daytona93.
 if(NOT DAYTONA_VITA_GPU_FAST AND NOT DAYTONA_VITA_GPU_GL AND
    (NOT DAYTONA_VITA_ROMSET STREQUAL "daytona93" OR DAYTONA_VITA_REV_A_SELF))
-    message(FATAL_ERROR "Revision A and dual-ROM selection require a GPU build (DAYTONA_VITA_GPU_FAST or DAYTONA_VITA_GPU_GL)")
+    message(FATAL_ERROR "Sets other than daytona93 and two-set packages require a GPU build (DAYTONA_VITA_GPU_FAST or DAYTONA_VITA_GPU_GL)")
 endif()
-set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID")
+# One installed app per game, each with its own title ID (scripts/games.py),
+# so several can be installed side by side.
+set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID (scripts/games.py vita_title_id)")
+set(DAYTONA_VITA_GAME_NAME "Daytona USA" CACHE STRING "The package's name (scripts/games.py vita_name)")
+set(VITA_TITLEID "${DAYTONA_VITA_TITLEID}")
+set(VITA_GAME_NAME "${DAYTONA_VITA_GAME_NAME}")
+if(NOT VITA_TITLEID MATCHES "^[A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][0-9]$")
+    message(FATAL_ERROR "Vita title ID must be 4 capital letters and 5 digits, not ${VITA_TITLEID}")
+endif()
 if(NOT DAYTONA_VITA_COMPILE_CHECK)
     foreach(path ${DAYTONA_VITA_ROMSET}/gen_table.cpp ${DAYTONA_VITA_ROMSET}_tgp/tgp_gen.cpp ${DAYTONA_VITA_ROMSET}_snd/snd_gen.cpp)
         if(NOT EXISTS "${DAYTONA_GEN_ROOT}/${path}")
@@ -120,12 +134,15 @@ target_compile_options(vita_ymfm PRIVATE -w)
 # The same native runtime as the desktop; no refcore or interpreter is linked.
 # geo.cpp is replaced by its Vita version (platform/vita/src/runtime/geo.cpp),
 # which compiles the original unchanged and runs it on its own core.
-set(RUNTIME_FILES enhance cpu tgp m2_tgp_board raster video m2_board game_loop zip rom_import
+set(RUNTIME_FILES cpu tgp m2_tgp_board raster video m2_board game_loop zip rom_import
     archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
     comm_board)
 set(RUNTIME_SOURCES)
 foreach(name IN LISTS RUNTIME_FILES)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
+endforeach()
+foreach(name games daytona srallyc) # every game's record and hooks (src/games/)
+    list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/games/${name}.cpp")
 endforeach()
 # Vita replacement of the geometrizer (platform/vita/src/runtime/geo.h/.cpp).
 # Nothing in src/ is modified: platform/vita/src comes FIRST on the include
@@ -271,16 +288,16 @@ else()
     vita_create_self(eboot.bin daytona_vita UNSAFE)
     set(VITA_OTHER_GAME)
     if(DAYTONA_VITA_REV_A_SELF)
-        if(NOT DAYTONA_VITA_ROMSET STREQUAL "daytona93" OR NOT EXISTS "${DAYTONA_VITA_REV_A_SELF}")
-            message(FATAL_ERROR "Bundle a built Revision A SELF only into the daytona93 launcher")
+        if(NOT EXISTS "${DAYTONA_VITA_REV_A_SELF}")
+            message(FATAL_ERROR "No companion SELF at ${DAYTONA_VITA_REV_A_SELF}")
         endif()
-        set(VITA_OTHER_GAME FILE "${DAYTONA_VITA_REV_A_SELF}" "daytona.self")
+        set(VITA_OTHER_GAME FILE "${DAYTONA_VITA_REV_A_SELF}" "${DAYTONA_VITA_COMPANION}.self")
     endif()
     # LiveArea images from platform/vita/logo_livearea, when present.
     include("${CMAKE_CURRENT_SOURCE_DIR}/livearea.cmake")
     message(STATUS "Vita LiveArea images: ${VITA_LIVEAREA_SUMMARY}")
-    vita_create_vpk(daytona_vita.vpk ${DAYTONA_VITA_TITLEID} eboot.bin
-        VERSION "01.24" NAME "Daytona USA" # the same home-screen name for every build option
+    vita_create_vpk(daytona_vita.vpk ${VITA_TITLEID} eboot.bin
+        VERSION "01.24" NAME "${VITA_GAME_NAME}" # the game's home-screen name, the same for every build option
         ${VITA_LIVEAREA_FILES}
         FILE "${DAYTONA_ROOT}/THIRD_PARTY.md" "licenses/THIRD_PARTY.md"
         FILE "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md" "licenses/VITA.md"

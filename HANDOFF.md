@@ -1,12 +1,200 @@
 # Handoff
 
-## Sega Rally Championship (srallyc, Model 2A-CRX) bring-up (2026-10-11)
+## Games apart from the board (2026-10-12)
+
+Branch vita-model2-recomp (renamed from sega_rally_convert). Goal: a
+generic Model 2 recompiler for the Vita, where adding a game touches only
+its own files. Design doc, Architecture, "Games"; checklist in
+docs/adding-a-game.md.
 
 What changed:
+- `src/runtime/machine.h` became `src/runtime/game.h`: `rt::Game` per MAME
+  set (board, ROM table, main_data mirror, TGP program location, idle loops,
+  Model 1 sound and the native engine's `SoundLayout`, 2A-CRX input wiring
+  `CrxInputs`, link play, Vita companion set), `rt::game()`,
+  `rt::find_game()`, `rt::games()`. `rt::Inputs` moved there from m2_board.h.
+- `src/games/`: `daytona.cpp` (daytona93, daytona, their ROM tables, sound
+  layouts and `hook_draw_list`, moved from enhance.cpp), `srallyc.cpp` (ROM
+  table, the 315-5649 wiring moved from IoBoard::port_in/crx_read),
+  `games.cpp` (the list), `hooks.h` (every game's hooks; gen_support.h
+  includes it). The records are `extern const` and constant-initialized, so
+  they are safe to use from static initializers. enhance.cpp is gone;
+  enhance.h only holds the options.
+- rom_import.cpp is generic over `game().roms`. The native sound sequencer
+  takes the `SoundLayout` (it no longer detects the layout among Daytona's
+  two); `NativeSoundEngine` passes it; app, Vita and m2run gate native audio
+  on `game().native_sound`.
+- `scripts/games.py`: the scripts' half (archives, m2recomp options, Vita
+  title ID/name, `vita_fast`, companion, make_input ports, analog range).
+  recompile.py (`SETS = GAMES`), seed_scan.py, setup.py, make_input.py,
+  m2_check.sh and build_vita.py read it. build_vita.py always passes the
+  title ID and package name (`DAYTONA_VITA_GAME_NAME`, new) and the
+  companion; vita_code passes the set's m2recomp options; the hook check
+  takes every name in seeds/<set>_hooks.txt.
+- CMake (desktop and Vita): a set is accepted when seeds/<set>.txt exists,
+  not by a hard-coded list. The Vita CMake no longer maps set to title ID.
+- Vita launcher: the ROM option switches to `Game::companion` (was
+  "daytona" hard-coded); the target executable is app0:/<companion>.self when
+  present, else app0:/eboot.bin when we are the .self; link play is refused
+  when `!game().link` (daytona93: false, as before).
+
+Rebased on push_DC_opt_on_Vita (2026-10-13): the Vita home-screen name is
+the set's `vita_name` (scripts/games.py: "Daytona USA", "Sega Rally
+Championship"), the same for every renderer, as that branch made it for
+Daytona; the ROM option is index 11 after its music and effects options; the
+LiveArea images (platform/vita/logo_livearea) are shared by every game.
+
+Measured, unchanged: m2run frame dumps every 250 frames and WAV hashes
+identical before and after (daytona93 race_basic 3,000 frames, the same at
+draw distance +2 for 2,000 frames, srallyc srallyc_race 3,000 frames, also
+after regenerating srallyc's code through the new recompile.py); same
+instruction, TGP, interrupt counts; daytona93 3,000 frames in 11.40 s
+(11.37 s before; a run at 18.8 s was host load from other compiles).
+--native-audio-check on daytona93 3,000 frames with no fault; on srallyc
+it stops with "no native audio". ctest 19/19 in build/ and build-srallyc/,
+Python tests 35/35. Vita, no --release:
+`build_vita.py --set srallyc --gpu-gl` (SRAL00094, build/vita-srallyc) and
+`build_vita.py --gpu-gl --fast-inaccuracy` (DAYT00093, build/vita) built
+their VPKs, with no warnings in the touched files. Not run on hardware: the
+ROM switch to the companion set and the link refusal are untested on the
+console.
+
+Not done, still game-specific: the drive board's command model
+(drive_board.h, Daytona's), the app's log prefixes and pref folder name
+("daytona"), the legacy CPU Vita frontend (main.cpp, daytona93 only),
+m2_check.sh's daytona93 file names (traces/hdr.m2in, check_NAME).
+
+## Sega Rally Championship (srallyc, Model 2A-CRX) bring-up (2026-10-11)
+
+Branch sega_rally_convert. Goal: one runtime for Daytona and Sega Rally
+Championship Revision C (MAME `srallyc`). Sound (SCSP) deferred: no sound
+board for srallyc yet. State: `recompile.py --set srallyc --build-dir
+build-srallyc` builds the game; m2run boots it, passes the EEPROM setup and
+shows the title screen (frame 1200) and the attract race (frame 1500), the
+same scene as MAME 0.264 at frame 1500 (checked by eye on snapshots, not by
+trace). 1,800 frames: 27.1 M i960 and 7.4 M TGP instructions, 1,718
+interrupts, all native. Daytona unchanged: daytona93 attract_long and
+race_basic, 4,000 frames each, give the same instruction, TGP, interrupt
+and sound-byte counts and the same screen hashes before and after; ctest
+19/19 in build/ and build-srallyc/, Python tests 32/32.
+
+Lockstep against MAME (patched MAME 0.264, `SET=srallyc BUILD=build-srallyc
+scripts/m2_check.sh SCENARIO`), all MATCH:
+- attract (600 frames, no input): 116.5 M i960 instructions, 5,474
+  interrupts, m2native and m2replay; TGP 515 words; screen 596/596 frames
+  (no polygons yet in those frames).
+- srallyc_attract (1,800 frames): 349.7 M i960, 18,272 interrupts; TGP
+  7.47 M instructions, 17,367 output words; 693,255 polygons, 3D layer
+  440/440 frames, screen 1,796/1,796. MAME 2.5 min, trace 1.1 GB.
+- srallyc_race (6,000 frames, the race script): 1,032.5 M i960, 62,992
+  interrupts; TGP 160.2 M instructions, 1,830,962 output words; 4,568,552
+  polygons, 3D layer 4,624/4,624, screen 5,996/5,996. 10 min in all, trace
+  3.3 GB, m2native 57 s.
+
+What changed:
+- `src/runtime/machine.h`: per-set `Machine` (board type, Model 1 sound or
+  not, idle loop ranges). `M2Board` picks model2o or Model 2A-CRX by it:
+  RAM 0x200000-0x23ffff (no ROM mirror), and the 315-5649 I/O chip at
+  0x01c00000 (ports, analog mux, 93C46 EEPROM on port A/B; MAME
+  `sega_315_5649_device`, `model2a_state::eeprom_w/in0_r`).
+- `rom_import.cpp`: the srallyc files (rev C program, no sound ROMs), and
+  its TGP program, which is in the **program ROM** at 0x5ae94, 1,665 words,
+  CRC 0x072484B1: equal to MAME's `copro_tgp_program` after boot (dumped
+  with a Lua script). The game uploads it from its RAM copy, 0x5f9e94, with
+  the count at 0x5fb898 (ROM 0x5c898).
+- `m2recomp --no-mirror --alias 5a0000:1000:60000`: the boot (ROM 0x514)
+  copies ROM 0x1000-0x60fff to work RAM 0x5a0000 and runs from there.
+  `recompile.py` and `seed_scan.py` share a per-set table (`SETS`) for the
+  archive names (a merged `srallycb.zip` holds rev C too) and these flags.
 - m2recomp templates: `flushreg` (MAME's, `rt::Cpu::flushreg`), every FP
   opcode MAME implements but `movre`, with fp0-fp3, long reals and FP
   literals (MAME's double expressions; design doc, Floating point), and
   `addc` with the silicon's carry (Open decisions).
+- `m2sndrecomp` writes a module with no code for an empty sound program.
+- seeds/srallyc.txt: 464 addresses from seed_scan (45,307 instructions).
+
+Findings:
+- The first EEPROM hang: busy-wait compared the write-cycle end with the
+  time of the last port-A *write*; the game polls DO by reading only. Reads
+  now pass the current count (`io_now`).
+- srallyc's wait for the next frame is 0x5a379c-0x5a37b3 (polls
+  videoctl_r's frame bit); without it in `Machine::idle` frames ran to the
+  110,000-instruction cap.
+- seed_scan takes some TGP program words (0x5ae94-0x5c898) for i960 code
+  (an `addc` at 0x5af28 is one): dead native code, harmless.
+- 5,683 of the 45,307 instructions are FP (movr/movrl 3,227). No extF80
+  model or proven fast path for them: they follow MAME's host double.
+- Unverified: whether the game ever rewrites its RAM code (no runtime hash
+  check yet; design doc, Code outside ROM).
+- Inputs (315-5649 ports, MAME `srallyc` config): IN0 coin/test/service
+  plus VR (any of Daytona's VR buttons) and start; IN1 bits 0x70 the
+  gearbox, as Daytona's; IN2 the hand brake (`Inputs::handbrake`, script
+  name `handbrake`); analog 0-2 wheel, accelerator, brake, rescaled from
+  Daytona's 0x20-0xe0 to 0x00-0xff; port E bytes go to the drive board
+  queue. `scripts/inputs/srallyc_race.txt` (2 coins, start x5, accelerator
+  held) reaches a Championship race: countdown at frame 2100, driving in
+  gears 1-4 at up to 207 km/h by 2400, still racing at 6000 (m2run, 6,000
+  frames: 143.8 M i960, 160.4 M TGP instructions, 5,918 interrupts, 100 s
+  on this machine, by eye on dumps every 300 frames).
+- "SOUND BUFFER FULL !!" stays on screen in the race: the game programs the
+  8251 at frame 82 (00 00 00 40 4e 37), sends one byte (0xff) with intena
+  0, and never enables IRQ 10 nor reads the UART; with no SCSP board it
+  gets no answer. Harmless (the game runs); expected to go with step 5.
+- The MAME build stops on `SDL2/SDL_ttf.h` when the apt packages of
+  `setup.sh --build-mame` are not installed (build_mame.sh's own exit code
+  is the make error; check `extern/mame/m2` exists).
+- Interrupted MAME builds leave empty `.o` files (23 here: emumem_*,
+  luaengine, m68000 cores) and archives without an index; make takes them
+  as up to date and the link fails (undefined lua_engine, "archive has no
+  index"). Fix: delete every object `nm` rejects and the archives holding
+  them. With 15 GB RAM, `build_mame.sh -j4` (extra args go to make).
+- Lockstep harness for srallyc: `M2ReplayBus` maps work RAM by
+  `machine().board` (0x200000-0x23ffff, no ROM mirror, on 2A-CRX) and takes
+  the hashed regions from the trace itself instead of a fixed table; the
+  m2trace plugin hashes 0x200000-0x23ffff and records IN2 when the machine
+  has the 315-5649 (`:io`), so Daytona traces are unchanged;
+  `make_input.py` picks srallyc's ports from the header's game (start IN0
+  0x40, one VR, handbrake IN2) and rescales the analog values like the
+  runtime; `m2_check.sh` takes `SET=srallyc BUILD=build-srallyc`
+  (header `traces/hdr_srallyc.m2in`, no m2sndcheck without a sound program).
+
+- App: window title, launcher heading and launcher.ini header from
+  `Machine::title`; the Android import path per set (`M2_ROMSET`); the
+  startup dialog is "Startup error" (test_gpu_startup checks it). With no
+  Model 1 sound board the app opens no audio at all: `--audio native` hung
+  on srallyc's empty sound program before. `build-srallyc/daytona --rom
+  roms/srallycb.zip`, 600 frames headless with either audio setting.
+- setup.py builds build-srallyc when roms/srallyc or srallycb (.zip/.7z) is
+  there (archive names from recompile.py's SETS).
+- MAME trace runs (run_trace.sh) took the screen full screen (black) and
+  grabbed the mouse and keyboard even with `-video none`; the user had to
+  kill them, which explains earlier short traces and a "GEARS saw 2" replay
+  divergence (host keys reached the game). Now `-window`, every input
+  provider `none` and `SDL_VIDEODRIVER=dummy` (overridable).
+- Vita: srallyc is its own app, title ID SRAL00094 ("Sega Rally Recomp
+  GL/ImGui"), beside Daytona's DAYT00093, so both install side by side.
+  `build_vita.py --set srallyc --gpu-gl --release` (host gen from
+  build-srallyc, output build/vita-srallyc; the title ID is always passed so
+  a stale CMake cache cannot keep DAYT00093; `--title-id` overrides) built
+  a 3.7 MB VPK whose param.sfo holds SRAL00094; not run on hardware.
+  Vita main: title from `Machine::title`, no native audio without the
+  Model 1 board, the ROM option refuses to switch to Daytona, diagnostic log
+  in ux0:data/<set>/. `--fast-inaccuracy`/`--fast-gen` refused for srallyc:
+  vita_code runs m2recomp without recompile.py's per-set flags and
+  direct_ram/fast_gen assume Daytona's work RAM. CMake regexes have no
+  `{n}` quantifier (the first title-ID check rejected every ID).
+- m2_check.sh no longer doubles the set in output names
+  (traces/check_srallyc_race, not check_srallyc_srallyc_race).
+
+Next, in order:
+1. Hand brake in the app's controls (runtime has `Inputs::handbrake`, no
+   key or button sends it yet).
+2. The srallyc drive board's command set is not checked against Daytona's
+   model (drive_board.h).
+3. Runtime hash check of the recompiled RAM code words.
+3b. Vita: run the srallyc VPK on hardware (speed with exact code), then
+   per-set flags and RAM layout in build_vita.py's vita_code for the fast modes.
+4. SCSP sound board (68000 + 2x SCSP).
 
 ## Vita icon/LiveArea images, app name always "Daytona USA" (2026-10-12)
 
@@ -1947,6 +2135,11 @@ Also found:
   5,497 candidates, mostly chance matches in graphics data.
 - A TGP microcode ROM dump. The program is uploaded at boot from the game's
   data ROM; dump TGP program RAM only after the upload, or it is zeros.
+- Looking for srallyc's TGP program in its data ROM (no "Interrupt Halt"
+  tag, no copy there): it is in the program ROM at 0x5ae94.
+- Reading the srallyc upload as starting at ROM 0x5ae98 because the vector
+  table seemed to line up there: a misread hex dump; MAME's program RAM
+  equals ROM 0x5ae94.
 
 M1 native (`tools/m2recomp`, `tools/m2native`, `src/runtime/lockstep`):
 

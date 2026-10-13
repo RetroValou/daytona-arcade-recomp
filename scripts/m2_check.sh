@@ -15,24 +15,51 @@
 # needs one recorded stream for the field layout (traces/hdr.m2in, recorded
 # once with M2TRACE_RECORD_INPUT). The trace is deleted after the check
 # unless M2_CHECK_KEEP is set.
+#
+# SET and BUILD pick another ROM set and its build directory (default
+# daytona93 and build/), e.g. SET=srallyc BUILD=build-srallyc; that set's
+# stream header is traces/hdr_SET.m2in (traces/hdr.m2in for daytona93). A
+# set with no sound program skips m2sndcheck.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME="${1:-attract}"
+SET="${SET:-daytona93}"
+BUILD="${BUILD:-build}"
+IMG="$BUILD/rom_cache/$SET"
 cd "$ROOT"
-[ -f build/rom_cache/daytona93/tgp_program.bin ] || python3 scripts/m2import.py roms/daytona93.zip build/rom_cache/daytona93
-OUT="traces/check_$NAME"
+if [ "$SET" = daytona93 ]; then
+    HDR=traces/hdr.m2in
+    [ -f "$IMG/tgp_program.bin" ] || python3 scripts/m2import.py roms/daytona93.zip "$IMG"
+else
+    HDR="traces/hdr_$SET.m2in"
+    [ -f "$IMG/tgp_program.bin" ] || { echo "no $IMG: run scripts/recompile.py --set $SET --build-dir $BUILD" >&2; exit 1; }
+    # MAME wants roms/SET.zip; when the set is in another archive
+    # (scripts/games.py: srallycb.zip holds srallyc), link it under that
+    # name in traces/roms and point MAME there.
+    if [ ! -f "roms/$SET.zip" ]; then
+        A="$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games, os
+print(next(f'roms/{n}.zip' for n in games.GAMES['$SET']['roms'] if os.path.exists(f'roms/{n}.zip')))")"
+        mkdir -p traces/roms
+        ln -sf "$ROOT/$A" "traces/roms/$SET.zip"
+        export ROMPATH="$ROOT/traces/roms;$ROOT/roms"
+    fi
+fi
+export SYSTEM="$SET"
+# Scenario names already prefixed by the set (srallyc_race) are not doubled.
+case "$NAME" in "${SET}_"*|"$SET") OUT="traces/check_$NAME" ;; *) OUT="traces/check_${SET}_$NAME" ;; esac
+[ "$SET" = daytona93 ] && OUT="traces/check_$NAME"
 if [ "$NAME" = attract ]; then
     M2TRACE_FRAMES=600 M2TRACE_SNDLOG="$ROOT/$OUT.snd" M2TRACE_IRQLOG="$ROOT/$OUT.irq" M2TRACE_TGPLOG="$ROOT/$OUT.tgp" M2TRACE_GEOLOG="$ROOT/$OUT.geo" ./scripts/run_trace.sh "$OUT" >/dev/null 2>&1
 else
-    python3 scripts/make_input.py traces/hdr.m2in "scripts/inputs/$NAME.txt" "$OUT.m2in"
+    python3 scripts/make_input.py "$HDR" "scripts/inputs/$NAME.txt" "$OUT.m2in"
     FRAMES="$(awk '/^frames/{print $2}' "scripts/inputs/$NAME.txt")"
     M2TRACE_FRAMES="$FRAMES" M2TRACE_REPLAY_INPUT="$OUT.m2in" M2TRACE_SNDLOG="$ROOT/$OUT.snd" M2TRACE_IRQLOG="$ROOT/$OUT.irq" M2TRACE_TGPLOG="$ROOT/$OUT.tgp" M2TRACE_GEOLOG="$ROOT/$OUT.geo" \
         ./scripts/run_trace.sh "$OUT" >/dev/null 2>&1
 fi
 STATUS=0
-[ -x build/m2native ] && { ./build/m2native build/rom_cache/daytona93 "$OUT/trace.m2tr" "$OUT.irq" "$OUT.geo" || STATUS=1; }
-[ -n "${M2_CHECK_REPLAY:-}" ] || [ "$NAME" = attract ] && { ./build/m2replay build/rom_cache/daytona93 "$OUT/trace.m2tr" "$OUT.irq" || STATUS=1; }
-[ -x build/m2tgpcheck ] && { ./build/m2tgpcheck build/rom_cache/daytona93 "$OUT.tgp" || STATUS=1; }
-[ -x build/m2sndcheck ] && { ./build/m2sndcheck build/rom_cache/daytona93/sound_program.bin "$OUT.snd" || STATUS=1; }
+[ -x "$BUILD/m2native" ] && { "./$BUILD/m2native" "$IMG" "$OUT/trace.m2tr" "$OUT.irq" "$OUT.geo" || STATUS=1; }
+[ -n "${M2_CHECK_REPLAY:-}" ] || [ "$NAME" = attract ] && { "./$BUILD/m2replay" "$IMG" "$OUT/trace.m2tr" "$OUT.irq" || STATUS=1; }
+[ -x "$BUILD/m2tgpcheck" ] && { "./$BUILD/m2tgpcheck" "$IMG" "$OUT.tgp" || STATUS=1; }
+[ -x "$BUILD/m2sndcheck" ] && [ -s "$IMG/sound_program.bin" ] && { "./$BUILD/m2sndcheck" "$IMG/sound_program.bin" "$OUT.snd" || STATUS=1; }
 [ -n "${M2_CHECK_KEEP:-}" ] || rm -f "$OUT/trace.m2tr" "$OUT.tgp" "$OUT.geo" "$OUT.snd"
 exit $STATUS

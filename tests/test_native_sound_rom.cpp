@@ -160,8 +160,8 @@ int main(int argc, char** argv) {
         const std::string directory(argv[1]);
         const auto program = load(directory + "/sound_program.bin");
         const auto pcm1 = load(directory + "/pcm1.bin"), pcm2 = load(directory + "/pcm2.bin");
-        snd::NativeSoundEngine engine(program, pcm1, pcm2);
-        snd::NativeSoundSequencer observer_sequence(program);
+        snd::NativeSoundEngine engine(program, pcm1, pcm2, *rt::game().native_sound);
+        snd::NativeSoundSequencer observer_sequence(program, *rt::game().native_sound);
         EventObserver observer;
         for (unsigned bank = 0; bank < 4; ++bank) {
             require(observer.banks[0][bank].load(pcm1.data(), pcm1.size(), bank), "PCM1 table missing");

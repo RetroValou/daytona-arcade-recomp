@@ -4,9 +4,10 @@
 
 namespace snd {
 NativeSoundEngine::NativeSoundEngine(std::vector<uint8_t> program,
-                                   std::vector<uint8_t> pcm1, std::vector<uint8_t> pcm2)
+                                   std::vector<uint8_t> pcm1, std::vector<uint8_t> pcm2,
+                                   const rt::SoundLayout &layout)
     : program_(std::move(program)), pcm_{std::move(pcm1), std::move(pcm2)},
-      sequencer_(program_, NativeSampleMixer::kOutputRate) {
+      sequencer_(program_, layout, NativeSampleMixer::kOutputRate) {
     for (unsigned rom = 0; rom < 2; ++rom)
         for (unsigned bank = 0; bank < 4; ++bank)
             if (!banks_[rom][bank].load(pcm_[rom].data(), pcm_[rom].size(), bank))

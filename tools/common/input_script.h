@@ -53,6 +53,7 @@ struct Script {
             if (l.name == "steer") in.steer = uint8_t(l.value);
             else if (l.name == "accel") in.accel = uint8_t(l.value);
             else if (l.name == "brake") in.brake = uint8_t(l.value);
+            else if (l.name == "handbrake") in.handbrake = uint8_t(l.value); // srallyc
             else if (l.name.compare(0, 4, "gear") == 0 && l.value) {
                 const int g = l.name[4] - '0';
                 if (g >= 0 && g < 5) in.in1 = uint8_t((in.in1 & ~0x70) | (gearvalue[g] << 4));

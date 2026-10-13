@@ -2,7 +2,7 @@
 """Find i960 entry points the MAME harvest never reached, by static analysis
 of the user's ROM set, and list them as seeds.
 
-  seed_scan.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--append]
+  seed_scan.py [--set SET (scripts/games.py)] [--build-dir build] [--config Release] [--append]
 
 The game calls code it has only as a pointer: state machines store the next
 state's address (lda 0x2266f8,r5; st r5,0xc(r3)), jump tables are indexed
@@ -35,6 +35,8 @@ import struct
 import subprocess
 import sys
 
+from games import DEFAULT, GAMES as SETS
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RET = 0x0A000000
 ENDS = {"ret", "b", "bx"}
@@ -55,7 +57,7 @@ def words(data):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--set", default="daytona93", choices=["daytona93", "daytona"])
+    ap.add_argument("--set", default=DEFAULT, choices=sorted(SETS))
     ap.add_argument("--build-dir", default="build")
     ap.add_argument("--config", default="Release")
     ap.add_argument("--append", action="store_true", help="add the new seeds to seeds/<set>.txt")
@@ -70,12 +72,24 @@ def main():
 
     img = open(prog_path, "rb").read()
 
-    # Program ROM at 0, its upper 128 KiB mirrored at 0x220000 (as m2recomp).
+    # The i960 map m2recomp is given for this set (scripts/games.py): program
+    # ROM at 0, its upper 128 KiB mirrored at 0x220000 unless --no-mirror, and
+    # --alias ranges (code copied to RAM). With aliases, the ROM holds code
+    # only below the first copied byte; the rest runs from the copy.
+    recomp_args = SETS[args.set]["recomp"]
+    mirror = "--no-mirror" not in recomp_args
+    aliases = [tuple(int(x, 16) for x in recomp_args[i + 1].split(":"))
+               for i, a in enumerate(recomp_args) if a == "--alias"]
+    rom_code_end = min((o for _, o, _ in aliases), default=len(img))
+
     def off(a):
-        if 0x800 <= a < len(img):
+        if 0x800 <= a < rom_code_end:
             return a
-        if 0x220000 <= a < 0x240000:
+        if mirror and 0x220000 <= a < 0x240000:
             return a - 0x200000
+        for guest, offset, length in aliases:
+            if guest <= a < guest + length:
+                return offset + (a - guest)
         return None
 
     def word(a):
@@ -124,7 +138,7 @@ def main():
             f.writelines("%08x\n" % a for a in seeds + found)
         gen = os.path.join(scratch, "gen")
         os.makedirs(gen)
-        r = subprocess.run([recomp, prog_path, gen, "--seeds", sf], capture_output=True, text=True)
+        r = subprocess.run([recomp, prog_path, gen, "--seeds", sf] + recomp_args, capture_output=True, text=True)
         if r.returncode:
             sys.exit(r.stderr + "\nseed_scan: recompile failed in round %d" % rnd)
 

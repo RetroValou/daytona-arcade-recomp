@@ -99,7 +99,7 @@ values that must be bit-identical (rules.md, standing rules).
 
 | Region | Range | Bytes |
 | --- | --- | --- |
-| RAM | 0x00200000-0x0021ffff | 128 KiB |
+| RAM | 0x00200000-0x0021ffff (Model 2A-CRX: -0x0023ffff) | 128 KiB (256 KiB) |
 | work RAM | 0x00500000-0x005fffff | 1 MiB |
 | buffer RAM (display lists) | 0x00900000-0x0091ffff | 128 KiB |
 | backup SRAM | 0x01d00000-0x01d03fff | 16 KiB |

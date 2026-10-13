@@ -1,4 +1,5 @@
 #include "app/config.h"
+#include "runtime/game.h"
 
 #include <algorithm>
 
@@ -73,7 +74,7 @@ void Config::load() {
 
 void Config::save() const {
     std::ofstream f(path());
-    f << "# Daytona USA launcher settings\n";
+    f << "# " << rt::game().title << " launcher settings\n";
     f << "rom=" << rom_path << "\n";
     f << "gpu=" << gpu << "\n";
     f << "renderer=" << renderer << "\n";

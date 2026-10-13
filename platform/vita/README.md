@@ -229,6 +229,21 @@ python3 scripts/build_vita.py --set daytona93 --gpu-fast --host-build-dir build 
 The second VPK contains both executables. Actual Vita-to-Vita/Vita-to-desktop
 Wi-Fi operation and executable switching require hardware validation.
 
+### Sega Rally Championship (srallyc), a separate app
+
+Sega Rally is its own package with its own title ID, SRAL00094 (Daytona's is
+DAYT00093), so both apps can be installed side by side. It has no sound
+yet (no SCSP sound board; the native audio option is Daytona's only); vitaGL
+or GXM builds only. `--fast-inaccuracy` and `--fast-gen` are Daytona-only:
+
+```sh
+python3 scripts/recompile.py --set srallyc --build-dir build-srallyc
+python3 scripts/build_vita.py --set srallyc --gpu-gl --release   # build/vita-srallyc/daytona_vita.vpk
+```
+
+The ROM goes to `ux0:data/srallyc/srallyc.zip` (MAME's merged
+`srallycb.zip` works too, renamed). `--title-id` overrides the title ID.
+
 Install your locally built VPK with VitaShell, then put your **complete
 ZIP ROM set** at:
 

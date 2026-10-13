@@ -1,5 +1,7 @@
 #include "runtime/m2_replay_bus.h"
 
+#include "runtime/game.h"
+
 #include <cinttypes>
 #include <cstdio>
 #include <cstdlib>
@@ -14,14 +16,6 @@ std::string hex(uint32_t v) {
     std::snprintf(b, sizeof b, "%08x", v);
     return b;
 }
-
-// Hashed regions, as the MAME plugin samples them (docs/trace-format.md).
-constexpr struct {
-    uint32_t base, bytes;
-} kRegions[] = {
-    {0x00200000, 0x20000}, {0x00500000, 0x100000}, {0x00900000, 0x20000},
-    {0x01d00000, 0x4000},  {0x01000000, 0x10000},  {0x01800000, 0x4000},
-};
 
 // Device ranges, mirroring the plugin's taps (tools/mame-plugins/m2trace):
 // reads are answered from the trace everywhere below; writes are checked
@@ -53,16 +47,22 @@ bool write_tapped(uint32_t a) {
 } // namespace
 
 M2ReplayBus::M2ReplayBus(std::vector<uint8_t> program, std::vector<uint8_t> main_data, const std::string &trace_path)
-    : program_(std::move(program)), main_data_(std::move(main_data)), ram_(0x20000), work_(0x100000),
+    : program_(std::move(program)), main_data_(std::move(main_data)),
+      ram_(game().board == BoardType::Model2a ? 0x40000 : 0x20000), work_(0x100000),
       buffer_(0x20000), cpuctl_(0x1000), backup_(0x4000, 0xff), tile_(0x10000), chr_(0x80000), palette_(0x4000),
       xlat_(0xc000), tex0_(0x200000), tex1_(0x200000), luma_(0x20000), fb_a_(0x80000), fb_b_(0x80000),
       pages_(size_t(1) << (32 - kPageBits)), reader_(trace_path) {
     if (!reader_.error().empty()) throw std::runtime_error(reader_.error());
 
-    // model2o memory map (MAME model2.cpp: model2_base_mem, model2_tgp_mem, model2o_mem).
+    // MAME model2.cpp: model2_base_mem, model2_tgp_mem, then model2o_mem or
+    // model2a_crx_mem (work RAM 0x200000-0x23ffff, no ROM mirror).
     map(0x00000000, 0x001fffff, Rom, program_.data());
-    map(0x00200000, 0x0021ffff, Ram, ram_.data());
-    map(0x00220000, 0x0023ffff, Rom, program_.data() + 0x20000);
+    if (game().board == BoardType::Model2a) {
+        map(0x00200000, 0x0023ffff, Ram, ram_.data());
+    } else {
+        map(0x00200000, 0x0021ffff, Ram, ram_.data());
+        map(0x00220000, 0x0023ffff, Rom, program_.data() + 0x20000);
+    }
     map(0x00500000, 0x005fffff, Ram, work_.data());
     // Buffer RAM (0x00900000, mirror 0x60000) is a device range here: see kReadTaps.
     map(0x00e00000, 0x00e00fff, Ram, cpuctl_.data(), 0, false); // CPU control (wait states): no BURST
@@ -147,8 +147,10 @@ void M2ReplayBus::end_of_epoch_check() {
     if (pos_ != cur_.events.size() || !cur_.sample) return; // sample comes after the last event
     const trace::Sample &s = *cur_.sample;
     // Region hashes from our memory, as the plugin computes them.
-    for (size_t i = 0; i < s.regions.size() && i < std::size(kRegions); ++i) {
-        const auto &r = kRegions[i];
+    // The plugin's regions (docs/trace-format.md), as the trace lists them:
+    // the work RAM region's size depends on the board.
+    for (size_t i = 0; i < s.regions.size(); ++i) {
+        const trace::Region &r = s.regions[i];
         // Buffer RAM is written by the geometrizer port and the TGP as well
         // as the i960. Replayed (M1), only the i960's accesses to it are
         // checked, event by event. Modelled (M2), its hash is measured: the

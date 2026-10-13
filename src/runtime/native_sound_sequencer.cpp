@@ -7,15 +7,6 @@
 
 namespace snd {
 namespace {
-// Format locations established from the imported driver's reachable command
-// handlers. These are addresses, not copies of any ROM table or instruction.
-// They are daytona93's; Revision A's sound program has the tables from
-// kProfiles on 0x48 bytes later, their pointers with them (shift_).
-constexpr uint32_t kSequenceBanks = 0x2bc6, kProfiles = 0x505a;
-constexpr uint32_t kFinePitch = 0x523a, kBendCurves = 0x56ea;
-constexpr uint32_t kNoteCodes = 0x5c1a, kVelocity = 0x5cce;
-constexpr uint32_t kInstruments = 0x5dce, kPercussion = 0x645a;
-constexpr uint32_t kLayoutShifts[] = {0x00, 0x48}; // daytona93, daytona (Revision A)
 // The music format's tick is 8 MHz / 9216, established from timer-B reload
 // 0xfc and the reference driver. Here it is a rational sample-clock divider.
 constexpr uint64_t kTickNumerator = 8000000, kTickDenominator = 9216;
@@ -31,19 +22,11 @@ uint8_t voice_level(uint8_t velocity, uint8_t volume) {
 }
 }
 
-NativeSoundSequencer::NativeSoundSequencer(const std::vector<uint8_t> &program, uint32_t output_rate)
-    : program_(program), output_rate_(output_rate) {
+NativeSoundSequencer::NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout,
+                                           uint32_t output_rate)
+    : program_(program), output_rate_(output_rate), t_(layout) {
     if (program.size() < 0x40000 || output_rate < 8000 || output_rate > 192000)
         throw std::invalid_argument("native sound requires a complete imported program and valid output rate");
-    // Which layout: Revision A's when its profile and instrument tables'
-    // first entries point just past each table (0x40 and 0x200 bytes on), as
-    // in both known drivers; daytona93's otherwise.
-    for (uint32_t shift : kLayoutShifts)
-        if (pointer(kProfiles + shift) == kProfiles + shift + 0x40 &&
-            pointer(kInstruments + shift) == kInstruments + shift + 0x200) {
-            shift_ = shift;
-            break;
-        }
     stats_ = {};
     reset();
 }
@@ -85,7 +68,7 @@ void NativeSoundSequencer::reset() {
 }
 
 void NativeSoundSequencer::load_channels(unsigned profile, bool initial) {
-    const uint32_t base = pointer(kProfiles + shift_ + 4 * profile);
+    const uint32_t base = pointer(t_.profiles + 4 * profile);
     if (!valid(base, 101)) return;
     auto load = [&](unsigned index, uint32_t address) {
         auto &c = channels_[index];
@@ -99,7 +82,7 @@ void NativeSoundSequencer::load_channels(unsigned profile, bool initial) {
     banks_[0] = byte(base + 100) & 3;
     if (initial) {
         banks_[1] = banks_[0];
-        const uint32_t effects = pointer(kProfiles + shift_ + 4);
+        const uint32_t effects = pointer(t_.profiles + 4);
         if (valid(effects, 60)) for (unsigned i = 0; i < 6; ++i) load(i + 10, effects + 10 * i);
     }
 }
@@ -140,7 +123,7 @@ void NativeSoundSequencer::message(uint8_t status, uint8_t a, uint8_t b, bool se
             const unsigned bend = (unsigned(a) | (unsigned(b) << 7)) >> 5;
             unsigned magnitude = bend & 255;
             if (!(bend & 256)) { magnitude = uint8_t(-int(magnitude)); if (!magnitude) magnitude = 255; }
-            const uint32_t curve = pointer(kBendCurves + shift_ + 4 * (c.bend_range & 127));
+            const uint32_t curve = pointer(t_.bend_curves + 4 * (c.bend_range & 127));
             const int amount = byte(curve + magnitude);
             bend_[channel] = int16_t(bend & 256 ? amount : -amount);
             update_channel(c, true);
@@ -154,7 +137,7 @@ void NativeSoundSequencer::message(uint8_t status, uint8_t a, uint8_t b, bool se
 }
 
 uint16_t NativeSoundSequencer::note_pitch(uint8_t note_code, int tuning) {
-    const uint32_t center = pointer(kFinePitch + shift_ + 4 * (note_code & 15));
+    const uint32_t center = pointer(t_.fine_pitch + 4 * (note_code & 15));
     const int64_t address = int64_t(center) + 2 * tuning;
     if (address < 0 || address > std::numeric_limits<uint32_t>::max()) { ++stats_.invalid_data; return 0; }
     const uint16_t fine = word(uint32_t(address));
@@ -186,7 +169,7 @@ void NativeSoundSequencer::note_on(Channel &c, uint8_t note, uint8_t velocity) {
     uint16_t pitch = 0;
     const bool drum = c.program >= 0xf0;
     if (drum) {
-        const uint32_t table = pointer(kPercussion + shift_ + 4 * (c.program - 0xf0));
+        const uint32_t table = pointer(t_.percussion + 4 * (c.program - 0xf0));
         const uint32_t entry = table + 4 * (note & 127);
         if (!valid(entry, 4)) return;
         pan = byte(entry);
@@ -195,9 +178,9 @@ void NativeSoundSequencer::note_on(Channel &c, uint8_t note, uint8_t velocity) {
         rom = pan & 1;
         pitch = uint16_t(byte(entry + 1)) << 8;
         duration = byte(entry + 2); sample = byte(entry + 3);
-        note_code = byte(kNoteCodes + shift_ + (transposed & 127));
+        note_code = byte(t_.note_codes + (transposed & 127));
     } else {
-        uint32_t split = pointer(kInstruments + shift_ + 4 * (c.program & 127)) + 1;
+        uint32_t split = pointer(t_.instruments + 4 * (c.program & 127)) + 1;
         unsigned limit = 0;
         while (valid(split, 4) && transposed >= byte(split)) {
             split += 4;
@@ -205,14 +188,14 @@ void NativeSoundSequencer::note_on(Channel &c, uint8_t note, uint8_t velocity) {
         }
         if (failed()) return;
         sample = byte(split + 1); tuning = int8_t(byte(split + 2));
-        note_code = byte(kNoteCodes + shift_ + (uint8_t(transposed + byte(split + 3)) & 127));
+        note_code = byte(t_.note_codes + (uint8_t(transposed + byte(split + 3)) & 127));
         pitch = note_pitch(note_code, bend_[c.channel] + tuning);
     }
     auto &voice = allocate(rom);
     voice.active = true; voice.drum = drum; voice.held = false;
     voice.channel = c.channel; voice.note_code = note_code;
     voice.event.music = music_channel(c.channel);
-    voice.velocity = byte(kVelocity + shift_ + (velocity & 127)); voice.tuning = tuning;
+    voice.velocity = byte(t_.velocity + (velocity & 127)); voice.tuning = tuning;
     voice.age = ++voice_age_; voice.lifetime = duration;
     voice.event.bank = banks_[rom];
     voice.event.sample_index = uint16_t(sample | ((pitch & 1) << 8));
@@ -222,11 +205,11 @@ void NativeSoundSequencer::note_on(Channel &c, uint8_t note, uint8_t velocity) {
 void NativeSoundSequencer::note_off(Channel &c, uint8_t note) {
     if (c.program >= 0xf0) return;
     const uint8_t transposed = uint8_t(note + c.transpose);
-    uint32_t split = pointer(kInstruments + shift_ + 4 * (c.program & 127)) + 1;
+    uint32_t split = pointer(t_.instruments + 4 * (c.program & 127)) + 1;
     for (unsigned n = 0; n < 128 && valid(split, 4) && transposed >= byte(split); ++n) split += 4;
     if (!valid(split, 4)) return;
     const uint8_t sample = byte(split + 1);
-    const uint8_t note_code = byte(kNoteCodes + shift_ + (uint8_t(transposed + byte(split + 3)) & 127));
+    const uint8_t note_code = byte(t_.note_codes + (uint8_t(transposed + byte(split + 3)) & 127));
     for (auto &v : voices_) if (v.active && !v.drum && v.channel == c.channel &&
         v.event.rom == (c.pan_device & 1) && v.note_code == note_code && (v.event.sample_index & 255) == sample) {
         if (hold_[c.channel]) v.held = true; else stop_voice(v);
@@ -311,7 +294,7 @@ void NativeSoundSequencer::controller(Channel &c, uint8_t control, uint8_t value
 }
 
 void NativeSoundSequencer::start_sequence(uint8_t bank, uint8_t index) {
-    const uint32_t table = pointer(kSequenceBanks + 4 * (bank & 127));
+    const uint32_t table = pointer(t_.sequence_banks + 4 * (bank & 127));
     if (!valid(table, 2) || index > word(table)) return;
     uint32_t descriptor = pointer(table + 2 + 4 * index);
     if (!valid(descriptor, 2)) return;

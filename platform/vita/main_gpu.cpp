@@ -22,6 +22,7 @@
 #include "gpu_text.h"
 #include "imgui_vita.h"
 #include "runtime/game_loop.h"
+#include "runtime/game.h"
 #include "runtime/test_hold.h"
 #include "runtime/rom_import.h"
 
@@ -44,6 +45,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <cctype>
 #include <string>
 #include <stdexcept>
 #include <vector>
@@ -123,6 +125,23 @@ constexpr int kMainCore = DAYTONA_VITA_MAIN_CORE, kGeoCore = DAYTONA_VITA_GEO_CO
 constexpr bool kPinnedCores = kMainCore >= 0 || kGeoCore >= 0 || kSoundCore >= 0;
 constexpr double kPerfWindowSeconds = 5.0;
 constexpr const char *kDirectory = "ux0:data/" M2_ROMSET;
+// A package holds one game: this set, and the game's companion set when
+// bundled (Game::companion: Daytona's two sets), which the ROM option
+// switches to. Other games are packages of their own (their own title IDs:
+// scripts/games.py).
+const rt::Game *companion() { return rt::game().companion ? rt::find_game(rt::game().companion) : nullptr; }
+// The set the ROM option selects.
+const rt::Game &selected_game(bool use_companion) { return use_companion && companion() ? *companion() : rt::game(); }
+std::string rom_label(const rt::Game &g) {
+    std::string s = std::string("ROM: ") + g.set + " (" + g.label + ")";
+    for (char &c : s) c = char(std::toupper(static_cast<unsigned char>(c)));
+    return s;
+}
+bool app_file(const std::string &path) {
+    FILE *f = std::fopen(path.c_str(), "rb");
+    if (f) std::fclose(f);
+    return f != nullptr;
+}
 constexpr const char *kRom = "ux0:data/" M2_ROMSET "/" M2_ROMSET ".zip";
 constexpr const char *kConfig = "ux0:data/" M2_ROMSET "/vita.cfg";
 constexpr const char *kConfigTemp = "ux0:data/" M2_ROMSET "/vita.cfg.tmp";
@@ -214,7 +233,7 @@ constexpr const char *kBindKeys[vita::ActionCount] = {"bind_accelerate", "bind_b
     "bind_coin", "bind_view1", "bind_view2", "bind_view3", "bind_view4"};
 
 struct VitaSettings {
-    bool revision_a = std::strcmp(M2_ROMSET, "daytona") == 0;
+    bool use_companion = false; // the ROM option: the game's companion set (not saved)
     bool link_enabled = false, link_sync = false;
     int link_port = 15112, next_port = 15112;
     int next_ip[4] = {192, 168, 1, 2};
@@ -360,9 +379,9 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
                const VitaSettings &settings, const std::string &status, double fps) {
     ImGui::SetNextWindowPos({12, 12});
     ImGui::SetNextWindowSize({936, 520});
-    ImGui::Begin("Daytona USA", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-    ImGui::Text("Daytona USA | %.1f FPS | CPU %d MHz | GPU %d MHz | %s", fps,
-                scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency(), kGfxApi);
+    ImGui::Begin(rt::game().title, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+    ImGui::Text("%s | %.1f FPS | CPU %d MHz | GPU %d MHz | %s",
+                rt::game().title, fps, scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency(), kGfxApi);
     if (ImGui::Button("Game")) { options = binds = false; selection = 0; }
     ImGui::SameLine();
     if (ImGui::Button("Options")) { options = true; binds = false; selection = 0; }
@@ -412,7 +431,7 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
     std::snprintf(link_fields[4], sizeof link_fields[4], "LISTEN PORT: %d", settings.link_port);
     std::snprintf(link_fields[5], sizeof link_fields[5], "NEXT CABINET PORT: %d", settings.next_port);
     values[25] = link_fields[4]; values[26] = link_fields[5];
-    values[20] = settings.link_enabled ? "LINK PLAY: ON (REVISION A)" : "LINK PLAY: OFF";
+    values[20] = settings.link_enabled ? "LINK PLAY: ON" : "LINK PLAY: OFF";
     values[27] = settings.link_sync ? "LINK FRAME SYNC: ON" : "LINK FRAME SYNC: OFF";
     char cpu[64], gpu[32], volume[32], mute[32], music[32], effects[32], deadzone[32], invert[32];
     std::snprintf(cpu, sizeof cpu, "CPU CLOCK: %d MHz (ACTUAL %d)", settings.cpu_clock,
@@ -427,7 +446,9 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
     values[0]=cpu; values[1]=gpu; values[2]=volume; values[3]=mute; values[4]=music; values[5]=effects; values[6]=deadzone; values[7]=invert;
     values[8]=settings.native_audio ? "AUDIO ENGINE: NATIVE (TEST)" : "AUDIO ENGINE: REFERENCE";
     values[9]=kGfxLabel; values[10]="FULLSCREEN: ON";
-    values[11]=settings.revision_a ? "ROM: DAYTONA (1994 REVISION A)" : "ROM: DAYTONA93 (1993)";
+    static std::string rom;
+    rom = rom_label(selected_game(settings.use_companion));
+    values[11]=rom.c_str();
     values[12]="BINDS: SELECT+TRIANGLE TEST / SELECT+SQUARE SERVICE";
     static const char* aspects[] = {"ASPECT: ORIGINAL", "ASPECT: 16:10", "ASPECT: 16:9", "ASPECT: 21:9"};
     static const char* distances[] = {"DISTANCE: SHORTEST", "DISTANCE: SHORTER", "DISTANCE: DEFAULT", "DISTANCE: FURTHER", "DISTANCE: FURTHEST"};
@@ -751,19 +772,22 @@ int main(int, char **) {
     auto start_game = [&]() -> bool {
         if (!finish_sound()) return false;
         if (!save()) { status = "SAVE FAILED; ROM SWITCH CANCELLED."; return false; }
-        if (settings.revision_a != (std::strcmp(M2_ROMSET, "daytona") == 0)) {
-            const char *executable = settings.revision_a ? "app0:/daytona.self" : "app0:/eboot.bin";
-            // Only the dual package has daytona.self. A standalone Revision A
-            // eboot must not relaunch itself when the user selects daytona93.
-            FILE *check = std::fopen("app0:/daytona.self", "rb");
-            if (!check) { status = "SELECTED ROM EXECUTABLE NOT PACKAGED. INSTALL THE DUAL-ROM VPK."; return false; }
-            std::fclose(check);
+        if (settings.use_companion && companion()) {
+            // A two-set package: eboot.bin is one set, <companion>.self the
+            // other. Running as eboot.bin, the companion is its .self; running
+            // as the .self, the companion is eboot.bin. A one-set package has
+            // neither and must not relaunch itself.
+            const std::string self = std::string("app0:/") + companion()->set + ".self";
+            const std::string own = std::string("app0:/") + rt::game().set + ".self";
+            std::string executable = app_file(self) ? self : app_file(own) ? "app0:/eboot.bin" : "";
+            if (executable.empty()) { status = "SELECTED ROM EXECUTABLE NOT PACKAGED. INSTALL THE TWO-ROM VPK."; return false; }
+            settings.use_companion = false; // the other executable starts on its own set
             settings.save();
             native_audio.close(); audio.close(); sound_worker.close();
             game.reset(); link.reset();
             gfx_idle();
             sceGxmDisplayQueueFinish();
-            const int rc = sceAppMgrLoadExec(executable, nullptr, nullptr);
+            const int rc = sceAppMgrLoadExec(executable.c_str(), nullptr, nullptr);
             status = "ROM SWITCH FAILED: " + std::to_string(rc);
             return false;
         }
@@ -778,20 +802,21 @@ int main(int, char **) {
         gfx_begin();
         ui.frame(1.f / 60);
         ImGui::SetNextWindowPos({24, 24}); ImGui::SetNextWindowSize({912, 496});
-        ImGui::Begin("Starting Daytona USA", nullptr, ImGuiWindowFlags_NoDecoration);
+        ImGui::Begin("Starting", nullptr, ImGuiWindowFlags_NoDecoration);
         ImGui::TextWrapped("%s", status.c_str());
         ImGui::End(); ui.render();
         gfx_end();
         try {
-            if (settings.link_enabled && !settings.revision_a)
-                throw std::runtime_error("LINK PLAY REQUIRES DAYTONA REVISION A. SELECT THAT ROM OR TURN LINK OFF.");
+            if (settings.link_enabled && !rt::game().link)
+                throw std::runtime_error(std::string("LINK PLAY: ") + rt::game().set +
+                                         " HAS NO COMMUNICATION BOARD. SELECT ANOTHER ROM OR TURN LINK OFF.");
             auto images = rt::import_rom_set(kRom);
-            active_native_audio = settings.native_audio;
+            active_native_audio = settings.native_audio && rt::game().native_sound; // the game's driver tables known
             native_effect_warned = false;
             if (active_native_audio) {
                 sound_worker.close();
                 auto engine = std::make_unique<snd::NativeSoundEngine>(
-                    std::move(images.sound_program), std::move(images.pcm1), std::move(images.pcm2));
+                    std::move(images.sound_program), std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound);
                 if (!native_audio.open(std::move(engine), kDiagnostics ? ticks_us : nullptr))
                     throw std::runtime_error("Native audio output unavailable; select Reference audio and reset");
             } else {
@@ -925,8 +950,10 @@ int main(int, char **) {
                                                      : "RENDERER FIXED AT BUILD: GXM GPU FAST (--GPU-FAST).";
                     } else if (selection == 10 && activate) {
                         status = "VITA OUTPUT IS FIXED FULLSCREEN AT 960 X 544.";
+                    } else if (selection == 11 && (direction || activate) && !companion()) {
+                        status = "ONE ROM SET IN THIS PACKAGE: OTHER GAMES ARE SEPARATE APPS.";
                     } else if (selection == 11 && (direction || activate)) {
-                        settings.revision_a = !settings.revision_a;
+                        settings.use_companion = !settings.use_companion;
                         status = "ROM SELECTED. CHOOSE START/RESET TO SWITCH. SAVES ARE SEPARATE.";
                     } else if (selection == 12 && activate) {
                         status = "TEST: SELECT+TRIANGLE  SERVICE: SELECT+SQUARE  MENU: CROSS NEXT / START ENTER";
@@ -988,7 +1015,7 @@ int main(int, char **) {
                     menu = false; clock.reset(); wait_release = true;
                 } else if (pressed & vita::Cross) {
                     if (selection == 0) {
-                        const bool same_rom = settings.revision_a == (std::strcmp(M2_ROMSET, "daytona") == 0);
+                        const bool same_rom = !settings.use_companion;
                         if ((game && same_rom) || start_game()) { menu = false; clock.reset(); wait_release = true; }
                     } else if (selection == 1) {
                         if (start_game()) { menu = false; clock.reset(); wait_release = true; }

@@ -79,23 +79,25 @@ class BuildVitaTests(unittest.TestCase):
 
     def test_success_requires_package(self):
         for name in BUILD.REQUIRED:
-            path = self.root / "build/gen" / name
+            path = self.root / "build/gen" / name.format(set="daytona93")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()  # presence marker, not generated game code
         with patch.object(BUILD.subprocess, "run"):
             with self.assertRaises(RuntimeError):
                 self.call()
 
-    def test_gpu_package_rejects_missing_draw_distance_hook(self):
+    def test_gpu_package_rejects_missing_hook(self):
+        (self.root / "seeds").mkdir()
+        (self.root / "seeds/daytona93_hooks.txt").write_text("# a comment\n00017078 draw_list\n")
         for name in BUILD.REQUIRED:
-            path = self.root / "build/gen" / name
+            path = self.root / "build/gen" / name.format(set="daytona93")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
         with patch.object(BUILD.subprocess, "run") as run:
             with self.assertRaises(SystemExit):
                 self.call("--gpu-fast")
             run.assert_not_called()
-        self.assertIn("draw-distance hook", self.output.getvalue())
+        self.assertIn("lacks the hooks draw_list", self.output.getvalue())
 
     def test_cores_pinned_by_default(self):
         with patch.object(BUILD.subprocess, "run") as run:
@@ -133,6 +135,34 @@ class BuildVitaTests(unittest.TestCase):
         (folder / "bg.png").touch()
         (folder / "icon0.png").touch()
         self.assertEqual(BUILD.livearea_summary(), "icon0.png, bg.png")
+
+    def test_title_id_follows_the_game(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl")
+        configure = run.call_args_list[0].args[0]
+        self.assertIn("-DDAYTONA_VITA_TITLEID=DAYT00093", configure)  # always passed: never a stale cache
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build/gen", configure)
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--set", "srallyc")
+        configure = run.call_args_list[0].args[0]
+        self.assertIn("-DDAYTONA_VITA_ROMSET=srallyc", configure)
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build-srallyc/gen", configure)
+        self.assertIn(f"{self.root}/build/vita-srallyc", map(str, configure))
+        self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00094", configure)
+        self.assertIn("-DDAYTONA_VITA_GAME_NAME=Sega Rally Championship", configure)
+
+    def test_title_id_override_is_checked(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--title-id", "SRAL00001")
+        self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00001", run.call_args_list[0].args[0])
+        with self.assertRaises(SystemExit):
+            self.call("--compile-check", "--title-id", "sral1")
+
+    def test_srallyc_has_no_fast_gen(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            with self.assertRaises(SystemExit):
+                self.call("--gpu-gl", "--set", "srallyc", "--fast-gen")
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

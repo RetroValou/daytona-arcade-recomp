@@ -22,6 +22,12 @@ python3 scripts/build_vita.py --gpu-gl --fast-inaccuracy --release
 The result is `build/vita/daytona_vita.vpk`. Install it with VitaShell and copy your
 ROM set to `ux0:data/daytona93/daytona93.zip`.
 
+Sega Rally Championship is a separate app (title ID SRAL00094, beside Daytona's
+DAYT00093): after `python3 scripts/recompile.py --set srallyc --build-dir build-srallyc`,
+`python3 scripts/build_vita.py --set srallyc --gpu-gl --release` gives
+`build/vita-srallyc/daytona_vita.vpk`; its ROM goes to `ux0:data/srallyc/srallyc.zip`.
+No sound yet (no SCSP sound board).
+
 ## How it runs
 
 There is no emulator. The arcade board's programs, the **i960** (the game itself), the

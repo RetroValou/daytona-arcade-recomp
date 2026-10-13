@@ -10,6 +10,9 @@ cmake_minimum_required(VERSION 3.20)
 # incomplete, everything is compiled here from the same sources.
 project(daytona_dreamcast_tools LANGUAGES C CXX)
 get_filename_component(DAYTONA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+# Every game's record and hooks (src/games/), with the runtime.
+set(GAME_SOURCES "${DAYTONA_ROOT}/src/games/games.cpp" "${DAYTONA_ROOT}/src/games/daytona.cpp"
+    "${DAYTONA_ROOT}/src/games/srallyc.cpp")
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -119,8 +122,8 @@ else()
     # the importer's images, not archives).
     set(RUNTIME_FILES cpu tgp m2_tgp_board geo raster video m2_board game_loop zip rom_import
         archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer
-        native_sound_engine enhance comm_board)
-    set(RUNTIME_SOURCES)
+        native_sound_engine comm_board)
+    set(RUNTIME_SOURCES ${GAME_SOURCES})
     foreach(name IN LISTS RUNTIME_FILES)
         list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
     endforeach()
@@ -176,10 +179,10 @@ target_link_libraries(soundusage PRIVATE dc_game)
 # with the default build (the speed changes must not change a pixel).
 option(DC_SPEED "dcmemcheck with M2_DC_SPEED" ON)
 if(HOST_FILES)
-    set(DCMEM_SOURCES)
+    set(DCMEM_SOURCES ${GAME_SOURCES})
     foreach(name cpu tgp m2_tgp_board geo raster video m2_board game_loop zip rom_import archive m2_replay_bus
             lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
-            enhance comm_board)
+            comm_board)
         list(APPEND DCMEM_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
     endforeach()
     add_library(dc_runtime_dcmem STATIC ${DCMEM_SOURCES})

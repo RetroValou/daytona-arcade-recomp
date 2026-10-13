@@ -13,10 +13,10 @@ Always:
     at their pinned commits into extern/ (all built from source with the
     project, statically);
   - configures and builds the tools and tests, runs the tests;
-  - if your ROM set is at roms/daytona93.zip (or .7z): imports it, recompiles the
-    game's code to native C++ and builds it (all under build/, git-ignored);
-  - the same for the 1994 version (MAME's daytona, Revision A) if it is at
-    roms/daytona.zip (or .7z), in build-daytona/ (a separate build: each
+  - for every ROM set of scripts/games.py found in roms/ (roms/<set>.zip or
+    .7z, or another archive name games.py gives, such as srallycb.zip):
+    imports it, recompiles the game's code to native C++ and builds it, in
+    build/ for daytona93 and build-<set>/ for the others (git-ignored; each
     build directory is recompiled from one ROM set).
 Options:
   --test-extras  pip packages and modules for the optional tests (lupa for the
@@ -257,10 +257,11 @@ def main():
     configure_and_build(build)
 
     games = []  # (set, executable)
-    for romset, label in SETS:
-        if not any(os.path.exists(os.path.join(ROOT, "roms", romset + "." + e)) for e in ("zip", "7z")):
+    for romset, label in sets():
+        if not any(os.path.exists(os.path.join(ROOT, "roms", n + "." + e))
+                   for n in catalogue().GAMES[romset]["roms"] for e in ("zip", "7z")):
             continue
-        set_dir = args.build_dir if romset == "daytona93" else args.build_dir + "-" + romset
+        set_dir = catalogue().build_dir(romset, args.build_dir)
         set_build = os.path.join(ROOT, set_dir)
         if set_build != build:
             configure_and_build(set_build, romset)
@@ -289,8 +290,22 @@ def main():
 
 
 EXE = ".exe" if WINDOWS else ""
-# The ROM sets the game can be recompiled from: roms/<set>.zip or .7z.
-SETS = [("daytona93", "Daytona USA Deluxe '93 (daytona93)"), ("daytona", "Daytona USA Revision A, 1994 (daytona)")]
+
+
+def catalogue():
+    """scripts/games.py: the ROM sets the games can be recompiled from, and
+    the archive names each is found under (roms/<name>.zip or .7z)."""
+    sys.path.insert(0, os.path.join(ROOT, "scripts"))
+    import games
+    return games
+
+
+def sets():
+    """(set, label) for every known set, the default first."""
+    games = catalogue()
+    order = [games.DEFAULT] + [g for g in games.GAMES if g != games.DEFAULT]
+    return [(g, f"{games.GAMES[g]['title']} {games.GAMES[g]['label']} ({g})") for g in order]
+
 
 BUILD_FAILED = """
 setup: your ROM set was accepted, but recompiling or building the game
@@ -303,12 +318,13 @@ setup: your {set} ROM set (roms/{set}.zip or .7z) was rejected (the line
 starting "m2import:" above names the first file that is missing or wrong),
 so that game was not built.
 
-The game can be built from two of MAME's Daytona USA sets, each under its own
-name: daytona93 (Daytona USA Deluxe '93: epr-16530a.12, epr-16531a.13,
-epr-16534a.6, epr-16535a.7) at roms/daytona93.zip, and daytona (Revision A,
-1994: epr-16722a.12, epr-16723a.13, epr-16724a.6, epr-16725a.7) at
-roms/daytona.zip (or .7z). Other sets (daytonas, daytonat, daytonase, ...)
-have different program ROMs and cannot be used, whatever the file is called.
+Each game is built from exactly the MAME sets listed in scripts/games.py,
+each under its own name. For Daytona USA: daytona93 (Deluxe '93:
+epr-16530a.12, epr-16531a.13, epr-16534a.6, epr-16535a.7) at
+roms/daytona93.zip, and daytona (Revision A, 1994: epr-16722a.12,
+epr-16723a.13, epr-16724a.6, epr-16725a.7) at roms/daytona.zip (or .7z).
+Other sets (daytonas, daytonat, daytonase, ...) have different program ROMs
+and cannot be used, whatever the file is called.
 
 Put the right set under the right name and run setup again.
 See docs/getting-started.md, "Troubleshooting".
@@ -317,12 +333,13 @@ See docs/getting-started.md, "Troubleshooting".
 
 def no_rom_help():
     roms = os.path.join(ROOT, "roms")
-    named = {romset + ext for romset, _ in SETS for ext in (".zip", ".7z")}
+    games = catalogue().GAMES
+    named = {n + ext for g in games.values() for n in g["roms"] for ext in (".zip", ".7z")}
     found = sorted(f for f in os.listdir(roms) if f.lower().endswith((".zip", ".7z")) and f not in named) \
         if os.path.isdir(roms) else []
-    lines = ["To build the game, put your own ROM set at roms/daytona93.zip (Daytona USA Deluxe '93,",
-             "MAME's daytona93) or roms/daytona.zip (Revision A, 1994, MAME's daytona), or .7z,",
-             "exactly that name, and run setup again. Both can be there: each is built."]
+    lines = ["To build a game, put your own ROM set in roms/ under one of these names (.zip or .7z),",
+             "exactly that name, and run setup again. Several can be there: each is built."]
+    lines += [f"  {label}: " + " or ".join(f"roms/{n}.zip" for n in games[g]["roms"]) for g, label in sets()]
     if found:
         lines += ["", "Found in roms/, but not under those names: " + ", ".join(found),
                   "If one of these is one of those sets, rename it to that set's name."]

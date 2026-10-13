@@ -25,7 +25,7 @@ SDL_GPUDevice *SDLCALL SDL_CreateGPUDeviceWithProperties(SDL_PropertiesID id) {
 const char *SDLCALL SDL_GetError() { return error.c_str(); }
 void SDLCALL SDL_LogError(int, const char *, ...) { ++logs; error = "logging changed error"; }
 bool SDLCALL SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags flags, const char *title, const char *message, SDL_Window *parent) {
-    check(flags == SDL_MESSAGEBOX_ERROR && std::string(title) == "Daytona Error" && !parent);
+    check(flags == SDL_MESSAGEBOX_ERROR && std::string(title) == "Startup error" && !parent);
     ++dialogs; shown = message; return !fail_dialog;
 }
 }

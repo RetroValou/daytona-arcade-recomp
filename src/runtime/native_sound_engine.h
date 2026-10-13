@@ -17,7 +17,7 @@ public:
         uint64_t limited_frames = 0;
     };
     NativeSoundEngine(std::vector<uint8_t> program, std::vector<uint8_t> pcm1,
-                      std::vector<uint8_t> pcm2);
+                      std::vector<uint8_t> pcm2, const rt::SoundLayout &layout);
     NativeSoundEngine(const NativeSoundEngine &) = delete;
     NativeSoundEngine &operator=(const NativeSoundEngine &) = delete;
     void send(const uint8_t *bytes, size_t count);

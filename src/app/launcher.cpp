@@ -2,11 +2,13 @@
 #include "app/rom_file.h"
 #ifdef SDL_PLATFORM_IOS
 #include "rom_picker.h"
+#include "runtime/game.h"
 #endif
 
 #include "imgui.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -244,7 +246,9 @@ Launcher::Result Launcher::draw(bool game_running, const Devices &devices) {
                  ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
     ImGui::PushTextWrapPos();
 
-    ImGui::TextUnformatted("DAYTONA USA");
+    std::string heading = rt::game().title;
+    for (char &c : heading) c = char(std::toupper(static_cast<unsigned char>(c)));
+    ImGui::TextUnformatted(heading.c_str());
     ImGui::SameLine();
     ImGui::TextDisabled("  static recompilation, native runtime");
     ImGui::Separator();

@@ -50,6 +50,155 @@ void IoBoard::write(uint32_t index, uint8_t v) {
     }
 }
 
+// --- 315-5649 (Model 2A-CRX) ---------------------------------------------------
+// MAME sega_315_5649_device::read/write and model2a_state's port callbacks
+// (eeprom_w, in0_r); the game's wiring of its controls: Game::io.
+
+uint8_t IoBoard::port_in(uint32_t offset, uint64_t now) {
+    switch (offset) {
+    case 1: { // in0_r
+        const uint8_t in0 = wiring.port ? wiring.port(1, inputs) : 0xff;
+        return ctrl_mode_ ? uint8_t(0xc0 | (ee_do(now) ? 0x20 : 0) | 0x10 | (in0 & 0x0f)) : in0;
+    }
+    case 2: case 3: return wiring.port ? wiring.port(offset, inputs) : 0xff;
+    case 6: return 0xff; // SW3 DIP switches, all off
+    default: return 0xff;
+    }
+}
+
+uint8_t IoBoard::crx_read(uint32_t offset, uint64_t now) {
+    switch (offset) {
+    case 0x06:
+        if (mode_ & 0x80) { // port G counter mode: no counters connected
+            port_[6] = uint8_t((port_[6] & 0xf8) | ((port_[6] + 1) & 7));
+            return 0;
+        }
+        [[fallthrough]];
+    case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
+        return (port_config_ >> offset) & 1 ? port_in(offset, now) : port_[offset];
+    case 0x0b: case 0x0c: return 0; // RS-422 receive: nothing connected
+    case 0x0d: return 0x0c;         // RS-422 status (MAME's: receive buffers full, transmit empty)
+    case 0x0f: {                    // analog input, auto-increments
+        const uint8_t ch = analog_channel_;
+        analog_channel_ = (analog_channel_ + 1) & 7;
+        return wiring.analog ? wiring.analog(ch, inputs) : 0xff;
+    }
+    default: return 0xff;
+    }
+}
+
+void IoBoard::crx_write(uint32_t offset, uint8_t v, uint64_t now) {
+    switch (offset) {
+    case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06:
+        port_[offset] = v;
+        if (offset == 0) eeprom_pins(v, now);
+        else if (offset == 4 && drive_commands.size() < kMaxDrive) drive_commands.push_back(v);
+        break;
+    case 0x08: port_config_ = v; break;
+    case 0x0e: mode_ = v; break;
+    case 0x0f: analog_channel_ = v & 7; break;
+    default: break; // RS-422 transmit: nothing connected
+    }
+}
+
+// --- 93C46 (MAME eeprom_serial_93cxx_device: 64 x 16 bits) -------------------
+// Write/erase cycles keep DO low (busy) for MAME's times: 1.75 ms for a word,
+// 1 ms for an erase, 8 ms for all words, at 25 MHz i960 instructions.
+
+namespace {
+constexpr uint64_t kEeWrite = 43750, kEeErase = 25000, kEeAll = 200000;
+constexpr uint32_t kEeAddrBits = 6, kEeDataBits = 16;
+} // namespace
+
+void IoBoard::ee_set_word(uint32_t a, uint16_t v) {
+    eeprom[a * 2] = uint8_t(v);
+    eeprom[a * 2 + 1] = uint8_t(v >> 8);
+    eeprom_dirty = true;
+}
+
+bool IoBoard::ee_do(uint64_t now) const {
+    if (ee_state_ == EeState::WaitStart) return ee_ready(now);
+    if (ee_state_ == EeState::Reading) return (ee_shift_ & 0x80000000u) != 0;
+    return true; // tristated, pulled up
+}
+
+void IoBoard::eeprom_pins(uint8_t a, uint64_t now) {
+    ee_now_ = now;
+    ctrl_mode_ = a & 1;
+    ee_di_ = (a >> 5) & 1;
+    const bool clk = (a >> 7) & 1, cs = (a >> 6) & 1;
+    if (clk != ee_clk_) {
+        ee_clk_ = clk;
+        if (clk) ee_clock();
+    }
+    if (cs != ee_cs_) {
+        ee_cs_ = cs;
+        ee_state_ = cs ? (ee_state_ == EeState::Reset ? EeState::WaitStart : ee_state_) : EeState::Reset;
+    }
+}
+
+void IoBoard::ee_clock() { // CLK rising edge
+    switch (ee_state_) {
+    case EeState::WaitStart:
+        if (ee_di_ && ee_ready(ee_now_)) {
+            ee_accum_ = ee_bits_ = 0;
+            ee_state_ = EeState::Command;
+        }
+        break;
+    case EeState::Command: {
+        ee_accum_ = (ee_accum_ << 1) | uint32_t(ee_di_);
+        if (++ee_bits_ < 2 + kEeAddrBits) break;
+        ee_bits_ = 0;
+        const uint32_t op = ee_accum_ >> kEeAddrBits, addr = ee_accum_ & ((1u << kEeAddrBits) - 1);
+        ee_address_ = uint8_t(addr);
+        if (op == 2) { // READ: a dummy 0 bit, then the word
+            ee_shift_ = 0;
+            ee_state_ = EeState::Reading;
+        } else if (op == 1) { // WRITE
+            ee_command_ = 1;
+            ee_shift_ = 0;
+            ee_state_ = EeState::WaitData;
+        } else if (op == 3) { // ERASE
+            if (ee_locked_) { ee_state_ = EeState::Reset; break; }
+            ee_set_word(addr, 0xffff);
+            ee_done_at_ = ee_now_ + kEeErase;
+            ee_state_ = EeState::Completion;
+        } else switch (addr >> (kEeAddrBits - 2)) {
+            case 0: ee_locked_ = true; ee_state_ = EeState::Reset; break;   // WRDS
+            case 1: ee_command_ = 0; ee_shift_ = 0; ee_state_ = EeState::WaitData; break; // WRAL
+            case 2:                                                          // ERAL
+                if (ee_locked_) { ee_state_ = EeState::Reset; break; }
+                for (uint32_t i = 0; i < 64; i++) ee_set_word(i, 0xffff);
+                ee_done_at_ = ee_now_ + kEeAll;
+                ee_state_ = EeState::Completion;
+                break;
+            default: ee_locked_ = false; ee_state_ = EeState::Reset; break; // EWEN
+            }
+        break;
+    }
+    case EeState::Reading: {
+        const uint32_t bit = ee_bits_++;
+        if (bit == 0) ee_shift_ = uint32_t(ee_word(ee_address_)) << (32 - kEeDataBits);
+        else ee_shift_ = (ee_shift_ << 1) | 1;
+        break;
+    }
+    case EeState::WaitData:
+        ee_shift_ = (ee_shift_ << 1) | uint32_t(ee_di_);
+        if (++ee_bits_ < kEeDataBits) break;
+        if (ee_locked_) { ee_state_ = EeState::Reset; break; }
+        if (ee_command_ == 1) {
+            ee_set_word(ee_address_, uint16_t(ee_shift_));
+            ee_done_at_ = ee_now_ + kEeWrite;
+        } else { // WRAL: ANDed into the cells (an ERAL comes first)
+            for (uint32_t i = 0; i < 64; i++) ee_set_word(i, uint16_t(ee_word(i) & ee_shift_));
+            ee_done_at_ = ee_now_ + kEeAll;
+        }
+        ee_state_ = EeState::Completion;
+        break;
+    default: break;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Board
 
@@ -70,11 +219,17 @@ M2Board::M2Board(Images images)
     : img_(std::move(images)), ram_(0x20000), work_(0x100000), cpuctl_(0x1000), backup_(0x4000, 0xff), tile_(0x10000),
       chr_(0x80000), palette_(0x4000), xlat_(0xc000), tex0_(0x200000), tex1_(0x200000), luma_(0x20000), fb_a_(0x80000),
       fb_b_(0x80000), comm_(0x4000), pages_(size_t(1) << (32 - kPageBits)), tgp_(img_.copro_tables, img_.copro_data) {
-    // model2o memory map (MAME model2_base_mem, model2_tgp_mem, model2o_mem)
+    // MAME model2_base_mem and model2_tgp_mem, then model2o_mem or model2a_crx_mem
     map(0x00000000, 0x001fffff, Rom, img_.program.data());
-    map(0x00200000, 0x0021ffff, Ram, ram_.data());
-    map(0x00220000, 0x0023ffff, Rom, img_.program.data() + 0x20000);
+    if (crx()) {
+        ram_.assign(0x40000, 0);
+        map(0x00200000, 0x0023ffff, Ram, ram_.data());
+    } else {
+        map(0x00200000, 0x0021ffff, Ram, ram_.data());
+        map(0x00220000, 0x0023ffff, Rom, img_.program.data() + 0x20000);
+    }
 #endif
+    io_.wiring = img_.game->io;
     map(0x00500000, 0x005fffff, Ram, work_.data());
     map(0x00800000, 0x00807fff, Dev, nullptr, 0, false);
     map(0x00880000, 0x00887fff, Dev, nullptr, 0, false);
@@ -250,12 +405,10 @@ void M2Board::vblank_end() {
 }
 
 bool M2Board::in_idle_loop() const {
-    // The game's wait-for-vblank loops (0x12b0: until the frame counter at
-    // 0x00500000 changes; 0x12f0: until it reaches 2). MAME takes 99% of
-    // vblank interrupts here; the rest land in CPU-bound code such as the
-    // boot-time texture upload at 0x1388.
     const uint32_t ip = cpu_->m_IP;
-    return (ip >= 0x12b0 && ip <= 0x12bb) || (ip >= 0x12f0 && ip <= 0x12ff);
+    for (const Game::Range &r : img_.game->idle)
+        if (r.last && ip >= r.first && ip <= r.last) return true;
+    return false;
 }
 
 // --- sound UART (i8251, transmit side) ------------------------------------------
@@ -334,8 +487,14 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
             return uint32_t(comm_board_->cn_r()) | ((mask & 0xff0000) ? uint32_t(comm_board_->fg_r()) << 16 : 0);
         return uint32_t(comm_cn_ | 0xfe) | uint32_t(comm_fg_) << 16;
     }
-    if (addr >= 0x01c00000 && addr <= 0x01c00fff) { // MB8421 through umask 0x00ff00ff
+    if (addr >= 0x01c00000 && addr <= 0x01c00fff) { // MB8421 or 315-5649, through umask 0x00ff00ff
         const uint32_t i = ((addr & 0xfff) >> 2) * 2;
+        if (crx()) {
+            if (i >= 0x10) return 0;
+            const uint64_t now = io_now();
+            return ((mask & 0x000000ff) ? uint32_t(io_.crx_read(i, now)) : 0) |
+                   ((mask & 0x00ff0000) ? uint32_t(io_.crx_read(i + 1, now)) << 16 : 0);
+        }
         return uint32_t(io_.read(i)) | uint32_t(io_.read(i + 1)) << 16;
     }
     if (addr >= 0x10000000 && addr <= 0x101fffff) return uint32_t(render_unk_) << 14 | uint32_t(render_mode_) << 2 | uint32_t(render_test_);
@@ -387,6 +546,13 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
     }
     if (addr >= 0x01c00000 && addr <= 0x01c00fff) {
         const uint32_t i = ((addr & 0xfff) >> 2) * 2;
+        if (crx()) { // 315-5649 at 0x01c00000-0x01c0001f; 0x01c00040 is written and ignored
+            if (i >= 0x10) return;
+            const uint64_t now = io_now();
+            if (mask & 0x000000ff) io_.crx_write(i, uint8_t(data), now);
+            if (mask & 0x00ff0000) io_.crx_write(i + 1, uint8_t(data >> 16), now);
+            return;
+        }
         if (mask & 0x000000ff) io_.write(i, uint8_t(data));
         if (mask & 0x00ff0000) io_.write(i + 1, uint8_t(data >> 16));
         return;

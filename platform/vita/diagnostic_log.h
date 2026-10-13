@@ -11,7 +11,7 @@ namespace vita {
 class DiagnosticLog {
 public:
     static constexpr size_t kLimit = 1024 * 1024;
-    static constexpr const char *kPath = "ux0:data/daytona93/vita-diag.log";
+    static constexpr const char *kPath = "ux0:data/" M2_ROMSET "/vita-diag.log";
 
     explicit DiagnosticLog(bool enabled = true) : enabled_(enabled) {}
     bool enabled() const { return enabled_; }

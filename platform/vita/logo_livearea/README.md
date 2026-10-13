@@ -3,7 +3,9 @@
 Put your own images in this folder before running `scripts/build_vita.py`. Every
 file below that is present goes into the VPK; a missing one keeps the Vita's default
 (no file at all: the default icon and LiveArea). The game's name on the home screen
-is always "Daytona USA", whatever the build options.
+is its `vita_name` in `scripts/games.py` ("Daytona USA", "Sega Rally
+Championship"), whatever the build options. The images are shared by every game's
+package.
 
 | File name (exact) | Size (pixels) | Shown as | In the VPK |
 | --- | --- | --- | --- |

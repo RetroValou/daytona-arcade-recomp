@@ -81,7 +81,9 @@ GEN_FLAGS := $(subst -O2,-Os,$(CXXFLAGS)) $(GAME_DEFS) -Wno-unused-label
 
 RUNTIME := cpu tgp m2_tgp_board geo raster video m2_board game_loop zip rom_import archive m2_replay_bus \
            lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine \
-           enhance comm_board
+           comm_board
+# The games' records and hooks (src/games/).
+GAMES := games daytona srallyc
 # SoftFloat's file list, from the main tree's CMake list.
 SOFTFLOAT_SRC := $(shell sed -n 's|.*$${SOFTFLOAT_DIR}/source/\(.*\.c\).*|\1|p' $(ROOT)/cmake/softfloat_sources.cmake)
 # The i960 code: scripts/fast_gen.py's rewrite of the desktop's (fewer
@@ -93,7 +95,7 @@ GEN_SRC := $(notdir $(wildcard $(GEN_I960)/*.cpp))
 # build_dreamcast.py) or the desktop's own.
 GEN_TGP ?= $(GEN)/$(SET)_tgp
 
-GAME_OBJ := $(RUNTIME:%=$(OUT)/game/runtime/%.o) \
+GAME_OBJ := $(RUNTIME:%=$(OUT)/game/runtime/%.o) $(GAMES:%=$(OUT)/game/games/%.o) \
             $(addprefix $(OUT)/game/i960/,isa.o decode.o reach.o fp.o) $(OUT)/game/trace/trace.o \
             $(addprefix $(OUT)/game/ymfm/,ymfm_opn.o ymfm_adpcm.o ymfm_ssg.o) \
             $(SOFTFLOAT_SRC:%.c=$(OUT)/game/softfloat/%.o)
@@ -165,6 +167,9 @@ $(OUT)/game/runtime/video.o: $(ROOT)/src/runtime/video.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(subst -O2,-O3,$(CXXFLAGS)) -funroll-loops $(GAME_DEFS) -c $< -o $@ && $(FIXDEP)
 $(OUT)/game/runtime/%.o: $(ROOT)/src/runtime/%.cpp
+	@mkdir -p $(dir $@)
+	kos-c++ $(O3FLAGS) $(GAME_DEFS) -c $< -o $@ && $(FIXDEP)
+$(OUT)/game/games/%.o: $(ROOT)/src/games/%.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(O3FLAGS) $(GAME_DEFS) -c $< -o $@ && $(FIXDEP)
 $(OUT)/game/i960/%.o: $(ROOT)/src/i960/%.cpp

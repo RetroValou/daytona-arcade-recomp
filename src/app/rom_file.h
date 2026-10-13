@@ -26,7 +26,7 @@ public:
 #ifdef SDL_PLATFORM_ANDROID
         // Do not decode a URI into /sdcard/...: the picker grants access to the
         // URI, not to the corresponding raw path. SDL opens it via Android.
-        char *pref = SDL_GetPrefPath("daytona-recomp", "daytona93");
+        char *pref = SDL_GetPrefPath("daytona-recomp", M2_ROMSET);
         if (!pref) throw std::runtime_error(std::string("Cannot locate ROM import storage: ") + SDL_GetError());
         const std::unique_ptr<char, decltype(&SDL_free)> owned_pref(pref, SDL_free);
         const std::string base(pref);
@@ -34,7 +34,7 @@ public:
         temporary_ = base + "rom-import-" + std::to_string(SDL_GetTicksNS()) + "-" +
                      std::to_string(sequence.fetch_add(1)) + ".tmp";
         // The archive loader detects ZIP/7z by signature, not by extension.
-        destination_ = base + "imported-daytona93.rom";
+        destination_ = base + "imported-" M2_ROMSET ".rom";
         path_ = temporary_;
         try {
             copy(source);

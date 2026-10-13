@@ -2,11 +2,13 @@
 """Recompile the game's i960 code, its TGP program and the sound board's 68000
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
-  recompile.py [--set daytona93|daytona] [--build-dir build] [--config Release] [--fast_inaccuracy]
+  recompile.py [--set SET] [--build-dir build] [--config Release] [--fast_inaccuracy]
 
-Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored):
-daytona93 (Daytona USA Deluxe '93, the default) or daytona (Revision A,
-1994; give it its own build directory, e.g. --build-dir build-daytona).
+Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored),
+or under one of the other archive names scripts/games.py gives that set (a
+merged srallycb archive holds srallyc's files too). The sets are
+scripts/games.py's (daytona93, the default, daytona, srallyc). Give each set
+other than daytona93 its own build directory, e.g. --build-dir build-daytona.
 Everything
 derived from it (images, generated C++) goes under the build directory,
 which is git-ignored: never commit it.
@@ -32,12 +34,19 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from games import DEFAULT, GAMES  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Exit status for "the ROM set was rejected", so setup.py can tell it from a
 # failure to recompile or build (which exit 1, with the tool's own errors).
 ROM_REJECTED_EXIT = 3
+
+# Per set: the archive names under roms/ and the m2recomp options
+# (scripts/games.py). Kept under this name for the scripts that import it.
+SETS = GAMES
 
 
 def run(cmd, **kw):
@@ -57,7 +66,7 @@ def tool(build, config, name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--set", default="daytona93", choices=["daytona93", "daytona"])
+    ap.add_argument("--set", default=DEFAULT, choices=sorted(SETS))
     ap.add_argument("--build-dir", default="build")
     ap.add_argument("--config", default="Release")
     ap.add_argument("--fast_inaccuracy", action="store_true",
@@ -66,7 +75,7 @@ def main():
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
-    roms = [os.path.join(ROOT, "roms", args.set + "." + ext) for ext in ("zip", "7z")]
+    roms = [os.path.join(ROOT, "roms", n + "." + ext) for n in SETS[args.set]["roms"] for ext in ("zip", "7z")]
     roms = [r for r in roms if os.path.exists(r)]
 
     build_cmd = ["cmake", "--build", build, "--config", args.config]
@@ -86,7 +95,7 @@ def main():
             os.remove(os.path.join(gen, f))
     os.makedirs(gen, exist_ok=True)
     recomp = [tool(build, args.config, "m2recomp"), os.path.join(cache, "program.bin"), gen,
-              "--seeds", os.path.join("seeds", args.set + ".txt")]
+              "--seeds", os.path.join("seeds", args.set + ".txt")] + SETS[args.set]["recomp"]
     hooks = os.path.join("seeds", args.set + "_hooks.txt")
     if os.path.exists(os.path.join(ROOT, hooks)):
         recomp += ["--hooks", hooks]
