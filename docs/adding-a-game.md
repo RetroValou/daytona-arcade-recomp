@@ -49,8 +49,8 @@ do nothing while its option is off.
 Add `<set>` to `GAMES`: its title and label, the archive names to look for
 under `roms/`, the extra `m2recomp` options (`--no-mirror`, and an `--alias`
 for code the boot copies to RAM), the Vita title ID (4 capital letters and 5
-digits, one per game) and package name, `vita_fast` (whether the `--fast-*`
-Vita modes apply: false until checked), the companion set, and the input
+digits, one per game) and package name, `vita_fast` (the `--fast-*` Vita
+modes checked on it: empty until then), the companion set, and the input
 ports where they differ from the common layout. `recompile.py`, `setup.py`,
 `seed_scan.py`, `make_input.py`, `m2_check.sh` and `build_vita.py` all read it.
 

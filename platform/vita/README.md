@@ -235,11 +235,13 @@ Sega Rally is its own package with its own title ID, SRAL00094 (Daytona's is
 DAYT00093), so both apps can be installed side by side. Its sound is the
 SCSP sound board (reference audio: the recompiled 68000 and MAME's SCSP, on
 the sound worker; the native audio option is Daytona's only); vitaGL or GXM
-builds only. `--fast-inaccuracy` and `--fast-gen` are Daytona-only:
+builds only. `--fast-inaccuracy` applies (its frames and sound
+match the exact code over a 6,000-frame race on the PC); `--fast-gen` is
+Daytona-only:
 
 ```sh
 python3 scripts/recompile.py --set srallyc --build-dir build-srallyc
-python3 scripts/build_vita.py --set srallyc --gpu-gl --release   # build/vita-srallyc/daytona_vita.vpk
+python3 scripts/build_vita.py --set srallyc --gpu-gl --fast-inaccuracy --release   # build/vita-srallyc/daytona_vita.vpk
 ```
 
 The ROM goes to `ux0:data/srallyc/srallyc.zip` (MAME's merged

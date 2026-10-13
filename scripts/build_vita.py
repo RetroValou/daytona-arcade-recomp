@@ -204,9 +204,10 @@ def main(argv=None):
         ap.error(f"{args.set} requires --gpu-fast or --gpu-gl")
     if args.revision_a_self and (args.set != DEFAULT or not game["companion"] or not gpu_build):
         ap.error(f"--revision-a-self requires the {DEFAULT} --gpu-fast or --gpu-gl launcher")
-    if args.code and not game["vita_fast"]:
-        # direct_ram/fast_gen assume Daytona's work RAM (scripts/games.py vita_fast).
-        ap.error(f"--fast-inaccuracy and --fast-gen do not apply to {args.set}; build it without them (the host-generated code)")
+    if args.code and args.code not in game["vita_fast"]:
+        # Only the modes checked on the set (scripts/games.py vita_fast).
+        flag = "--" + args.code.replace("_", "-")
+        ap.error(f"{flag} has not been checked on {args.set}; build it without it (the host-generated code)")
     if args.free_core and not gpu_build:
         ap.error("--free-core applies to the GPU builds (--gpu-fast or --gpu-gl)")
     if args.jobs < 1:

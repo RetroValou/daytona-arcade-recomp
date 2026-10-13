@@ -21,9 +21,10 @@ Per set:
                 to (build_vita.py --revision-a-self; the launcher runs
                 app0:/<companion>.self), or None. As Game::companion
                 (src/games/).
-  vita_fast     whether build_vita.py's fast game code modes
-                (--fast-inaccuracy, --fast-gen) apply: they assume Daytona's
-                work RAM layout
+  vita_fast     the build_vita.py game code modes checked on this set:
+                "fast_inaccuracy" (--fast-inaccuracy), "fast_gen" (--fast-gen).
+                Both turn fixed accesses to work RAM (0x00500000-0x005fffff,
+                every Model 2 board) into direct ones
   inputs        make_input.py's script names -> (MAME port, mask) where the
                 game's differ from the common driving-cabinet layout
                 (CONTROLS), and "full_range": its analog inputs are 0x00-0xff
@@ -44,13 +45,13 @@ GAMES = {
     "daytona93": {
         "title": "Daytona USA", "label": "Deluxe '93",
         "roms": ["daytona93"], "recomp": [], "sndrecomp": [],
-        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": True,
+        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": ("fast_inaccuracy", "fast_gen"),
         "companion": "daytona", "inputs": {}, "full_range": False,
     },
     "daytona": {
         "title": "Daytona USA", "label": "Revision A, 1994",
         "roms": ["daytona"], "recomp": [], "sndrecomp": [],
-        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": True,
+        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_fast": ("fast_inaccuracy", "fast_gen"),
         "companion": "daytona93", "inputs": {}, "full_range": False,
     },
     # Model 2A-CRX: RAM at 0x200000 (no ROM mirror); the boot copies ROM
@@ -59,7 +60,7 @@ GAMES = {
     "srallyc": {
         "title": "Sega Rally Championship", "label": "Revision C",
         "roms": ["srallyc", "srallycb"], "recomp": ["--no-mirror", "--alias", "5a0000:1000:60000"], "sndrecomp": ["--scsp"],
-        "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship", "vita_fast": False, "companion": None,
+        "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship", "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN0", 0x20), "vr2": (":IN0", 0x20),
                    "vr3": (":IN0", 0x20), "vr4": (":IN0", 0x20), "handbrake": (":IN2", 0xFF)},
         "full_range": True,

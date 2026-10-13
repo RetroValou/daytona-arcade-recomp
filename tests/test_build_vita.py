@@ -164,6 +164,11 @@ class BuildVitaTests(unittest.TestCase):
                 self.call("--gpu-gl", "--set", "srallyc", "--fast-gen")
             run.assert_not_called()
 
+    def test_srallyc_fast_inaccuracy_is_accepted(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--fast-inaccuracy")
+        run.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

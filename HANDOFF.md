@@ -1,5 +1,23 @@
 # Handoff
 
+## Sega Rally on the Vita with --fast-inaccuracy (2026-10-12)
+
+`scripts/games.py` `vita_fast` is now the list of build_vita.py code modes
+checked on a set (was a bool): daytona93/daytona both, srallyc
+`("fast_inaccuracy",)`. build_vita.py refuses the others by name. The
+direct work-RAM pass applies as is: srallyc's work RAM is the same
+0x00500000-0x005fffff (only 108 fixed accesses become direct: its code,
+copied to 0x5a0000, mostly addresses through registers).
+
+Checked on the PC: build-srallyc-fast (recompile.py --fast_inaccuracy, then
+build_vita.direct_ram on gen/srallyc, CMAKE_CXX_FLAGS=-DM2_FAST_GEN=1 like
+the Vita runtime): srallyc race 6,000 frames, the 24 frame dumps (every
+250) and the WAV identical to the exact build, 10,996 sound bytes both. (That
+build had no CMAKE_BUILD_TYPE, so its 127 s is unoptimised: not a timing.)
+Python test_build_vita 19/19. Vita: `build_vita.py --set srallyc --gpu-gl
+--fast-inaccuracy` built; not run on hardware. --fast-gen on srallyc: not
+tried (fast_gen.py fails on what it does not recognise).
+
 ## Board timers: stale expiries piled up in the Lockstep log (2026-10-12)
 
 Review of the uncommitted work (same day): kept as general Model 2 work the
