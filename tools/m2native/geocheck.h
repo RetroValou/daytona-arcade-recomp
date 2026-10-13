@@ -21,7 +21,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
-
+#include "../src/compat/bit_cast.h"
 class GeoCheck {
 public:
     GeoCheck(const std::string &path, rt::Geo &geo, rt::TgpBoard &board, rt::M2ReplayBus &bus, rt::Lockstep &ls)
@@ -175,7 +175,7 @@ private:
         for (int i = 0; ok && i < p.num_vertices; i++) {
             const rt::GeoVertex &v = p.v[i];
             const float fl[5] = {v.x, v.y, v.p[0], v.p[1], v.p[2]};
-            for (float x : fl) ok = ok && hx() == std::bit_cast<uint32_t>(x);
+            for (float x : fl) ok = ok && hx() == compat::bit_cast<uint32_t>(x);
         }
         if (!ok) {
             char b[200];

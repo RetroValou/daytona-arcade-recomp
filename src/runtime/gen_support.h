@@ -12,7 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-
+#include "compat/bit_cast.h"
 namespace gen {
 
 struct Env {
@@ -35,7 +35,7 @@ inline double round_to_int(double v, uint32_t ac) {
     default: return std::trunc(v);
     }
 }
-inline uint32_t f2u(float f) { return std::bit_cast<uint32_t>(f); }
+inline uint32_t f2u(float f) { return compat::bit_cast<uint32_t>(f); }
 
 #ifdef M2_FAST_GEN
 // Work RAM at a fixed offset, for the rewritten code (the Dreamcast's and the
@@ -48,7 +48,7 @@ inline void wram_w32(rt::Cpu &c, uint32_t o, uint32_t v) { std::memcpy(M2_AL(c.w
 inline void wram_w16(rt::Cpu &c, uint32_t o, uint16_t v) { std::memcpy(M2_AL(c.work_ram + o, 2), &v, 2); }
 inline void wram_w8(rt::Cpu &c, uint32_t o, uint8_t v) { c.work_ram[o] = v; }
 #endif
-inline float u2f(uint32_t u) { return std::bit_cast<float>(u); }
+inline float u2f(uint32_t u) { return compat::bit_cast<float>(u); }
 
 // Recompiled code entry points (generated): run from c.m_IP until it leaves
 // recompiled code or the lockstep run ends.

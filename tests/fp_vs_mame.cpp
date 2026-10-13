@@ -30,7 +30,7 @@
 #include <string>
 #include <thread>
 #include <vector>
-
+#include "../src/compat/bit_cast.h"
 using namespace i960::fp;
 
 namespace {
@@ -44,18 +44,18 @@ uint32_t to_i32(double r, Host h) {
     return r < 0 ? 0x80000000u : 0x7fffffffu;
 }
 
-uint32_t mame_cvtri(uint32_t x, Host h) { return to_i32(std::round(double(std::bit_cast<float>(x))), h); }
-uint32_t mame_cvtzri(uint32_t x, Host h) { return to_i32(std::trunc(double(std::bit_cast<float>(x))), h); }
-uint32_t mame_cvtir(uint32_t i) { return std::bit_cast<uint32_t>(float(double(int32_t(i)))); }
+uint32_t mame_cvtri(uint32_t x, Host h) { return to_i32(std::round(double(compat::bit_cast<float>(x))), h); }
+uint32_t mame_cvtzri(uint32_t x, Host h) { return to_i32(std::trunc(double(compat::bit_cast<float>(x))), h); }
+uint32_t mame_cvtir(uint32_t i) { return compat::bit_cast<uint32_t>(float(double(int32_t(i)))); }
 uint32_t mame_cmpr(uint32_t a, uint32_t b) {
-    const double x = std::bit_cast<float>(a), y = std::bit_cast<float>(b);
+    const double x = compat::bit_cast<float>(a), y = compat::bit_cast<float>(b);
     if (x < y) return 4;
     if (x == y) return 2;
     if (x > y) return 1;
     return 0;
 }
 uint32_t mame_scaler(uint32_t n, uint32_t x) {
-    return std::bit_cast<uint32_t>(float(double(std::bit_cast<float>(x)) * std::pow(2.0, double(int32_t(n)))));
+    return compat::bit_cast<uint32_t>(float(double(compat::bit_cast<float>(x)) * std::pow(2.0, double(int32_t(n)))));
 }
 
 bool is_nan(uint32_t f) { return (f & 0x7fffffff) > 0x7f800000; }
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
             const uint32_t x = uint32_t(i * step);
             const uint32_t ref = ref_cvtri(x, Round::Nearest).value, m = mame_cvtri(x, h);
             if (ref != m) {
-                const double v = std::bit_cast<float>(x);
+                const double v = compat::bit_cast<float>(x);
                 if (is_nan(x)) tri.add(std::string("NaN input (MAME on ") + hn + ")", x);
                 else if (!(v >= -2147483648.5 && v < 2147483647.5)) tri.add(std::string("out of int32 range (MAME on ") + hn + ")", x);
                 else if (v - std::floor(v) == 0.5) tri.add("tie x.5: MAME round() away from zero, IEEE to even", x);

@@ -1,7 +1,9 @@
 #include "fp.h"
+#include "compat/bit_cast.h"
 
 #include <bit>
 #include <cmath>
+
 
 extern "C" {
 #include "softfloat.h"
@@ -86,21 +88,21 @@ Result ref_scaler(uint32_t n_bits, uint32_t x, Round rm) {
 // Native paths. Every line here is justified only by tests/test_fp.
 
 uint32_t fast_cvtri(uint32_t x) {
-    const float f = std::bit_cast<float>(x);
+    const float f = compat::bit_cast<float>(x);
     if (!(f >= -2147483648.0f && f < 2147483648.0f)) return 0x80000000u; // NaN, out of range
     return uint32_t(int32_t(std::nearbyint(f)));                          // ties to even
 }
 
 uint32_t fast_cvtzri(uint32_t x) {
-    const float f = std::bit_cast<float>(x);
+    const float f = compat::bit_cast<float>(x);
     if (!(f >= -2147483648.0f && f < 2147483648.0f)) return 0x80000000u;
     return uint32_t(int32_t(f)); // C++ conversion truncates toward zero
 }
 
-uint32_t fast_cvtir(uint32_t i) { return std::bit_cast<uint32_t>(float(int32_t(i))); }
+uint32_t fast_cvtir(uint32_t i) { return compat::bit_cast<uint32_t>(float(int32_t(i))); }
 
 uint32_t fast_cmpr(uint32_t a, uint32_t b) {
-    const float fa = std::bit_cast<float>(a), fb = std::bit_cast<float>(b);
+    const float fa = compat::bit_cast<float>(a), fb = compat::bit_cast<float>(b);
     if (fa < fb) return kLess;
     if (fa == fb) return kEqual;
     if (fa > fb) return kGreater;
@@ -111,7 +113,7 @@ uint32_t fast_scaler(uint32_t n, uint32_t x) {
     int32_t k = int32_t(n);
     if (k > 400) k = 400;
     if (k < -400) k = -400;
-    return std::bit_cast<uint32_t>(std::ldexp(std::bit_cast<float>(x), k));
+    return compat::bit_cast<uint32_t>(std::ldexp(compat::bit_cast<float>(x), k));
 }
 
 } // namespace i960::fp

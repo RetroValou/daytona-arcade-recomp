@@ -20,7 +20,7 @@
 #include <cstring>
 #include <limits>
 #include <numeric>
-
+#include "compat/bit_cast.h"
 namespace rt {
 
 namespace {
@@ -30,7 +30,7 @@ using u16 = uint16_t;
 using u32 = uint32_t;
 using s32 = int32_t;
 
-inline u32 f2u(float f) { return std::bit_cast<u32>(f); }
+inline u32 f2u(float f) { return compat::bit_cast<u32>(f); }
 inline u32 rgb(u32 r, u32 g, u32 b) { return 0xff000000u | (r << 16) | (g << 8) | b; } // rgb_t(r, g, b)
 
 // x86 cvttss2si: NaN and out of range give INT32_MIN.

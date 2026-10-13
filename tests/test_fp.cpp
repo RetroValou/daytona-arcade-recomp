@@ -20,7 +20,7 @@
 #include <random>
 #include <thread>
 #include <vector>
-
+#include "../src/compat/bit_cast.h"
 using namespace i960::fp;
 
 namespace {
@@ -37,7 +37,7 @@ std::mutex g_mu;
         }                                                                                          \
     } while (0)
 
-uint32_t F(float f) { return std::bit_cast<uint32_t>(f); }
+uint32_t F(float f) { return compat::bit_cast<uint32_t>(f); }
 
 // Run f over [0, count) on all cores; returns the number of mismatches.
 uint64_t sweep(uint64_t count, const std::function<bool(uint64_t)> &ok, const char *what) {
