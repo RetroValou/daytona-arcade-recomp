@@ -487,6 +487,12 @@ if(M2_VITA_TESTS)
     target_compile_definitions(test_vita_gpu_lifetime PRIVATE M2_VITA_RENDER_OPT=1)
     add_test(NAME vita_gpu_lifetime COMMAND test_vita_gpu_lifetime)
 
+    # The tile cache's write tracking against comparing everything (video.cpp, Vita path).
+    add_executable(test_vita_tile_cache tests/test_vita_tile_cache.cpp src/runtime/video.cpp src/runtime/raster.cpp)
+    target_include_directories(test_vita_tile_cache PRIVATE src)
+    target_compile_definitions(test_vita_tile_cache PRIVATE M2_VITA_RENDER_OPT=1)
+    add_test(NAME vita_tile_cache COMMAND test_vita_tile_cache)
+
     add_executable(test_vita_tessellation tests/test_vita_tessellation.cpp)
     target_include_directories(test_vita_tessellation PRIVATE tests/vita_gpu_shim platform/vita)
     add_test(NAME vita_tessellation COMMAND test_vita_tessellation)

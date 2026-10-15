@@ -1,5 +1,46 @@
 # Handoff
 
+## Vita: texture builds and the System 24 tile cache made cheaper (2026-10-15)
+
+From the probes (perf_prob_text.log, VF2, Vita): 78 % of texture builds
+remade a texture whose texture RAM had been rewritten with the same words;
+decode was 89 % of a build (114 ns a texel), glTexImage2D 11 %; the tile
+cache cost 1.25 ms a frame in a fight for ~10 tiles actually rebuilt (the
+compare of all 16,384 tiles and the 64 KB copy, every frame: the game writes
+its scroll registers every frame).
+- A (gpu_gl.cpp): mark_rewritten_sources marks a source instead of
+  dropping it; at its next use index_texture_hash of its texture RAM words
+  is compared with the one stored at the build: same, kept (the generation
+  moves on); different, rebuilt. source_cache_ holds mutable pointers.
+- B (texel_index.h): decode_index_texture reads a 32-bit word once for its
+  8 texels (4 x, 2 rows) through a 16-entry L/A table, and returns the hash;
+  textures above 512 texels (subsampled) keep the texel loop.
+- Transparent fill: % w / % h replaced by & (w - 1) / & (h - 1) (sides are
+  powers of two; the Cortex-A9 has no divide instruction).
+- C (video.h/.cpp, m2_board.cpp): the board reports the offset of each
+  changed tile RAM / character RAM byte; Video keeps 64-byte block and
+  256-byte page bitmaps and update_tracked_tiles compares, rebuilds and
+  copies only those (all layers when a character changed). Without write
+  tracking (replays) the full comparison is kept. build_layer's body is
+  build_tile. A bug the new test caught: character_dirty_ marks left by
+  the first (full) update were never cleared by the tracked path
+  (chars_marked_).
+Checks: test_vita_texel_index (decode_index_texture = texel_index on 304
+textures, the fold included; hash), test_vita_tile_cache (new: tracked =
+full comparison over 600 frames of random writes: pixels, tile
+generations, counts), Vita host tests 18/18, PC ctest 21/21 x 3 games with
+last screen hashes unchanged, the AND fill = the modulo fill on 100
+textures (scratch). PC bench: decode 1.35 -> 0.32 ns a texel, hash check
+0.11; tile cache 59.8 -> 6.5 us a frame.
+Vita (VF2 diagnostics, same 797 builds in both sessions): decode 114 ->
+77 (A+B+C, perf_after_modif_A_B_C.log) -> 37 ns a texel (+ the AND,
+perf_modif_modulo.log); 73 % of rewritten textures kept; worst texture
+frame ~30 -> 10.8 ms; tile cache 1.25 -> 0.10-0.12 ms a frame. Probe fix:
+"deferred" now this frame's count (it read a per-frame counter as a total).
+Left: the 46-50 fps windows are frames where the game logic runs ~100,000
+i960 instructions (up to 19-21 ms); next an --i960-profile look at them.
+The texture budget (32 builds / 128 K texels a frame) could rise now.
+
 ## Vita probes: texture builds and the System 24 tile cache (2026-10-15)
 
 Diagnostics only, to choose how to make texture builds cheaper (VF2: up

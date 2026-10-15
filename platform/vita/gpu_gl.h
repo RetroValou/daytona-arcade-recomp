@@ -85,8 +85,9 @@ public:
     // many rebuild a texture dropped for a texture RAM write with the same texels).
     struct TextureProbe {
         uint64_t decode_us = 0, upload_us = 0; // texel decode (+ transparent fill), make_texture
-        uint64_t identical_us = 0;             // whole builds of identical rebuilds
-        uint32_t builds = 0, texels = 0, identical = 0, dropped = 0;
+        uint64_t check_us = 0;                 // texture RAM checks of rewritten sources
+        uint32_t builds = 0, texels = 0;
+        uint32_t rewritten = 0, kept = 0, changed = 0; // sources whose pages were written; checked same / different
     };
     TextureProbe take_texture_probe() { const TextureProbe p = texture_probe_; texture_probe_ = {}; return p; }
     uint64_t last_polygon_us() const { return last_polygon_us_; }
@@ -146,11 +147,16 @@ private:
         uint64_t generation = 0;
         uint8_t sheet = 0;
         uint64_t pages[rt::VideoMem::kTexPages / 64] = {};
-        uint64_t hash = 0; // its texels (diagnostics builds only: TextureProbe::identical)
+        // index_texture_hash of the texture RAM it was decoded from; check: one of its
+        // pages was written since, compare before the next use (same words: kept).
+        uint64_t raw_hash = 0;
+        bool check = false;
     };
-    // Drops the sources whose texture RAM pages were written since they were built
-    // (Virtua Fighter 2 loads each fight's characters there). Once per frame.
-    void drop_rewritten_sources(const rt::VideoMem &mem);
+    // Marks the sources whose texture RAM pages were written since they were built
+    // (Virtua Fighter 2 loads each fight's characters there) for a check of their words
+    // at the next use: VF2 mostly writes the same texels again (78 % of its rebuilds on
+    // the Vita, perf.log). Once per frame.
+    void mark_rewritten_sources(const rt::VideoMem &mem);
 
     static constexpr std::size_t kSourceCacheBytes = 24u * 1024u * 1024u;
     // New index textures per frame: at most kSourceBuildBudget, and at most
@@ -212,7 +218,7 @@ private:
     S24Slot *s24_job_ = nullptr;
     uint64_t s24_job_us_ = 0;                      // written by the worker, read after the join
     std::unordered_map<SourceKey, Source, SourceKeyHash> sources_; // storage (stable addresses)
-    FlatIndex<uint32_t, const Source *, 12> source_cache_;         // fast lookup in front of sources_
+    FlatIndex<uint32_t, Source *, 12> source_cache_;               // fast lookup in front of sources_
     std::vector<uint8_t> index_scratch_;
     std::size_t cached_bytes_ = 0;
     bool cache_reset_pending_ = false;
@@ -234,7 +240,6 @@ private:
              solid_polys_ = 0, checker_polys_ = 0, textured_checker_polys_ = 0;
     std::size_t submitted_vertices_ = 0;
     TextureProbe texture_probe_;
-    std::unordered_map<uint32_t, uint64_t> dropped_hashes_; // diagnostics: key32 -> texels hash of a dropped source
 };
 
 } // namespace vita

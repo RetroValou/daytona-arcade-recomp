@@ -668,9 +668,9 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
 void M2Board::ram_written(uint32_t addr, uint32_t data, uint32_t mask) {
     (void)data;
     if ((addr >= 0x01000000 && addr <= 0x0100ffff) ||
-        (addr >= 0x01110000 && addr <= 0x0111ffff)) video_->tile_memory_w();
+        (addr >= 0x01110000 && addr <= 0x0111ffff)) video_->tile_memory_w(addr & 0xffff);
     else if ((addr >= 0x01080000 && addr <= 0x010fffff) ||
-             (addr >= 0x01180000 && addr <= 0x011fffff)) video_->character_memory_w();
+             (addr >= 0x01180000 && addr <= 0x011fffff)) video_->character_memory_w(addr & 0x7ffff);
     if (addr >= 0x01800000 && addr <= 0x01803fff) {
         for (uint32_t lane = 0; lane < 2; lane++)
             if ((mask >> (16 * lane)) & 0xffff) video_->palette_w(((addr & 0x3fff) >> 1) + lane, palette_.data(), xlat_.data());

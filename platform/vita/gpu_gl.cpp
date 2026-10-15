@@ -1102,12 +1102,38 @@ void GpuGlRenderer::shutdown() {
 const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, const rt::VideoMem &mem) {
     const SourceKey key{uint16_t(poly.texheader[0] & 0x23ff), uint16_t(poly.texheader[2] & 0x1fff)};
     const uint32_t key32 = uint32_t(key.h0) | uint32_t(key.h2) << 16;
-    if (const Source *const *cached = source_cache_.find(key32)) return *cached;
-    auto found = sources_.find(key);
-    if (found != sources_.end()) {
-        source_cache_.insert(key32, &found->second); // full: stays in sources_ only
-        return &found->second;
+    Source *known = nullptr;
+    if (Source *const *cached = source_cache_.find(key32)) known = *cached;
+    else if (auto found = sources_.find(key); found != sources_.end()) {
+        known = &found->second;
+        source_cache_.insert(key32, known); // full: stays in sources_ only
     }
+    const uint32_t bx = 32u * (poly.texheader[2] & 0x3f);
+    const uint32_t by = 32u * ((poly.texheader[2] >> 6) & 0x1f);
+    const uint32_t *sheet = (poly.texheader[2] & 0x1000) ? mem.tex1 : mem.tex0;
+    if (known && known->check) {
+        // Its texture RAM was written: the same words keep it, others rebuild it.
+        const uint64_t check_begin = now_us();
+        const bool same = vita::index_texture_hash(bx, by, known->source_w, known->source_h, sheet) == known->raw_hash;
+        const uint64_t check_us = now_us() - check_begin;
+        texture_probe_.check_us += check_us;
+        last_texture_us_ += check_us;
+        g.timing.rec_textures += check_us;
+        if (same) {
+            known->check = false;
+            known->generation = mem.tex_generation;
+            ++texture_probe_.kept;
+        } else {
+            ++texture_probe_.changed;
+            GLuint t = known->texture;
+            if (t) glDeleteTextures(1, &t);
+            cached_bytes_ -= std::min(cached_bytes_, known->bytes);
+            sources_.erase(key);
+            source_cache_.clear(); // it points into sources_; refilled on use
+            known = nullptr;
+        }
+    }
+    if (known) return known;
     if (cached_bytes_ >= kSourceCacheBytes) {
         cache_reset_pending_ = true; // emptied by the next prepare_frame()
         ++material_drops_;
@@ -1134,37 +1160,46 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint32_t step_y = std::max(1u, (s.source_h + kTextureLimit - 1) / kTextureLimit);
     const uint32_t w = (s.source_w + step_x - 1) / step_x;
     const uint32_t h = (s.source_h + step_y - 1) / step_y;
-    const uint32_t bx = 32u * (poly.texheader[2] & 0x3f);
-    const uint32_t by = 32u * ((poly.texheader[2] >> 6) & 0x1f);
-    const uint32_t *sheet = (poly.texheader[2] & 0x1000) ? mem.tex1 : mem.tex0;
     std::vector<uint8_t> &la = index_scratch_; // L, A pairs
     const uint64_t decode_begin = now_us();
     la.resize(size_t(w) * h * 2u);
     const uint8_t transparent_alpha = s.transparent ? 0 : 255; // alpha of index 15
-    for (uint32_t y = 0; y < h; ++y) {
-        const uint32_t ty = std::min(y * step_y, s.source_h - 1);
-        uint8_t *row = &la[size_t(y) * w * 2u];
-        for (uint32_t x = 0; x < w; ++x) {
-            const uint32_t tx = x * step_x; // < source_w: w = ceil(source_w / step_x)
-            const uint32_t index = texel_index(bx, by, tx, ty, sheet);
-            row[x * 2u] = uint8_t(index * 16);
-            row[x * 2u + 1] = index == 15 ? transparent_alpha : 255;
+    if (step_x == 1 && step_y == 1) {
+        // A texture RAM word at a time (8 texels), its hash on the way.
+        s.raw_hash = vita::decode_index_texture(bx, by, w, h, sheet, transparent_alpha, la.data());
+    } else {
+        // Above kTextureLimit: one texel every step, a texel at a time.
+        s.raw_hash = vita::index_texture_hash(bx, by, s.source_w, s.source_h, sheet);
+        for (uint32_t y = 0; y < h; ++y) {
+            const uint32_t ty = std::min(y * step_y, s.source_h - 1);
+            uint8_t *row = &la[size_t(y) * w * 2u];
+            for (uint32_t x = 0; x < w; ++x) {
+                const uint32_t tx = x * step_x; // < source_w: w = ceil(source_w / step_x)
+                const uint32_t index = texel_index(bx, by, tx, ty, sheet);
+                row[x * 2u] = uint8_t(index * 16);
+                row[x * 2u + 1] = index == 15 ? transparent_alpha : 255;
+            }
         }
     }
     if (s.transparent) {
+        // An elegant replacement for the modulo: a texture's sides are powers of two
+        // (32 << n, also after the step), so the wrap x % w is x & (w - 1), the same
+        // value with one AND instead of a software division (the Vita's Cortex-A9 has
+        // no divide instruction), four times per transparent texel.
+        const uint32_t wm = w - 1, hm = h - 1;
         for (uint32_t y = 0; y < h; ++y)
             for (uint32_t x = 0; x < w; ++x) {
                 const size_t i = (size_t(y) * w + x) * 2u;
                 if (la[i + 1]) continue;
-                const size_t n[4] = {(size_t(y) * w + (x + 1) % w) * 2u, (size_t(y) * w + (x + w - 1) % w) * 2u,
-                                     (size_t((y + 1) % h) * w + x) * 2u, (size_t((y + h - 1) % h) * w + x) * 2u};
+                const size_t n[4] = {(size_t(y) * w + ((x + 1) & wm)) * 2u, (size_t(y) * w + ((x + wm) & wm)) * 2u,
+                                     (size_t((y + 1) & hm) * w + x) * 2u, (size_t((y + hm) & hm) * w + x) * 2u};
                 for (size_t j : n)
                     if (la[j + 1]) { la[i] = la[j]; break; }
             }
     }
     const uint64_t decode_end = now_us();
     // The texture RAM pages it was decoded from (texel_index's addressing: each row pair
-    // of texels is one run of words; the x >= 1024 half is folded), for drop_rewritten_sources.
+    // of texels is one run of words; the x >= 1024 half is folded), for mark_rewritten_sources.
     s.generation = mem.tex_generation;
     s.sheet = (poly.texheader[2] & 0x1000) ? 1 : 0;
     for (uint32_t half = 0; half < 2; ++half) {
@@ -1194,26 +1229,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     texture_probe_.upload_us += build_end - upload_begin;
     ++texture_probe_.builds;
     texture_probe_.texels += w * h;
-    if constexpr (kGlLog) { // after the timings: the hash is not part of a build's cost
-        uint64_t hash = 0xcbf29ce484222325ull ^ (uint64_t(w) << 32 | h);
-        const uint8_t *p = la.data();
-        size_t n = la.size(), i = 0;
-        for (; i + 8 <= n; i += 8) {
-            uint64_t v;
-            std::memcpy(&v, p + i, 8);
-            hash = (hash ^ v) * 0x100000001b3ull;
-        }
-        for (; i < n; ++i) hash = (hash ^ p[i]) * 0x100000001b3ull;
-        s.hash = hash;
-        if (auto it = dropped_hashes_.find(key32); it != dropped_hashes_.end()) {
-            if (it->second == hash) {
-                ++texture_probe_.identical;
-                texture_probe_.identical_us += build_end - build_begin;
-            }
-            dropped_hashes_.erase(it);
-        }
-    }
-    const Source *built = &sources_.emplace(key, s).first->second;
+    Source *built = &sources_.emplace(key, s).first->second;
     source_cache_.insert(key32, built);
     return built;
 }
@@ -1245,27 +1261,21 @@ int GpuGlRenderer::palette_row(const rt::GeoPoly &poly, const rt::VideoMem &mem)
     return int(row);
 }
 
-void GpuGlRenderer::drop_rewritten_sources(const rt::VideoMem &mem) {
+void GpuGlRenderer::mark_rewritten_sources(const rt::VideoMem &mem) {
     if (mem.tex_generation == tex_generation_ || !mem.tex_page_generation) return;
     tex_generation_ = mem.tex_generation;
-    bool dropped = false;
-    for (auto it = sources_.begin(); it != sources_.end();) {
-        const Source &s = it->second;
+    for (auto &entry : sources_) {
+        Source &s = entry.second;
+        if (s.check) continue;
         const uint64_t *gen = mem.tex_page_generation + size_t(s.sheet) * rt::VideoMem::kTexPages;
         bool stale = false;
         for (uint32_t w = 0; w < rt::VideoMem::kTexPages / 64 && !stale; ++w)
             for (uint64_t bits = s.pages[w]; bits && !stale; bits &= bits - 1)
                 stale = gen[w * 64 + uint32_t(__builtin_ctzll(bits))] > s.generation;
-        if (!stale) { ++it; continue; }
-        GLuint t = s.texture;
-        if (t) glDeleteTextures(1, &t);
-        ++texture_probe_.dropped;
-        if constexpr (kGlLog) dropped_hashes_[uint32_t(it->first.h0) | uint32_t(it->first.h2) << 16] = s.hash;
-        cached_bytes_ -= std::min(cached_bytes_, s.bytes);
-        it = sources_.erase(it);
-        dropped = true;
+        if (!stale) continue;
+        s.check = true; // source_for compares its words before the next use
+        ++texture_probe_.rewritten;
     }
-    if (dropped) source_cache_.clear(); // it points into sources_; refilled on use
 }
 
 uint32_t GpuGlRenderer::solid_color(const rt::GeoPoly &poly, const rt::VideoMem &mem) const {
@@ -1303,8 +1313,8 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         palette_used_ = 0;
     }
     // Texture RAM rewritten (Virtua Fighter 2 loads each fight's characters there): the
-    // index textures decoded from those pages are stale, the others are kept.
-    drop_rewritten_sources(mem);
+    // index textures decoded from those pages are checked at their next use.
+    mark_rewritten_sources(mem);
 
     // Per-polygon state, cached on two levels and reused while the following polygons match:
     //   * Material: everything that depends on the header (texheader, viewport, window):

@@ -40,8 +40,22 @@ public:
     void colour_tables_w() { ++colour_generation_; }
     uint64_t colour_generation() const { return colour_generation_; }
     void enable_write_tracking() { write_tracking_ = true; }
-    void tile_memory_w() { tile_memory_touched_ = true; }
-    void character_memory_w() { character_memory_touched_ = true; }
+    // The board reports each changed byte of tile RAM (offset in its 64 KB) and
+    // character RAM (offset in its 512 KB): with write tracking the Vita's tile
+    // cache looks at those 64-byte blocks / 256-byte pages only. Without an
+    // offset: everything.
+    void tile_memory_w(uint32_t offset) {
+        tile_memory_touched_ = true;
+        offset &= 0xffff;
+        tile_blocks_[offset >> 12] |= uint64_t(1) << ((offset >> 6) & 63);
+    }
+    void character_memory_w(uint32_t offset) {
+        character_memory_touched_ = true;
+        offset &= 0x7ffff;
+        char_pages_[offset >> 14] |= uint64_t(1) << ((offset >> 8) & 63);
+    }
+    void tile_memory_w() { tile_memory_touched_ = true; tile_blocks_.fill(~uint64_t(0)); }
+    void character_memory_w() { character_memory_touched_ = true; char_pages_.fill(~uint64_t(0)); }
     void xhout_w(uint16_t data) { crtc_x_ = 84 + int16_t(data); render_x_ = crtc_x_; }
     void xvout_w(uint16_t data) { crtc_y_ = 130 + int16_t(data); render_y_ = crtc_y_; }
 
@@ -205,6 +219,7 @@ public:
 private:
     uint16_t tile(uint32_t i) const { return uint16_t(tile_ram_[i * 2] | tile_ram_[i * 2 + 1] << 8); }
     void build_layer(int layer); // pixmap_/flags_ for one tilemap
+    void build_tile(int layer, uint32_t t); // build_layer's work for one tile
 #ifdef M2_DC_SPEED
     // Any pixel type, with its own pens (the 16-bit layers); the 32-bit
     // screen with pens_ as before.
@@ -238,7 +253,11 @@ private:
 #ifdef M2_VITA_RENDER_OPT
     // Snapshot comparisons also see writes made through replay/raw RAM pointers.
     // No write-hook assumptions, hashes with collisions, or per-frame allocation.
+    // With write tracking (the board reports every changed byte) only the
+    // reported blocks and pages are compared (update_tracked_tiles).
     void update_tile_cache();
+    void update_tracked_tiles();
+    bool chars_marked_ = false;             // character_dirty_ holds marks to clear
     std::vector<uint8_t> character_copy_, tile_ram_copy_, character_dirty_;
     std::vector<uint16_t> tile_values_;
     std::vector<uint32_t> background_;
@@ -329,6 +348,8 @@ private:
     std::vector<uint32_t> hud_stack_;
     void copy_front_hud_to_edges(std::vector<uint32_t> &out); // width() wide
     bool write_tracking_ = false, tile_memory_touched_ = false, character_memory_touched_ = false;
+    std::array<uint64_t, 16> tile_blocks_{}; // tile RAM 64-byte blocks written since the last update
+    std::array<uint64_t, 32> char_pages_{};  // character RAM 256-byte pages written since then
     Raster raster_;
     bool rendered_now_ = false, render_done_ = false;
 };

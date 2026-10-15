@@ -1356,18 +1356,20 @@ int main(int, char **) {
                         const auto tp = gpu.take_texture_probe();
                         core_profile.add(P::TexDecode, tp.decode_us);
                         core_profile.add(P::TexUpload, tp.upload_us);
-                        core_profile.add(P::TexIdentical, tp.identical_us);
+                        core_profile.add(P::TexCheck, tp.check_us);
                         auto &c = core_profile.counters;
                         c.tex_builds += tp.builds;
                         c.tex_texels += tp.texels;
-                        c.tex_identical += tp.identical;
-                        c.tex_dropped += tp.dropped;
+                        c.tex_rewritten += tp.rewritten;
+                        c.tex_kept += tp.kept;
+                        c.tex_changed += tp.changed;
                         c.tex_frames_with_builds += tp.builds ? 1 : 0;
                         c.tex_builds_max = std::max<uint64_t>(c.tex_builds_max, tp.builds);
-                        static unsigned defers_seen = 0, resets_seen = 0;
-                        c.tex_defers += gpu.material_defers() - defers_seen;
-                        c.tex_resets += gpu.cache_resets() - resets_seen;
-                        defers_seen = gpu.material_defers();
+                        // material_defers counts this frame (reset by draw_polygons); cache_resets
+                        // since the start.
+                        c.tex_defers += gpu.material_defers();
+                        static unsigned resets_seen = 0;
+                        if (gpu.cache_resets() >= resets_seen) c.tex_resets += gpu.cache_resets() - resets_seen;
                         resets_seen = gpu.cache_resets();
                     }
                     core_profile.add(P::VertexWrite, gpu.last_vertex_us());

@@ -61,7 +61,7 @@ public:
         VertexWrite,         // vertex writing into GPU memory (inside Polygons)
         TexDecode,           // texture builds: texel decode + transparent fill (inside TexBuild)
         TexUpload,           // texture builds: make_texture / glTexImage2D (inside TexBuild)
-        TexIdentical,        // whole builds that remade a dropped texture with the same texels (inside TexBuild)
+        TexCheck,            // texture RAM checks of rewritten sources (inside TexBuild)
         Palette2D,           // dirty palette to pens (inside Video2D)
         TileCache2D,         // System 24 tile cache, palette included (inside Video2D)
         // Other cores.
@@ -96,7 +96,7 @@ public:
             {"of which vertex writing", 0, true},
             {"  texture decode", 0, true},
             {"  texture upload (glTexImage2D)", 0, true},
-            {"  identical rebuilds", 0, true},
+            {"  texture RAM checks", 0, true},
             {"of which palette", 0, true},
             {"of which tile cache (palette incl.)", 0, true},
             {"display list parse", 1, false},
@@ -121,7 +121,7 @@ public:
         double audio_speed = 1.0;    // playback speed (1 = real time; < 1: the emulation is slow)
         double audio_queue_ms = 0.0; // averaged queue level (target 64 ms)
         // Texture builds (vitaGL) and the System 24 tile cache, for their optimisation.
-        uint64_t tex_builds = 0, tex_texels = 0, tex_identical = 0, tex_dropped = 0, tex_defers = 0, tex_resets = 0;
+        uint64_t tex_builds = 0, tex_texels = 0, tex_rewritten = 0, tex_kept = 0, tex_changed = 0, tex_defers = 0, tex_resets = 0;
         uint64_t tex_frames_with_builds = 0, tex_builds_max = 0;
         uint64_t tiles_rebuilt = 0, characters_changed = 0, tile_frames = 0;
     };
@@ -211,20 +211,20 @@ public:
                 line(w, TexBuild, "    ", ms, pct, loops);
                 line(w, TexDecode, "    ", ms, pct, loops);
                 line(w, TexUpload, "    ", ms, pct, loops);
-                line(w, TexIdentical, "    ", ms, pct, loops);
+                line(w, TexCheck, "    ", ms, pct, loops);
                 line(w, VertexWrite, "    ", ms, pct, loops);
             }
         }
         w.add("  %-38s %7.1f %9.2f\n", "idle / unmeasured (vsync, delay)", pct(idle), ms(idle) / loops);
-        if (counters.tex_builds || counters.tex_dropped || counters.tex_defers || counters.tex_resets)
+        if (counters.tex_builds || counters.tex_rewritten || counters.tex_defers || counters.tex_resets)
             w.add("  textures: %llu built (%.0f texels each, %.2f us per 1000 texels decode, %.2f upload) in %llu frames, "
-                  "most %llu in a frame | %llu identical to a dropped one | %llu dropped (texture RAM written), "
+                  "most %llu in a frame | texture RAM written under %llu: %llu kept (same words), %llu rebuilt | "
                   "%llu deferred, %llu cache resets\n",
                   ull(counters.tex_builds), counters.tex_builds ? double(counters.tex_texels) / double(counters.tex_builds) : 0.0,
                   counters.tex_texels ? 1e6 * ms(totals_[TexDecode]) / double(counters.tex_texels) : 0.0,
                   counters.tex_texels ? 1e6 * ms(totals_[TexUpload]) / double(counters.tex_texels) : 0.0,
-                  ull(counters.tex_frames_with_builds), ull(counters.tex_builds_max), ull(counters.tex_identical),
-                  ull(counters.tex_dropped), ull(counters.tex_defers), ull(counters.tex_resets));
+                  ull(counters.tex_frames_with_builds), ull(counters.tex_builds_max), ull(counters.tex_rewritten),
+                  ull(counters.tex_kept), ull(counters.tex_changed), ull(counters.tex_defers), ull(counters.tex_resets));
         if (counters.tile_frames)
             w.add("  tile cache: %.1f tiles and %.1f characters rebuilt per frame (%llu frames with work)\n",
                   double(counters.tiles_rebuilt) / frames, double(counters.characters_changed) / frames,
@@ -312,7 +312,7 @@ private:
         static const char *const names[kSections] = {
             "input", "logic", "geo_main", "irq", "video2d", "board_other", "sound_sync", "gpu_prepare",
             "gfx_begin", "upload", "layers", "sort", "polygons", "gfx_end", "log",
-            "geo_wait_board", "snapshot", "tex_build", "vertex_write", "tex_decode", "tex_upload", "tex_identical",
+            "geo_wait_board", "snapshot", "tex_build", "vertex_write", "tex_decode", "tex_upload", "tex_check",
             "palette_2d", "tile_cache_2d", "geo_parse", "sound_board", "sound_queue", "worker_2d"};
         return names[s];
     }

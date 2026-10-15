@@ -115,11 +115,9 @@ static inline bool same_block(const uint8_t *a, const uint16_t *b16)
 // of 8x8, 4bpp chars (char_layout, bit order swapped within 16-bit words),
 // pen = color * 16 + pixel, pen 0 transparent, category = tile bit 15.
 void Video::build_layer(int layer) {
-    const uint32_t base = uint32_t(layer) * 0x1000; // tile_info_0s/0w/1s/1w
-    uint16_t *pm = pixmap_[layer].data();
-    uint8_t *fm = flags_[layer].data();
     for (uint32_t t = 0; t < 64 * 64; t++) {
 #if defined(M2_DC_SPEED) && !defined(M2_VITA_RENDER_OPT)
+        const uint32_t base = uint32_t(layer) * 0x1000; // tile_info_0s/0w/1s/1w
         // No character changed: a block of 16 tiles whose values are all
         // as last decoded needs nothing (tile RAM and the copy are both
         // little-endian words).
@@ -129,65 +127,72 @@ void Video::build_layer(int layer) {
             continue;
         }
 #endif
-        const uint16_t val = tile(t | base);
-        const uint32_t code = val & 0x3fff;
-#ifdef M2_VITA_RENDER_OPT
-        uint16_t &previous = tile_values_[base + t];
-        if (tiles_valid_ && previous == val && !character_dirty_[code]) continue;
-        if (!tiles_valid_) background_dirty_ = foreground_dirty_ = true;
-        else {
-            (previous & 0x8000 ? foreground_dirty_ : background_dirty_) = true;
-            (val & 0x8000 ? foreground_dirty_ : background_dirty_) = true;
-        }
-        previous = val;
-#else
-        // Desktop: only tiles whose value or character changed (decode_layers).
-        uint16_t &previous = dec_tiles_[base + t];
-        if (dec_valid_ && previous == val && !dec_char_dirty_[code]) continue;
-        previous = val;
-#endif
-        ++profile_.tiles_rebuilt;
-        system24_source_dirty_ = true;
-        system24_tile_generations_[base + t] = system24_texture_generation_ + 1;
-        const uint32_t color = (val >> 7) & 0xff;
-        const uint8_t category = (val & 0x8000) ? 1 : 0;
-        const uint32_t tx = (t & 63) * 8, ty = (t >> 6) * 8;
-#ifdef M2_DC_SPEED
-        bool opaque = false, solid = true;
-#endif
-        for (uint32_t y = 0; y < 8; y++)
-            for (uint32_t x = 0; x < 8; x++) {
-                const uint32_t b = code * 32 + y * 4 + (x >> 1);
-                const uint8_t byte = char_ram_[b ^ 1];
-                const uint8_t pix = (x & 1) ? (byte & 0x0f) : (byte >> 4);
-                const size_t i = size_t(ty + y) * 512 + (tx + x);
-                pm[i] = uint16_t(color * 16 + pix);
-                fm[i] = uint8_t(category | (pix ? PIXEL_LAYER0 : 0));
-#ifdef M2_DC_SPEED
-                opaque |= pix != 0;
-                solid &= pix != 0;
-#endif
-            }
-#ifdef M2_DC_SPEED
-        uint8_t &cls = tile_class_[layer][t];
-        const uint32_t row = t >> 6;
-        // The layer buffers of the old and the new category change.
-        if (cls & 0x80) {
-            (cls & 1 ? front_dirty_ : back_dirty_) = true;
-            dirty_rows_[cls & 1][layer][row] = 1;
-        }
-        (category ? front_dirty_ : back_dirty_) = true;
-        dirty_rows_[category][layer][row] = 1;
-        if (layer == 2) scroll_dirty_[t] = 1;
-        if (cls & 0x80) {
-            --row_tiles_[layer][row][cls & 1];
-            if (cls & 2) --row_opaque_[layer][row][cls & 1];
-        }
-        cls = uint8_t(0x80 | (solid ? 4 : 0) | (opaque ? 2 : 0) | category);
-        ++row_tiles_[layer][row][category];
-        if (opaque) ++row_opaque_[layer][row][category];
-#endif
+        build_tile(layer, t);
     }
+}
+
+void Video::build_tile(int layer, uint32_t t) {
+    const uint32_t base = uint32_t(layer) * 0x1000; // tile_info_0s/0w/1s/1w
+    uint16_t *pm = pixmap_[layer].data();
+    uint8_t *fm = flags_[layer].data();
+    const uint16_t val = tile(t | base);
+    const uint32_t code = val & 0x3fff;
+#ifdef M2_VITA_RENDER_OPT
+    uint16_t &previous = tile_values_[base + t];
+    if (tiles_valid_ && previous == val && !character_dirty_[code]) return;
+    if (!tiles_valid_) background_dirty_ = foreground_dirty_ = true;
+    else {
+        (previous & 0x8000 ? foreground_dirty_ : background_dirty_) = true;
+        (val & 0x8000 ? foreground_dirty_ : background_dirty_) = true;
+    }
+    previous = val;
+#else
+    // Desktop: only tiles whose value or character changed (decode_layers).
+    uint16_t &previous = dec_tiles_[base + t];
+    if (dec_valid_ && previous == val && !dec_char_dirty_[code]) return;
+    previous = val;
+#endif
+    ++profile_.tiles_rebuilt;
+    system24_source_dirty_ = true;
+    system24_tile_generations_[base + t] = system24_texture_generation_ + 1;
+    const uint32_t color = (val >> 7) & 0xff;
+    const uint8_t category = (val & 0x8000) ? 1 : 0;
+    const uint32_t tx = (t & 63) * 8, ty = (t >> 6) * 8;
+#ifdef M2_DC_SPEED
+    bool opaque = false, solid = true;
+#endif
+    for (uint32_t y = 0; y < 8; y++)
+        for (uint32_t x = 0; x < 8; x++) {
+            const uint32_t b = code * 32 + y * 4 + (x >> 1);
+            const uint8_t byte = char_ram_[b ^ 1];
+            const uint8_t pix = (x & 1) ? (byte & 0x0f) : (byte >> 4);
+            const size_t i = size_t(ty + y) * 512 + (tx + x);
+            pm[i] = uint16_t(color * 16 + pix);
+            fm[i] = uint8_t(category | (pix ? PIXEL_LAYER0 : 0));
+#ifdef M2_DC_SPEED
+            opaque |= pix != 0;
+            solid &= pix != 0;
+#endif
+        }
+#ifdef M2_DC_SPEED
+    uint8_t &cls = tile_class_[layer][t];
+    const uint32_t row = t >> 6;
+    // The layer buffers of the old and the new category change.
+    if (cls & 0x80) {
+        (cls & 1 ? front_dirty_ : back_dirty_) = true;
+        dirty_rows_[cls & 1][layer][row] = 1;
+    }
+    (category ? front_dirty_ : back_dirty_) = true;
+    dirty_rows_[category][layer][row] = 1;
+    if (layer == 2) scroll_dirty_[t] = 1;
+    if (cls & 0x80) {
+        --row_tiles_[layer][row][cls & 1];
+        if (cls & 2) --row_opaque_[layer][row][cls & 1];
+    }
+    cls = uint8_t(0x80 | (solid ? 4 : 0) | (opaque ? 2 : 0) | category);
+    ++row_tiles_[layer][row][category];
+    if (opaque) ++row_opaque_[layer][row][category];
+#endif
 }
 
 #ifndef M2_VITA_RENDER_OPT
@@ -241,12 +246,17 @@ void Video::decode_layers() {
 
 #ifdef M2_VITA_RENDER_OPT
 void Video::update_tile_cache() {
+    if (write_tracking_ && tiles_valid_) {
+        update_tracked_tiles();
+        return;
+    }
     const bool chars_changed = !tiles_valid_ || (write_tracking_ ? character_memory_touched_ :
         std::memcmp(char_ram_, character_copy_.data(), character_copy_.size()) != 0);
     const bool ram_changed = !tiles_valid_ || (write_tracking_ ? tile_memory_touched_ :
         std::memcmp(tile_ram_, tile_ram_copy_.data(), tile_ram_copy_.size()) != 0);
     if (!chars_changed && !ram_changed) return;
     std::fill(character_dirty_.begin(), character_dirty_.end(), uint8_t(0));
+    chars_marked_ = chars_changed; // update_tracked_tiles clears what this marks
     if (chars_changed) {
         constexpr size_t page_bytes = 256;
         constexpr size_t chars_per_page = page_bytes / 32;
@@ -289,6 +299,75 @@ void Video::update_tile_cache() {
     if (draw_state_changed) background_dirty_ = foreground_dirty_ = true;
     tiles_valid_ = true;
     tile_memory_touched_ = character_memory_touched_ = false;
+    tile_blocks_.fill(0);
+    char_pages_.fill(0);
+}
+
+// update_tile_cache with write tracking: the same tiles rebuilt, the same copies kept,
+// but only the 64-byte tile RAM blocks and 256-byte character RAM pages the board
+// reported are compared, instead of all 16,384 tiles, 64 KB of tile RAM and 512 KB of
+// character RAM whenever anything was written (the game writes its scroll registers
+// every frame: VF2 ~1.25 ms a frame on the Vita for ~10 tiles actually changed).
+void Video::update_tracked_tiles() {
+    if (!tile_memory_touched_ && !character_memory_touched_) return;
+    if (chars_marked_) {
+        std::fill(character_dirty_.begin(), character_dirty_.end(), uint8_t(0));
+        chars_marked_ = false;
+    }
+    bool chars_changed = false;
+    if (character_memory_touched_) {
+        for (size_t w = 0; w < char_pages_.size(); ++w)
+            for (uint64_t bits = char_pages_[w]; bits; bits &= bits - 1) {
+                const size_t page = (w * 64 + size_t(__builtin_ctzll(bits))) * 256;
+                if (std::memcmp(char_ram_ + page, character_copy_.data() + page, 256) == 0) continue;
+                for (size_t code = page / 32; code < (page + 256) / 32; ++code) {
+                    const size_t offset = code * 32;
+                    if (std::memcmp(char_ram_ + offset, character_copy_.data() + offset, 32) == 0) continue;
+                    std::memcpy(character_copy_.data() + offset, char_ram_ + offset, 32);
+                    character_dirty_[code] = 1;
+                    ++profile_.characters_changed;
+                    chars_changed = true;
+                }
+            }
+        chars_marked_ = chars_changed;
+    }
+    auto marked = [&](size_t block) { return (tile_blocks_[block >> 6] >> (block & 63)) & 1; };
+    bool draw_state_changed = false;
+    if (tile_memory_touched_) {
+        // Line-scroll tables, layer control/scroll registers and window masks.
+        auto changed = [&](size_t first, size_t bytes) {
+            for (size_t block = first >> 6; block <= (first + bytes - 1) >> 6; ++block) {
+                if (!marked(block)) continue;
+                const size_t lo = std::max(first, block * 64), hi = std::min(first + bytes, block * 64 + 64);
+                if (std::memcmp(tile_ram_ + lo, tile_ram_copy_.data() + lo, hi - lo) != 0) return true;
+            }
+            return false;
+        };
+        draw_state_changed = changed(0x8000, 0x1000) || changed(0xa000, 0x10) || changed(0xc000, 0x2000);
+    }
+    if (chars_changed) {
+        for (int layer = 0; layer < 4; ++layer) build_layer(layer); // tiles showing a changed character
+    } else if (tile_memory_touched_) {
+        for (size_t block = 0; block < 0x8000 / 64; ++block) { // the four tilemaps: 32 tiles a block
+            if (!marked(block)) continue;
+            const int layer = int(block * 64 >> 13);
+            const uint32_t first = uint32_t((block * 64) & 0x1fff) >> 1;
+            for (uint32_t t = first; t < first + 32; ++t) build_tile(layer, t);
+        }
+    }
+    if (tile_memory_touched_) {
+        if (bool(tile(0x5006) & 0x6000) != bool(le16(tile_ram_copy_.data(), 0x5006) & 0x6000)) {
+            std::fill(system24_tile_generations_.begin() + 2 * 4096,
+                      system24_tile_generations_.end(), system24_texture_generation_ + 1);
+            system24_source_dirty_ = true;
+        }
+        for (size_t block = 0; block < 0x10000 / 64; ++block)
+            if (marked(block)) std::memcpy(tile_ram_copy_.data() + block * 64, tile_ram_ + block * 64, 64);
+    }
+    if (draw_state_changed) background_dirty_ = foreground_dirty_ = true;
+    tile_memory_touched_ = character_memory_touched_ = false;
+    tile_blocks_.fill(0);
+    char_pages_.fill(0);
 }
 #endif
 
