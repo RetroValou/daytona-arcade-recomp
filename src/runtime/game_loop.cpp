@@ -39,6 +39,14 @@ GameLoop::GameLoop(const std::string &dir, bool sound_enabled) : GameLoop([&] {
 }(), sound_enabled) {}
 
 GameLoop::GameLoop(M2Board::Images img, bool sound_enabled) {
+#ifdef M2_INLINE_BUS
+    // Code generated with m2recomp --board inlines that board's bus (gen::BoardMem):
+    // it must run on that board, with the whole program ROM and data ROM in
+    // memory (as the TGP program's CRC is checked before it runs).
+    if (gen::inline_board >= 0 &&
+        (gen::inline_board != int(img.game->board) || img.program.size() != 0x200000 || img.main_data.size() < 0x2000000))
+        throw Fatal("i960 code generated for another board (m2recomp --board) or ROM images of the wrong size");
+#endif
     if (sound_enabled && !img.sound_program.empty()) {
         if (img.game->sound == SoundBoardType::Scsp) sound_ = std::make_unique<snd::ScspBoard>(img.sound_program, img.samples);
         else sound_ = std::make_unique<snd::SoundBoard>(img.sound_program, img.pcm1, img.pcm2);

@@ -180,6 +180,14 @@ option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in p
 if(DAYTONA_VITA_I960_PROFILE)
     target_compile_definitions(vita_runtime PUBLIC M2_I960_PROFILE=1)
 endif()
+# The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem): build_vita.py
+# generates its fast modes' i960 code with m2recomp --board (the set's board,
+# scripts/games.py). The host's own code (the default mode) runs on it unchanged.
+# OFF: build_vita.py --no-inline-bus.
+option(DAYTONA_VITA_INLINE_BUS "i960 code with the board's bus inlined (M2_INLINE_BUS)" ON)
+if(DAYTONA_VITA_INLINE_BUS)
+    target_compile_definitions(vita_runtime PUBLIC M2_INLINE_BUS=1)
+endif()
 option(DAYTONA_VITA_RENDER_OPT "Exact tile/layer caching and optimized CPU rasterizer" ON)
 if(DAYTONA_VITA_RENDER_OPT)
     # Public because the flag affects Video/Raster class layouts.

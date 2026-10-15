@@ -1,5 +1,81 @@
 # Handoff
 
+## The bus inlined in the i960 code, per board (2026-10-14)
+
+`m2recomp --board model2o|model2a` (scripts/games.py "board"): loads and
+stores are `Mem::ld32(B, a)`... with `using Mem = gen::BoardMem<board>`
+(src/runtime/gen_support.h) and `B` the `rt::M2Board` behind `c.bus`
+(`final` under M2_INLINE_BUS: direct calls, not virtual). Three stages:
+1. inline: work RAM 0x500000-0x5fffff, program ROM 0-0x1fffff, main RAM
+   0x200000 (2: 128 KB, then the ROM mirror at 0x220000; 2A: 256 KB),
+   aligned or not as long as the access stays inside one 128 KB block (every
+   range boundary is one); writes skip ram_written (nothing there); flags()
+   BURST below 0x240000 and in work RAM; the frame-wait byte (ldob
+   0x500000) still goes through read_byte;
+2. `M2Board::read_dword_mid` / `read_word_mid` / `read_byte_mid`: the data
+   ROM 0x02000000-0x03ffffff (the TGP FIFO can go here next);
+3. the bus as before (read_dword etc., devices, video RAM, TGP).
+GameLoop throws at start if the code's board (`gen::inline_board`, written
+by m2recomp in gen_table.cpp, -1 without --board) is not the game's, or the
+program image is not 2 MB / the data ROM 32 MB. m2native refuses the code
+(replay bus). Without --board the chunks are byte-identical to before
+(gen_table.cpp gains the `inline_board = -1` line).
+
+Switches: CMake `M2_INLINE_BUS` (desktop OFF; `recompile.py --inline-bus`
+sets it and passes --board); Vita `DAYTONA_VITA_INLINE_BUS` ON, build_vita.py
+passes --board in --fast-inaccuracy and --fast-gen, `--no-inline-bus` to
+compare. Not on the Dreamcast (M2_DC_MEMORY: #error). fast_gen.py (shared
+with the Vita) now turns `Mem::` fixed work-RAM accesses into gen::wram_*
+too, and treats any other `Mem::` access as not register-only.
+
+PC parity (Release, 3,000 frames, every 250 dumped + WAV): daytona93
+race_basic and srallyc srallyc_race identical with and without, same i960/
+TGP/interrupt counts (5d4b1b641acf6f5b, 4b73fca0c3d6b13e); default build
+regenerated: identical too. ctest 19/19 both builds, Python tests OK.
+
+PC i960 alone (M2_I960_PROFILE builds, ms/frame; PC noise ~10 %):
+
+| | before | after |
+|---|---|---|
+| daytona93 | 0.227 | 0.147-0.165 |
+| srallyc | 0.192 | 0.167-0.186 |
+| daytona93 bus calls/frame | 12,623 | 7,060 (4,197 direct) |
+| srallyc bus calls/frame | 15,506 | 10,137 (1,448 direct) |
+
+Sega Rally gains less: it uses its work RAM little (1,392 accesses a frame
+against Daytona's 6,339); what is left on its bus is video RAM copies (a
+ldl/stl loop at 0x5fcb1c, ~3,000 reads + 2,800 writes a frame: they need
+ram_written) and the 315-5649 I/O chip (2,039 reads). Daytona's remaining
+work RAM reads are the frame-wait byte (1,199 loop runs a frame) and
+do_ret/do_call's frame spills (the runtime's, not the generated code; on
+the Vita M2_FAST_CPU already copies them directly). Wrong turn on the way:
+the srallyc main-RAM calls left after the first version were not unaligned
+accesses (making those direct changed nothing); the data ROM's 16-bit reads
+were (ldos/ldis, now stage 2).
+
+Vita hardware, Daytona, `--gpu-gl --fast-inaccuracy --diagnostics
+--i960-profile --tgp-profile` (extern/result_perf_vita/
+perf_modif_ram_rom_i930_TGP.log against perf_base_i930_TGP.log, same flags
+without the inline bus; not committed):
+- bus calls in the race ~19,300 -> ~9,800 a frame (~11,000 direct);
+- light windows (little TGP work, comparable): window 1 (~56,500 i960
+  instructions both) i960 alone 3.97 -> 3.45 ms, 69.8 -> 61.1 ns/instr;
+  window 4 70.0 -> 63.7 ns/instr (-9 to -12 %);
+- a fit over every window (alone = a x i960 instr + b x TGP instr, rms
+  0.15 ms): a 60.0 -> 48.8 ns, about -0.45 ms a frame at the race's ~41,000
+  instructions: a third of the plan's 1-1.5 ms;
+- race windows: i960 alone 7.4-7.8 ms both, fps the same (49-57), core 0
+  93-100 %. Not a measure of the change: "i960 alone" there holds ~5 ms that
+  follow the TGP instruction count (b = 82-91 ns per TGP instruction, on top
+  of TGP time's 47 ns), most likely the profilers' own probes (a clock read
+  is 0.69 us on the Vita) saturating core 0. Race timings need builds
+  without the profilers.
+A/B without the profilers: `build_vita.py --gpu-gl --fast-inaccuracy
+--diagnostics` (build/vita-diag, DAYT90093) and the same with
+`--no-inline-bus --build-dir build/vita-diag-noinline --title-id DAYT90094`
+(installs next to it). Next: run both in the race, compare "i960+TGP game
+logic" and "vblank handler" in perf.log.
+
 ## i960 and TGP profiling for the Vita's optimisation choices (2026-10-13)
 
 Measurement only: what the i960 and the TGP cost on the Vita, to choose

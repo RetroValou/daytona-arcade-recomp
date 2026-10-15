@@ -55,6 +55,13 @@ WRAM = [
     (re.compile(r"c\.i960_write_dword_unaligned\(0x005([0-9a-f]{5})u, "), 4, "gen::wram_w32(c, 0x{}u, "),
     (re.compile(r"c\.i960_write_word_unaligned\(0x005([0-9a-f]{5})u, "), 2, "gen::wram_w16(c, 0x{}u, "),
     (re.compile(r"c\.bus->write_byte\(0x005([0-9a-f]{5})u, "), 1, "gen::wram_w8(c, 0x{}u, "),
+    # m2recomp --board (the bus inlined, gen::BoardMem): the same accesses
+    (re.compile(r"Mem::ld32\(B, 0x005([0-9a-f]{5})u\)"), 4, "gen::wram_r32(c, 0x{}u)"),
+    (re.compile(r"Mem::ld16\(B, 0x005([0-9a-f]{5})u\)"), 2, "gen::wram_r16(c, 0x{}u)"),
+    (re.compile(r"Mem::ld8\(B, 0x005([0-9a-f]{5})u\)"), 1, "gen::wram_r8(c, 0x{}u)"),
+    (re.compile(r"Mem::st32\(B, 0x005([0-9a-f]{5})u, "), 4, "gen::wram_w32(c, 0x{}u, "),
+    (re.compile(r"Mem::st16\(B, 0x005([0-9a-f]{5})u, "), 2, "gen::wram_w16(c, 0x{}u, "),
+    (re.compile(r"Mem::st8\(B, 0x005([0-9a-f]{5})u, "), 1, "gen::wram_w8(c, 0x{}u, "),
 ]
 
 
@@ -73,7 +80,7 @@ def direct_wram(line, stats):
 def pure(body):
     text = "\n".join(body)
     text = PURE_CALLS.sub("(", text)
-    return not any(w in text for w in ("c.", "ls.", "rt::", "gen::", "throw", "goto", "return"))
+    return not any(w in text for w in ("c.", "ls.", "rt::", "gen::", "Mem::", "throw", "goto", "return"))
 
 
 def jumps(body):

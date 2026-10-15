@@ -37,6 +37,11 @@ int main(int argc, char **argv) {
     }
     const std::string dir = argv[1];
     uint64_t done = 0;
+    if (gen::inline_board >= 0) { // gen::BoardMem needs an rt::M2Board: no replay bus
+        std::fprintf(stderr, "m2native: the i960 code was generated with m2recomp --board (recompile.py --inline-bus): "
+                             "the lockstep needs the default output\n");
+        return 2;
+    }
     try {
         rt::M2ReplayBus bus(load(dir + "/program.bin"), load(dir + "/main_data.bin"), argv[2]);
         rt::Cpu core(&bus);

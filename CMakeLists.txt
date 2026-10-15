@@ -141,6 +141,12 @@ option(M2_I960_PROFILE "i960 time, work, bus calls and hot blocks (m2recomp --pr
 if(M2_I960_PROFILE)
     target_compile_definitions(runtime PUBLIC M2_I960_PROFILE=1)
 endif()
+# The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem; recompile.py
+# --inline-bus): needs code generated with m2recomp --board. The Vita's default.
+option(M2_INLINE_BUS "i960 code with the board's bus inlined (m2recomp --board code)" OFF)
+if(M2_INLINE_BUS)
+    target_compile_definitions(runtime PUBLIC M2_INLINE_BUS=1)
+endif()
 # 7z ROM sets: the 7-Zip LZMA SDK's decoder (public-domain files only),
 # fetched by scripts/setup.py into extern/lzma.
 set(LZMA_DIR ${CMAKE_SOURCE_DIR}/extern/lzma/C)

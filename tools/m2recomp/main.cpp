@@ -1,7 +1,7 @@
 // m2recomp: the i960 static recompiler (design doc, i960 static recompiler).
 //
 //   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]
-//            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile]
+//            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile] [--board model2o|model2a]
 //
 // The image is the program ROM at address 0. model2o mirrors its upper
 // 128 KiB at 0x00220000; --no-mirror drops that (Model 2A: RAM there).
@@ -59,6 +59,14 @@
 // divides, branches, calls, FP; I960BlockInfo in src/runtime/i960_profile.h).
 // The code must be built with M2_I960_PROFILE, whose runtime reports them.
 // Results and counts are unchanged.
+//
+// --board model2o|model2a (scripts/games.py "board"; recompile.py --inline-bus,
+// build_vita.py by default in its fast modes): loads and stores go through
+// gen::BoardMem<board> (src/runtime/gen_support.h), the board's bus inlined: work
+// RAM, program ROM and main RAM read and written in place, the rest through
+// direct (not virtual) calls to rt::M2Board. Same results as the bus; the
+// code then runs only on an M2Board of that board, built with M2_INLINE_BUS
+// (GameLoop checks it at start), not on m2native's replay bus.
 //
 // There is no fallback: an instruction without a native template fails the
 // recompile, listed by address and mnemonic. At run time, control reaching an
@@ -225,6 +233,26 @@ struct Emitter {
     std::set<uint32_t> *targets = nullptr; // analysis pass: records every direct transfer target
     bool exits = false;                    // after emit(): the instruction has an explicit exit
     std::string block_counter{};           // --profile: emitted at a counted block's last instruction
+    bool inline_bus = false;               // --board: loads and stores through gen::BoardMem (the board's bus inlined)
+
+    // Memory access: through Cpu::bus, or (--board) gen::BoardMem on the board B.
+    std::string ld8(const std::string &a) const { return inline_bus ? "Mem::ld8(B, " + a + ")" : "c.bus->read_byte(" + a + ")"; }
+    std::string ld16(const std::string &a) const {
+        return inline_bus ? "Mem::ld16(B, " + a + ")" : "c.i960_read_word_unaligned(" + a + ")";
+    }
+    std::string ld32(const std::string &a) const {
+        return inline_bus ? "Mem::ld32(B, " + a + ")" : "c.i960_read_dword_unaligned(" + a + ")";
+    }
+    std::string st8(const std::string &a, const std::string &v) const {
+        return (inline_bus ? "Mem::st8(B, " : "c.bus->write_byte(") + a + ", uint8_t(" + v + "));";
+    }
+    std::string st16(const std::string &a, const std::string &v) const {
+        return (inline_bus ? "Mem::st16(B, " : "c.i960_write_word_unaligned(") + a + ", uint16_t(" + v + "));";
+    }
+    std::string st32(const std::string &a, const std::string &v) const {
+        return (inline_bus ? "Mem::st32(B, " : "c.i960_write_dword_unaligned(") + a + ", " + v + ");";
+    }
+    std::string flags(const std::string &a) const { return inline_bus ? "Mem::flags(B, " + a + ")" : "c.bus->flags(" + a + ")"; }
 
     // Transfer to a known address: a goto when it is in this chunk.
     std::string jump(uint32_t t) const {
@@ -336,18 +364,18 @@ struct Emitter {
         case i960::Format::Mem: {
             const std::string e = ea(in), r = R(in.src1);
             switch (code) {
-            case 0x80: body = r + " = c.bus->read_byte(" + e + ");"; break;                          // ldob
-            case 0x82: body = "c.bus->write_byte(" + e + ", uint8_t(" + r + "));"; break;            // stob
+            case 0x80: body = r + " = " + ld8(e) + ";"; break;                                        // ldob
+            case 0x82: body = st8(e, r); break;                                                      // stob
             case 0x84: body = "c.m_IP = " + e + ";"; exit = "goto dispatch;"; falls = false; break; // bx
             case 0x85: body = "{ const uint32_t t = " + e + "; " + r + " = " + hex(next) + "; c.m_IP = t; }"; // balx
                        exit = "goto dispatch;"; falls = false; break;
             case 0x86: body = "{ const uint32_t t = " + e + "; c.m_IP = " + hex(next) + "; c.do_call(t, 0, R[1]); }"; // callx
                        exit = "goto dispatch;"; falls = false; break;
-            case 0x88: body = r + " = c.i960_read_word_unaligned(" + e + ");"; break;                 // ldos
-            case 0x8a: body = "c.i960_write_word_unaligned(" + e + ", uint16_t(" + r + "));"; break;  // stos
+            case 0x88: body = r + " = " + ld16(e) + ";"; break;                                       // ldos
+            case 0x8a: body = st16(e, r); break;                                                     // stos
             case 0x8c: body = r + " = " + e + ";"; break;                                             // lda
-            case 0x90: body = r + " = c.i960_read_dword_unaligned(" + e + ");"; break;                // ld
-            case 0x92: body = "c.i960_write_dword_unaligned(" + e + ", " + r + ");"; break;           // st
+            case 0x90: body = r + " = " + ld32(e) + ";"; break;                                       // ld
+            case 0x92: body = st32(e, r); break;                                                     // st
             case 0x98: case 0xa0: case 0xb0: case 0x9a: case 0xa2: case 0xb2: {                      // ldl/ldt/ldq, stl/stt/stq
                 const int n = (code & 0xf0) == 0x90 ? 2 : (code & 0xf0) == 0xa0 ? 3 : 4;
                 const unsigned base = in.src1 & (n == 2 ? 0x1eu : 0x1cu);
@@ -355,17 +383,16 @@ struct Emitter {
                 // MAME advances the address only on BURST-flagged regions.
                 body = "{ uint32_t a = " + e + "; ";
                 for (int i = 0; i < n; ++i) {
-                    body += store ? "c.i960_write_dword_unaligned(a, " + R(base + i) + "); "
-                                  : R(base + i) + " = c.i960_read_dword_unaligned(a); ";
-                    if (i + 1 < n) body += "if (c.bus->flags(a) & rt::Cpu::BURST) a += 4; ";
+                    body += store ? st32("a", R(base + i)) + " " : R(base + i) + " = " + ld32("a") + "; ";
+                    if (i + 1 < n) body += "if (" + flags("a") + " & rt::Cpu::BURST) a += 4; ";
                 }
                 body += "}";
                 break;
             }
-            case 0xc0: body = r + " = uint32_t(int32_t(int8_t(c.bus->read_byte(" + e + "))));"; break;     // ldib
-            case 0xc2: body = "c.bus->write_byte(" + e + ", uint8_t(" + r + "));"; break;                   // stib
-            case 0xc8: body = r + " = uint32_t(int32_t(int16_t(c.i960_read_word_unaligned(" + e + "))));"; break; // ldis
-            case 0xca: body = "c.i960_write_word_unaligned(" + e + ", uint16_t(" + r + "));"; break;         // stis
+            case 0xc0: body = r + " = uint32_t(int32_t(int8_t(" + ld8(e) + ")));"; break;               // ldib
+            case 0xc2: body = st8(e, r); break;                                                       // stib
+            case 0xc8: body = r + " = uint32_t(int32_t(int16_t(" + ld16(e) + ")));"; break;             // ldis
+            case 0xca: body = st16(e, r); break;                                                      // stis
             default: return unsupported(in);
             }
             break;
@@ -562,6 +589,9 @@ void load_hooks(const std::string &path) {
     }
 }
 
+// --board's name as rt::BoardType (src/runtime/game.h).
+std::string board_type(const std::string &name) { return name == "model2o" ? "rt::BoardType::Model2o" : "rt::BoardType::Model2a"; }
+
 std::vector<uint32_t> load_seeds(const std::string &path) {
     std::ifstream f(path);
     std::vector<uint32_t> v;
@@ -586,7 +616,7 @@ std::vector<uint32_t> load_seeds(const std::string &path) {
 int main(int argc, char **argv) {
     if (argc < 3) {
         std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]"
-                              " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile]\n");
+                              " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile] [--board model2o|model2a]\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
@@ -594,6 +624,7 @@ int main(int argc, char **argv) {
     std::vector<uint32_t> seeds;
     size_t chunk = 1500;
     bool blocks = false, chain = false, mirror = true, profile = false;
+    std::string board; // --board: rt::BoardType's name, inlined bus
     struct Alias {
         uint32_t guest, offset, length;
     };
@@ -618,6 +649,12 @@ int main(int argc, char **argv) {
             aliases.push_back(al);
         } else if (!std::strcmp(argv[i], "--profile")) {
             profile = true;
+        } else if (!std::strcmp(argv[i], "--board") && i + 1 < argc) {
+            board = argv[++i];
+            if (board != "model2o" && board != "model2a") {
+                std::fprintf(stderr, "m2recomp: bad --board %s (model2o or model2a)\n", board.c_str());
+                return 2;
+            }
         } else if (!std::strcmp(argv[i], "--fast_inaccuracy")) {
             blocks = true; // 1. block bookkeeping
             chain = true;  // 2. direct chaining
@@ -677,6 +714,7 @@ int main(int argc, char **argv) {
         for (size_t k = start; k < end; ++k) addrs.insert(insns[k]->addr);
         Emitter em{&addrs, {}, 0, &missing};
         em.blocks = blocks;
+        em.inline_bus = !board.empty();
         // Block structure (every instruction is its own block without --fast_inaccuracy):
         // lead[i] starts a block, pos[i] = instructions before it in its block,
         // len[i] = its block's length.
@@ -701,9 +739,13 @@ int main(int argc, char **argv) {
         em.o << "// Generated by m2recomp. Derived from the game: never commit.\n";
         if (blocks) em.o << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
         if (profile) em.o << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
+        if (em.inline_bus) em.o << "// --board " << board << ": the board's bus inlined (gen::BoardMem).\n";
         em.o << "#include \"runtime/gen_support.h\"\n";
         if (profile) em.o << "#include \"runtime/i960_profile.h\"\n";
+        if (em.inline_bus)
+            em.o << "#ifndef M2_INLINE_BUS\n#error \"i960 code generated with m2recomp --board: build with M2_INLINE_BUS\"\n#endif\n";
         em.o << "\nnamespace gen {\n\n";
+        if (em.inline_bus) em.o << "using Mem = gen::BoardMem<" << board_type(board) << ">;\n\n";
         if (blocks) {
             std::string b = kBlockBoundary;
             if (profile) {
@@ -715,6 +757,7 @@ int main(int argc, char **argv) {
         em.o << "void " << name << "(Env &e) {\n"
              << "    rt::Cpu &c = e.c;\n    rt::Lockstep &ls = e.ls;\n"
              << "    uint32_t *const R = c.m_r;\n    uint32_t &AC = c.m_AC;\n";
+        if (em.inline_bus) em.o << "    rt::M2Board &B = static_cast<rt::M2Board &>(*c.bus);\n";
         if (profile) em.o << "    uint64_t *const PH = rt::i960gen::block_hits;\n";
         em.o << "dispatch:\n";
         if (profile) em.o << "    ++rt::i960gen::dispatches;\n";
@@ -760,6 +803,8 @@ int main(int argc, char **argv) {
     if (profile) t << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
     t << "#include \"runtime/gen_support.h\"\n";
     if (profile) t << "#include \"runtime/i960_profile.h\"\n";
+    if (!board.empty())
+        t << "#ifndef M2_INLINE_BUS\n#error \"i960 code generated with m2recomp --board: build with M2_INLINE_BUS\"\n#endif\n";
     t << "\n#include <algorithm>\n\n";
     if (profile) {
         t << "#ifndef M2_I960_PROFILE\n#error \"i960 code generated with m2recomp --profile: build with M2_I960_PROFILE\"\n#endif\n"
@@ -815,7 +860,9 @@ int main(int argc, char **argv) {
           << (profile ? "++rt::i960gen::chunk_entries; " : "") << "r.fn(e); return; }\n}\n\n";
     }
     t
-      << "uint64_t native_instructions() { return " << native << "ull; }\n\n} // namespace gen\n";
+      << "uint64_t native_instructions() { return " << native << "ull; }\n\n"
+      << "extern const int inline_board = " << (board.empty() ? "-1" : "int(" + board_type(board) + ")") << ";\n\n"
+      << "} // namespace gen\n";
     if (!missing.empty()) {
         std::fprintf(stderr, "m2recomp: FAILED: %zu reachable instructions have no native template:\n", missing.size());
         for (const std::string &m : missing) std::fprintf(stderr, "  %s\n", m.c_str());
@@ -826,6 +873,7 @@ int main(int argc, char **argv) {
     std::printf("m2recomp: %zu instructions from %zu seeds -> %zu chunks in %s, all native; %zu indirect sites\n",
                 insns.size(), all.size(), ranges.size(), out.c_str(), r.indirect_sites.size());
     if (profile) std::printf("m2recomp: --profile: %zu blocks counted\n", prof_blocks.size());
+    if (!board.empty()) std::printf("m2recomp: --board %s: bus inlined (gen::BoardMem, M2_INLINE_BUS)\n", board.c_str());
     if (blocks)
         std::printf("m2recomp: --fast_inaccuracy: %zu basic blocks, %.2f instructions per block (not interrupt-exact), "
                     "direct chunk chaining\n",

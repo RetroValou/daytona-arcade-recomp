@@ -169,6 +169,41 @@ class BuildVitaTests(unittest.TestCase):
             self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--fast-inaccuracy")
         run.assert_called()
 
+    def test_inline_bus_is_the_default(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy")
+        self.assertIn("-DDAYTONA_VITA_INLINE_BUS=ON", run.call_args_list[0].args[0])
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy", "--no-inline-bus")
+        self.assertIn("-DDAYTONA_VITA_INLINE_BUS=OFF", run.call_args_list[0].args[0])
+
+
+FAST_GEN_SPEC = importlib.util.spec_from_file_location(
+    "fast_gen", Path(__file__).resolve().parents[1] / "platform/dreamcast/scripts/fast_gen.py")
+FAST_GEN = importlib.util.module_from_spec(FAST_GEN_SPEC)
+FAST_GEN_SPEC.loader.exec_module(FAST_GEN)
+
+
+class FastGenInlineBusTests(unittest.TestCase):
+    """fast_gen.py on m2recomp --board code (Mem::, the bus inlined)."""
+
+    def test_fixed_work_ram_accesses_become_direct(self):
+        stats = {"wram": 0}
+        line = "R[3] = Mem::ld32(B, 0x00512340u); Mem::st16(B, 0x00500002u, uint16_t(R[4]));"
+        self.assertEqual(FAST_GEN.direct_wram(line, stats),
+                         "R[3] = gen::wram_r32(c, 0x12340u); gen::wram_w16(c, 0x00002u, uint16_t(R[4]));")
+        self.assertEqual(stats["wram"], 2)
+
+    def test_frame_wait_byte_and_unaligned_keep_the_bus(self):
+        stats = {"wram": 0}
+        line = "R[3] = Mem::ld8(B, 0x00500000u); R[4] = Mem::ld32(B, 0x00500002u);"
+        self.assertEqual(FAST_GEN.direct_wram(line, stats), line)
+        self.assertEqual(stats["wram"], 0)
+
+    def test_inlined_bus_access_is_not_register_only(self):
+        self.assertFalse(FAST_GEN.pure(["    R[3] = Mem::ld32(B, R[4]);"]))
+        self.assertTrue(FAST_GEN.pure(["    R[3] = gen::wram_r32(c, 0x00010u);"]))
+
 
 if __name__ == "__main__":
     unittest.main()

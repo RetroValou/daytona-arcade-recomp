@@ -22,6 +22,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <deque>
 #include <memory>
 #include <string>
@@ -93,7 +94,15 @@ private:
     void ee_clock();
 };
 
+#if defined(M2_INLINE_BUS) && defined(M2_DC_MEMORY)
+#error "M2_INLINE_BUS needs the ROM in memory: not with M2_DC_MEMORY"
+#endif
+
+#ifdef M2_INLINE_BUS
+class M2Board final : public Bus { // final: the inlined bus (gen::BoardMem) calls it directly
+#else
 class M2Board : public Bus {
+#endif
 public:
     struct Images {
         std::vector<uint8_t> program, main_data, copro_tables, copro_data, polygons, textures;
@@ -124,6 +133,54 @@ public:
     void write_word(uint32_t addr, uint16_t data) override;
     void write_dword(uint32_t addr, uint32_t data) override;
     uint16_t flags(uint32_t addr) override { return page(addr).burst ? Cpu::BURST : 0; }
+
+#ifdef M2_INLINE_BUS
+    // The inlined bus (gen::BoardMem, m2recomp --board). Its first stage reads
+    // these directly; the rest are its direct calls.
+    uint8_t *work_ram() { return work_.data(); }               // 0x00500000, 1 MB
+    uint8_t *main_ram() { return ram_.data(); }                // 0x00200000, 128 KB (2A-CRX: 256 KB)
+    const uint8_t *program() const { return img_.program.data(); } // 0x00000000, 2 MB
+    // Stage 2: an aligned read outside stage 1's ranges. The data ROM
+    // (0x02000000-0x03ffffff, the page table's Rom pages there), else the
+    // bus as before.
+    uint32_t read_dword_mid(uint32_t addr) {
+        if (const uint32_t o = addr - 0x02000000u; o < 0x2000000u) {
+            uint32_t v;
+            std::memcpy(&v, img_.main_data.data() + o, 4);
+            return v;
+        }
+        return read_dword(addr);
+    }
+    uint16_t read_word_mid(uint32_t addr) {
+        if (const uint32_t o = addr - 0x02000000u; o < 0x2000000u) {
+            uint16_t v;
+            std::memcpy(&v, img_.main_data.data() + o, 2);
+            return v;
+        }
+        return read_word(addr);
+    }
+    uint8_t read_byte_mid(uint32_t addr) {
+        if (const uint32_t o = addr - 0x02000000u; o < 0x2000000u) return img_.main_data[o];
+        return read_byte(addr);
+    }
+    // Unaligned accesses, byte by byte as Cpu::i960_read_dword_unaligned etc.
+    uint32_t read_dword_unaligned(uint32_t a) {
+        uint32_t v = 0;
+        for (unsigned i = 0; i < 4; i++) v |= uint32_t(read_byte(a + i)) << (8 * i);
+        return v;
+    }
+    uint16_t read_word_unaligned(uint32_t a) {
+        const uint8_t lo = read_byte(a);
+        return uint16_t(lo | read_byte(a + 1) << 8);
+    }
+    void write_dword_unaligned(uint32_t a, uint32_t v) {
+        for (unsigned i = 0; i < 4; i++) write_byte(a + i, uint8_t(v >> (8 * i)));
+    }
+    void write_word_unaligned(uint32_t a, uint16_t v) {
+        write_byte(a, uint8_t(v));
+        write_byte(a + 1, uint8_t(v >> 8));
+    }
+#endif
 
     // Frame control, called by the runner.
     // The game waits for vblank: board time moves on to the next timer

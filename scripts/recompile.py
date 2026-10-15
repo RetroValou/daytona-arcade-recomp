@@ -3,6 +3,7 @@
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
   recompile.py [--set SET] [--build-dir build] [--config Release] [--fast_inaccuracy] [--tgp-profile] [--i960-profile]
+               [--inline-bus]
 
 Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored),
 or under one of the other archive names scripts/games.py gives that set (a
@@ -30,6 +31,9 @@ runtime's TGP profiling (CMake M2_TGP_PROFILE): m2run prints where the TGP's
 time goes (src/runtime/tgp_profile.h). Results unchanged; run again without
 it to go back. --i960-profile: the same for the i960 (m2recomp --profile,
 CMake M2_I960_PROFILE, src/runtime/i960_profile.h).
+--inline-bus: the i960 code with the set's board bus inlined (m2recomp
+--board, CMake M2_INLINE_BUS; the Vita's default): the same results, for
+checking it on the PC. m2native refuses that code.
 The lockstep and trace comparisons need the default output. Off by default;
 run again without it to go back.
 """
@@ -82,6 +86,8 @@ def main():
                     help="TGP profiling: block counters in the TGP code, time and work report in m2run")
     ap.add_argument("--i960-profile", action="store_true",
                     help="i960 profiling: block counters in the i960 code, time, work and bus report in m2run")
+    ap.add_argument("--inline-bus", action="store_true",
+                    help="the board's bus inlined in the i960 code (m2recomp --board, CMake M2_INLINE_BUS)")
     args = ap.parse_args()
     build = os.path.join(ROOT, args.build_dir)
     cache = os.path.join(build, "rom_cache", args.set)
@@ -95,7 +101,8 @@ def main():
     fresh = not os.path.exists(os.path.join(build, "CMakeCache.txt"))
     run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set,
          "-DM2_TGP_PROFILE=" + ("ON" if args.tgp_profile else "OFF"),
-         "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF")] +
+         "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF"),
+         "-DM2_INLINE_BUS=" + ("ON" if args.inline_bus else "OFF")] +
         (["-DCMAKE_BUILD_TYPE=" + args.config] if fresh else []))
     if not all(os.path.exists(os.path.join(cache, f)) for f in ("tgp_program.bin", "sound_program.bin", "pcm1.bin", "samples.bin")):
         if not roms:
@@ -119,6 +126,8 @@ def main():
         recomp += ["--fast_inaccuracy"]
     if args.i960_profile:
         recomp += ["--profile"]
+    if args.inline_bus:
+        recomp += ["--board", SETS[args.set]["board"]]
     run(recomp)
     tgp = os.path.join(build, "gen", args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)
