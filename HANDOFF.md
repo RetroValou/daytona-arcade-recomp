@@ -1,5 +1,49 @@
 # Handoff
 
+## VF2: the fight crash (missing script stubs) and a seed clean-up (2026-10-15)
+
+On the Vita a fight went back to the menu: "no recompiled code at 00034e28"
+(--fast-inaccuracy VPK; 0x355e0 the time before). Both are two-instruction
+stubs (lda/shlo imm,g0; b 0x1d194) between the script records at
+0x34d78-0x39a90 and 0x6c870-0x6c960, entered through computed pointers: no
+word holds their address, so neither the MAME harvest (it saw 1) nor
+seed_scan.py finds them. A scan of the program ROM for every b 0x1d194
+gives 88; 87 were missing: all seeded. The other shared-branch stubs
+(0x277fc, 0x3b310) already had code.
+
+The seed file itself (2,378 seeds) held 1,093 harvested interrupted
+addresses inside straight-line code (Daytona 17, Sega Rally 9: VF2 spends
+its time in short polling loops). Not wrong as code, but each was a block
+start for m2recomp --fast_inaccuracy: VF2 ran 1.3 instructions a block
+(37,300 blocks a frame over vf2_fight; Daytona 5.0, Sega Rally 6.4). Three
+regions (0x866c, 0x115f0, 0x119d0) were reached only through them: their
+function starts were missing (0x8630, 0x11590, 0x115a8, 0x11970, 0x119c0;
+each after a ret or data), now seeded. One seed was wrong: 0xa440, the
+second word of lda 0x36006c6c at 0xa43c (decoded a constant as code).
+Removed with the 1,093: the recompiler reaches the same 54,504
+instructions (54,444 + the 5 functions' 61 - 0xa440's 1). Now 1,289 seeds.
+Daytona's and Sega Rally's mid-flow seeds hide nothing (0 instructions
+lost without them), no wrong seed.
+
+Checks: PC exact vf2_fight 6,000 frames: counts and last screen hash
+a0f1d889e5001976 as before; ctest 21/21. Fast mode: 14,858 blocks a frame
+(3.3 instructions), the fight runs through. Vita (user, diagnostics VPK,
+extern/result_perf_vita/vf2/perf_after_modif.log, 30 windows): no return
+to the menu. Fights mostly at 57.3 fps (the morning's perf_base.log:
+35-40; the DSP recompilation and --fast-inaccuracy). Core 0 at 85-97 % in
+a fight at full speed: vblank handler 8.7 ms (40,000 i960 + 70,000 TGP
+instructions), polygon recording 3.4 (vertex writing 2.15), 2D update
+1.35, sort 0.67. Drops to 44-52 fps come from single heavy frames at
+transitions: game logic up to 19 ms (~100,000 i960 instructions), texture
+builds up to 14 ms, 2D update 25 ms.
+
+Wrong turn, reverted: m2recomp --fast_inaccuracy no longer making seeds
+block starts. Measured on the Vita (perf_A.log: old seeds, perf_B.log:
+the change, perf_after_modif.log: clean seeds): the same scene costs the
+same in all three (vblank handler 8.5-8.9 ms, game logic 0.2 ms): in a
+fight the i960 is 0.2 ms of logic, the TGP fills the vblank handler. With
+the clean seeds the change no longer alters VF2's blocks either.
+
 ## Vita reference audio: one rate conversion, in the callback (2026-10-15)
 
 platform/vita/audio.h no longer uses SDL_AudioStream. push() (sound core)
@@ -2868,6 +2912,9 @@ Also found:
 
 ## What not to re-propose
 
+- Fewer i960 blocks for VF2 on the Vita (seeds not block starts, or fewer
+  seeds): no measurable gain in a fight; the TGP and rendering fill core 0
+  (15 Oct 2026).
 - Cutting i960 bus calls on the Vita (the inlined bus, gen::BoardMem: RAM,
   ROM, TGP FIFO): no measurable gain without profilers (15 Oct 2026).
 - Measuring bus changes with `--i960-profile`: prof_bus() makes every bus
