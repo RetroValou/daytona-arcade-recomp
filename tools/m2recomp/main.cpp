@@ -61,7 +61,7 @@
 // Results and counts are unchanged.
 //
 // --board model2o|model2a (scripts/games.py "board"; recompile.py --inline-bus,
-// build_vita.py by default in its fast modes): loads and stores go through
+// build_vita.py --inline-bus; off by default, no measurable gain on the Vita): loads and stores go through
 // gen::BoardMem<board> (src/runtime/gen_support.h), the board's bus inlined: work
 // RAM, program ROM and main RAM read and written in place, the rest through
 // direct (not virtual) calls to rt::M2Board. Same results as the bus; the

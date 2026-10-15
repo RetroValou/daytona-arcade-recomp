@@ -142,7 +142,8 @@ if(M2_I960_PROFILE)
     target_compile_definitions(runtime PUBLIC M2_I960_PROFILE=1)
 endif()
 # The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem; recompile.py
-# --inline-bus): needs code generated with m2recomp --board. The Vita's default.
+# --inline-bus): needs code generated with m2recomp --board. Off everywhere by default:
+# no measurable gain on the Vita (HANDOFF.md, 15 Oct 2026).
 option(M2_INLINE_BUS "i960 code with the board's bus inlined (m2recomp --board code)" OFF)
 if(M2_INLINE_BUS)
     target_compile_definitions(runtime PUBLIC M2_INLINE_BUS=1)

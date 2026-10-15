@@ -1,5 +1,71 @@
 # Handoff
 
+## The TGP's FIFO inlined too; the inlined bus now opt-in (2026-10-15)
+
+Verdict first: the inlined bus (RAM, ROM, and now the TGP FIFO) gives no
+measurable gain on the Vita without profilers, so it is OFF by default
+everywhere: `build_vita.py --inline-bus` (was `--no-inline-bus`), Vita CMake
+`DAYTONA_VITA_INLINE_BUS` OFF, desktop `M2_INLINE_BUS` OFF as before
+(`recompile.py --inline-bus`). The code stays, results identical, for
+comparison.
+
+What changed: stage 2 of `gen::BoardMem` (src/runtime/gen_support.h,
+m2recomp --board code only) starts with the TGP: aligned dword accesses to
+the output FIFO (0x00884000 read), the input FIFO and function port
+(0x00880000-0x00887fff write), the FIFO status (0x00980004 read) and buffer
+RAM (0x00900000-0x0097ffff, read after tgp.sync(), write all lanes) call
+`rt::TgpBoard` directly, as `M2Board::dev_read`/`dev_write` do; one range
+test (0x00880000-0x00980fff) after stage 1 and before the data ROM.
+`flags()` answers BURST for buffer RAM and 0 for the ports without the page
+table (ldq from the FIFO pops 4 times, as before). TgpBoard's fifo_w,
+fifo_r, fifo_out_empty and function_port_w are inline in m2_tgp_board.h
+(every build); the program upload (`upload_w`) and the TGP run on an empty
+output FIFO (`refill`) stay out of line. Byte and word TGP accesses,
+coproctl, geo ports: still the bus.
+
+PC parity (Release, 3,000 frames, dumps every 250 + WAV, against the
+binaries of 0d290cc): daytona93 race_basic and srallyc srallyc_race inline
+builds identical (5d4b1b641acf6f5b, 4b73fca0c3d6b13e, same i960/TGP/
+interrupt counts); default daytona93 build identical too. ctest 19/19.
+
+PC i960 profile builds (3 runs each): TGP bus calls a frame daytona93
+682 r + 2,057 w -> 0 + 2, srallyc 187 + 899 -> 0; i960 alone daytona93
+0.148-0.160 -> 0.149-0.156 ms, srallyc 0.158-0.179 -> 0.139-0.148 ms
+(noise level).
+
+Vita, the measurement that counts (extern/result_perf_vita, not committed):
+`--gpu-gl --fast-inaccuracy --diagnostics`, no profilers, the same commit
+with and without the inlined bus (RAM+ROM+FIFO; eboot hashes checked
+against the installed DAYT90093/DAYT90094), attract left running from boot,
+so every 5 s window does the same work in both (i960/TGP instructions and
+polygons within 0.1 %): perf_base.log against perf_all_modif.log, 10
+windows, i960+TGP (game logic + vblank handler) 3.90 -> 3.90 ms a frame on
+average, every window within +-1 % except window 1 (boot, 2.98 -> 2.80);
+fps the same (57.3-57.6), core 0 9.43 -> 9.52 ms a frame. A release build
+(LTO) with the inlined bus was handed over for a check with the Vita's own
+profiler (DAYT90095); nothing significant found there either.
+
+Why not: on the Vita M2_FAST_BUS already short-cuts the TGP FIFO and the
+last RAM page in read_dword/write_dword, and --fast-inaccuracy already
+makes fixed work-RAM accesses direct; what was left was the virtual call,
+~7,000 a frame, tens of microseconds. The time follows the TGP's
+instruction count and the i960's cost per instruction, not memory access.
+
+How the earlier "gains" were wrong (kept here so they are not trusted
+again):
+- the --i960-profile builds count every bus call in prof_bus() (a page
+  lookup and a counter): removing bus calls removed probe cost, which
+  showed as -0.8 to -1 ms in the race;
+- without profilers, the race windows of two separate sessions differed by
+  ~10 % for reasons unrelated to the code (perf_modif_ram_rom.log was slow
+  throughout: slower than the build without any of it), which read as
+  "-0.73 ms" for the FIFO;
+- the race is not reproducible window by window; the attract from boot is.
+
+Unrelated, found on the way: build-srallyc-rel's generated code predates
+0d290cc (no gen::inline_board), so its m2native no longer links; rerun
+recompile.py there.
+
 ## The bus inlined in the i960 code, per board (2026-10-14)
 
 `m2recomp --board model2o|model2a` (scripts/games.py "board"): loads and
@@ -24,7 +90,8 @@ program image is not 2 MB / the data ROM 32 MB. m2native refuses the code
 Switches: CMake `M2_INLINE_BUS` (desktop OFF; `recompile.py --inline-bus`
 sets it and passes --board); Vita `DAYTONA_VITA_INLINE_BUS` ON, build_vita.py
 passes --board in --fast-inaccuracy and --fast-gen, `--no-inline-bus` to
-compare. Not on the Dreamcast (M2_DC_MEMORY: #error). fast_gen.py (shared
+compare. (15 Oct: OFF by default on the Vita too, `--inline-bus`; the
+measurements below were mostly probe cost, see the entry above.) Not on the Dreamcast (M2_DC_MEMORY: #error). fast_gen.py (shared
 with the Vita) now turns `Mem::` fixed work-RAM accesses into gen::wram_*
 too, and treats any other `Mem::` access as not register-only.
 
@@ -2440,6 +2507,12 @@ Also found:
 
 ## What not to re-propose
 
+- Cutting i960 bus calls on the Vita (the inlined bus, gen::BoardMem: RAM,
+  ROM, TGP FIFO): no measurable gain without profilers (15 Oct 2026).
+- Measuring bus changes with `--i960-profile`: prof_bus() makes every bus
+  call dearer, so fewer calls look faster.
+- Comparing Vita builds on race windows from separate sessions: ~10 %
+  session noise. Use the attract from boot, window by window, same commit.
 - SCSP for Daytona. It is the Model 1 sound board (MAME `model2o` config and
   the MiSTer core's working sound on hardware).
 - Five TGPs. One device; "5x" was a board-level package count.

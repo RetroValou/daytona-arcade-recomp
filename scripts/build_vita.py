@@ -84,7 +84,7 @@ def direct_ram(folder):
     print(f"build_vita: {stats['wram']} work-RAM accesses direct", flush=True)
 
 
-def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=False, inline_bus=True):
+def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=False, inline_bus=False):
     """The game code of the Vita build, made here from the host build's tools and ROM
     cache (scripts/recompile.py, run once in any mode): the host's own generated code
     and the desktop build are left as they are. Into BUILD_DIR/gen_vita:
@@ -99,8 +99,9 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     per basic block, without the budget test; exact (the TGP has no interrupts). The
     68000 code as the host generated it. tgp_profile: the TGP code with m2tgprecomp's
     block counters (--profile); i960_profile: the i960 code with m2recomp's (--profile).
-    inline_bus (the default; --no-inline-bus turns it off): the i960 code with the set's
-    board bus inlined (m2recomp --board, runtime M2_INLINE_BUS)."""
+    inline_bus (--inline-bus; off by default, its gain on the Vita too small to
+    measure): the i960 code with the set's board bus inlined (m2recomp --board,
+    runtime M2_INLINE_BUS)."""
     cache = host / "rom_cache" / game
     i960_tool, tgp_tool = host_tool(host, "m2recomp"), host_tool(host, "m2tgprecomp")
     for need in (i960_tool, tgp_tool, cache / "program.bin", cache / "tgp_program.bin"):
@@ -178,9 +179,9 @@ def main(argv=None):
     ap.add_argument("--jobs", type=int, default=min(os.cpu_count() or 2, 4))
     ap.add_argument("--compile-check", action="store_true")
     ap.add_argument("--reference-renderer", action="store_true", help="disable OPT03 renderer changes for comparison")
-    ap.add_argument("--no-inline-bus", action="store_true",
-                    help="--fast-inaccuracy/--fast-gen: the i960 code without the board's bus inlined (m2recomp --board, "
-                         "M2_INLINE_BUS; on by default), for comparison")
+    ap.add_argument("--inline-bus", action="store_true",
+                    help="--fast-inaccuracy/--fast-gen: the i960 code with the board's bus inlined (m2recomp --board, "
+                         "M2_INLINE_BUS; off by default: no measurable gain on the Vita), for comparison")
     ap.add_argument("--no-fast-paths", action="store_true",
                     help="build the shared runtime without its fast paths (src/runtime/fast_paths.h), for comparison")
     gpu = ap.add_mutually_exclusive_group()
@@ -279,7 +280,7 @@ def main(argv=None):
     code = "host-generated (scripts/recompile.py output as is)"
     if args.code and not args.compile_check:
         gen, code = vita_code(host, gen, build, args.code, args.set, args.tgp_profile, args.i960_profile,
-                              not args.no_inline_bus)
+                              args.inline_bus)
         if args.tgp_profile:
             code += ", TGP block counters (--tgp-profile)"
         if args.i960_profile:
@@ -299,7 +300,7 @@ def main(argv=None):
          f"-DDAYTONA_VITA_REV_A_SELF={(ROOT / args.revision_a_self).resolve() if args.revision_a_self else ''}",
          f"-DDAYTONA_VITA_RENDER_OPT={'OFF' if args.reference_renderer else 'ON'}",
          f"-DDAYTONA_VITA_FAST_PATHS={'OFF' if args.no_fast_paths else 'ON'}",
-         f"-DDAYTONA_VITA_INLINE_BUS={'OFF' if args.no_inline_bus else 'ON'}",
+         f"-DDAYTONA_VITA_INLINE_BUS={'ON' if args.inline_bus else 'OFF'}",
          f"-DDAYTONA_VITA_DIAGNOSTICS={'ON' if args.diagnostics else 'OFF'}",
          f"-DDAYTONA_VITA_TGP_PROFILE={'ON' if args.tgp_profile else 'OFF'}",
          f"-DDAYTONA_VITA_I960_PROFILE={'ON' if args.i960_profile else 'OFF'}",

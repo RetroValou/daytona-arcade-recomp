@@ -78,20 +78,9 @@ void TgpBoard::coproctl_w(uint32_t data, uint32_t mask) {
     coproctl_ = (coproctl_ & ~mask) | (data & mask);
 }
 
-void TgpBoard::function_port_w(uint32_t offset, uint32_t data) {
-    uint32_t d = data & 0x800fffff;
-    const uint32_t a = (offset >> 2) & 0xff;
-    d |= a << 23;
-    in_.push_back(d);
-}
-
-void TgpBoard::fifo_w(uint32_t data) {
-    if (coproctl_ & 0x80000000) {
-        if (upload_.size() >= 0x1000) throw TgpFatal("TGP program upload past 4K words");
-        upload_.push_back(data);
-    } else {
-        in_.push_back(data);
-    }
+void TgpBoard::upload_w(uint32_t data) {
+    if (upload_.size() >= 0x1000) throw TgpFatal("TGP program upload past 4K words");
+    upload_.push_back(data);
 }
 
 void TgpBoard::run_tgp() {
@@ -108,17 +97,9 @@ void TgpBoard::run_tgp() {
 #endif
 }
 
-uint32_t TgpBoard::fifo_r() {
-    if (out_.empty()) run_tgp();
+void TgpBoard::refill() {
+    run_tgp();
     if (out_.empty()) throw TgpFatal("the i960 read the TGP's output FIFO, but the TGP has consumed all its input and produced nothing");
-    const uint32_t v = out_.front();
-    out_.pop_front();
-    return v;
-}
-
-bool TgpBoard::fifo_out_empty() {
-    if (out_.empty()) run_tgp();
-    return out_.empty();
 }
 
 bool TgpBoard::fifo_pop(uint32_t &v) {

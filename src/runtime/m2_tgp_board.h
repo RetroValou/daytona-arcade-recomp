@@ -3,6 +3,8 @@
 // all three write (MAME model2.cpp: copro_*, geo_*, push_geo_data). The TGP
 // itself is the recompiled program (rt::tgpgen), run only when the i960
 // needs its output: clockless, it returns when its input FIFO is empty.
+// The inline FIFO handlers below are MAME's too (BSD-3-Clause, see
+// m2_tgp_board.cpp and THIRD_PARTY.md).
 #pragma once
 
 #include "runtime/rom_source.h"
@@ -30,11 +32,26 @@ public:
     TgpBoard &operator=(const TgpBoard &) = delete;
 #endif
 
-    // i960 accesses (dword offsets within each range, MAME's handlers).
-    void function_port_w(uint32_t offset, uint32_t data);  // 0x00880000
-    void fifo_w(uint32_t data);                           // 0x00884000
-    uint32_t fifo_r();                                    // 0x00884000
-    bool fifo_out_empty();                                // 0x00980004 (after running the TGP)
+    // i960 accesses (dword offsets within each range, MAME's handlers). The
+    // FIFO's are inline (the inlined bus, gen::BoardMem, calls them from the
+    // generated code); the upload and the TGP run stay out of line.
+    void function_port_w(uint32_t offset, uint32_t data) { // 0x00880000
+        in_.push_back((data & 0x800fffff) | ((offset >> 2) & 0xff) << 23);
+    }
+    void fifo_w(uint32_t data) { // 0x00884000
+        if (coproctl_ & 0x80000000) [[unlikely]] return upload_w(data);
+        in_.push_back(data);
+    }
+    uint32_t fifo_r() { // 0x00884000
+        if (out_.empty()) [[unlikely]] refill();
+        const uint32_t v = out_.front();
+        out_.pop_front();
+        return v;
+    }
+    bool fifo_out_empty() { // 0x00980004 (after running the TGP)
+        if (out_.empty()) run_tgp();
+        return out_.empty();
+    }
     void coproctl_w(uint32_t data, uint32_t mask);        // 0x00980000
     uint32_t coproctl_r() const { return coproctl_; }
     void geo_w(uint32_t offset, uint32_t data);           // 0x00800000
@@ -62,6 +79,8 @@ public:
 
 private:
     void run_tgp();
+    void refill();               // fifo_r on an empty output FIFO: run the TGP
+    void upload_w(uint32_t data); // fifo_w while the TGP is held: its program
     void push_geo(uint32_t data);
 
     Tgp tgp_;

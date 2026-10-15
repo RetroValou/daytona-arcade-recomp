@@ -12,7 +12,7 @@ Per set:
                 after a clone is fine
   board         the i960 board: "model2o" (Model 2) or "model2a" (2A-CRX), as
                 rt::BoardType (src/runtime/game.h); m2recomp --board inlines
-                its bus (recompile.py --inline-bus, build_vita.py's fast modes)
+                its bus (recompile.py --inline-bus, build_vita.py --inline-bus)
   recomp        extra m2recomp options: the i960 memory map
                 (tools/m2recomp/main.cpp)
   sndrecomp     extra m2sndrecomp options: the sound board's 68000 map

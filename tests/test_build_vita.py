@@ -169,13 +169,13 @@ class BuildVitaTests(unittest.TestCase):
             self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--fast-inaccuracy")
         run.assert_called()
 
-    def test_inline_bus_is_the_default(self):
+    def test_inline_bus_is_opt_in(self):
         with patch.object(BUILD.subprocess, "run") as run:
             self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy")
-        self.assertIn("-DDAYTONA_VITA_INLINE_BUS=ON", run.call_args_list[0].args[0])
-        with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy", "--no-inline-bus")
         self.assertIn("-DDAYTONA_VITA_INLINE_BUS=OFF", run.call_args_list[0].args[0])
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy", "--inline-bus")
+        self.assertIn("-DDAYTONA_VITA_INLINE_BUS=ON", run.call_args_list[0].args[0])
 
 
 FAST_GEN_SPEC = importlib.util.spec_from_file_location(

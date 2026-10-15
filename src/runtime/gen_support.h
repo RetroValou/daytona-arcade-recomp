@@ -59,9 +59,13 @@ inline void wram_w8(rt::Cpu &c, uint32_t o, uint8_t v) { c.work_ram[o] = v; }
 //     board), the program ROM (0-0x1fffff) and main RAM (0x00200000: 128 KB
 //     on Model 2, then the ROM's upper 128 KB mirrored at 0x00220000; 256 KB
 //     on 2A-CRX);
-//  2. M2Board::read_dword_mid (word, byte): one copy, a direct call (the
+//  2. aligned dwords to the TGP (tgp_rd/tgp_wr): its FIFOs, the function
+//     port, the FIFO status and buffer RAM, straight to rt::TgpBoard's inline
+//     handlers, as M2Board::dev_read/dev_write call them; then
+//     M2Board::read_dword_mid (word, byte): one copy, a direct call (the
 //     data ROM);
-//  3. M2Board::read_dword and the rest: the bus as before (devices, video).
+//  3. M2Board::read_dword and the rest: the bus as before (devices, video;
+//     the TGP's other registers and its byte and word accesses).
 // The same bytes as the page table gives for these ranges (plain memory,
 // little-endian); writes to them skip ram_written, which does nothing there.
 // Every range starts and ends on a 128 KB boundary: an unaligned access
@@ -88,12 +92,40 @@ template <rt::BoardType K> struct BoardMem {
     }
     // n bytes from a stay inside one 128 KB block
     static bool in(uint32_t a, uint32_t n) { return (a & 0x1ffffu) <= 0x20000u - n; }
+    // Stage 2, the TGP: an aligned dword at 0x00880000-0x00980fff. The output
+    // FIFO (0x00884000-0x00887fff), its status (0x00980004: 1 when empty after
+    // running the TGP) and buffer RAM (0x00900000-0x0097ffff, the TGP's
+    // mailbox: run it first), as dev_read; false: not one of them.
+    static bool tgp_rd(rt::M2Board &b, uint32_t a, uint32_t &v) {
+        if (a - 0x00880000u >= 0x101000u) return false;
+        rt::TgpBoard &t = b.tgp();
+        if ((a & 0xffffc000u) == 0x00884000u) return v = t.fifo_r(), true;
+        if (const uint32_t o = a - 0x00900000u; o < 0x80000u) return t.sync(), v = t.buffer_r(o & 0x1ffffu), true;
+        if (a == 0x00980004u) return v = t.fifo_out_empty() ? 1 : 0, true;
+        return false;
+    }
+    // The input FIFO (0x00884000-0x00887fff; the TGP's program while it is
+    // held), the function port (0x00880000-0x00883fff) and buffer RAM, as
+    // dev_write with every lane written.
+    static bool tgp_wr(rt::M2Board &b, uint32_t a, uint32_t v) {
+        if (a - 0x00880000u >= 0x100000u) return false;
+        rt::TgpBoard &t = b.tgp();
+        if ((a & 0xffff8000u) == 0x00880000u) {
+            if (a & 0x4000u) t.fifo_w(v);
+            else t.function_port_w((a - 0x00880000u) >> 2, v);
+            return true;
+        }
+        if (const uint32_t o = a - 0x00900000u; o < 0x80000u) return t.buffer_w(o & 0x1ffffu, v, 0xffffffffu), true;
+        return false;
+    }
     static uint32_t ld32(rt::M2Board &b, uint32_t a) {
         if (a & 3) [[unlikely]] {
             if (const uint8_t *p = in(a, 4) ? rd(b, a) : nullptr) { uint32_t v; std::memcpy(&v, p, 4); return v; }
             return b.read_dword_unaligned(a);
         }
-        if (const uint8_t *p = rd(b, a)) { uint32_t v; std::memcpy(&v, p, 4); return v; }
+        uint32_t v;
+        if (const uint8_t *p = rd(b, a)) { std::memcpy(&v, p, 4); return v; }
+        if (tgp_rd(b, a, v)) return v;
         return b.read_dword_mid(a);
     }
     static uint16_t ld16(rt::M2Board &b, uint32_t a) {
@@ -112,6 +144,7 @@ template <rt::BoardType K> struct BoardMem {
     static void st32(rt::M2Board &b, uint32_t a, uint32_t v) {
         if (uint8_t *p = (a & 3) == 0 || in(a, 4) ? wr(b, a) : nullptr) return void(std::memcpy(p, &v, 4));
         if (a & 3) [[unlikely]] return b.write_dword_unaligned(a, v);
+        if (tgp_wr(b, a, v)) return;
         b.write_dword(a, v);
     }
     static void st16(rt::M2Board &b, uint32_t a, uint16_t v) {
@@ -123,9 +156,11 @@ template <rt::BoardType K> struct BoardMem {
         if (uint8_t *p = wr(b, a)) return void(*p = v);
         b.write_byte(a, v);
     }
-    // Handler flags (ldl/ldt/ldq, stl/stt/stq): every stage 1 range is BURST.
+    // Handler flags (ldl/ldt/ldq, stl/stt/stq): every stage 1 range and buffer
+    // RAM are BURST; the TGP's ports (0x00880000-0x00887fff) are not.
     static uint16_t flags(rt::M2Board &b, uint32_t a) {
-        if (a - 0x00500000u < 0x100000u || a < 0x00240000u) return rt::Cpu::BURST;
+        if (a - 0x00500000u < 0x100000u || a < 0x00240000u || a - 0x00900000u < 0x80000u) return rt::Cpu::BURST;
+        if (a - 0x00880000u < 0x8000u) return 0;
         return b.flags(a);
     }
 };

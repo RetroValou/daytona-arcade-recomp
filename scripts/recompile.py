@@ -32,8 +32,9 @@ time goes (src/runtime/tgp_profile.h). Results unchanged; run again without
 it to go back. --i960-profile: the same for the i960 (m2recomp --profile,
 CMake M2_I960_PROFILE, src/runtime/i960_profile.h).
 --inline-bus: the i960 code with the set's board bus inlined (m2recomp
---board, CMake M2_INLINE_BUS; the Vita's default): the same results, for
-checking it on the PC. m2native refuses that code.
+--board, CMake M2_INLINE_BUS; build_vita.py --inline-bus on the Vita, off by
+default there too: no measurable gain): the same results, for checking it
+on the PC. m2native refuses that code.
 The lockstep and trace comparisons need the default output. Off by default;
 run again without it to go back.
 """
