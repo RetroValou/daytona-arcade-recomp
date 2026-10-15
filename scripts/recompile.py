@@ -1,18 +1,25 @@
 #!/usr/bin/env python3
-"""Recompile the game's i960 code, its TGP program and the sound board's 68000
+"""Recompile a game's i960 code, its TGP program and the sound board's 68000
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
-  recompile.py [--set SET] [--build-dir build] [--config Release] [--fast_inaccuracy] [--tgp-profile] [--i960-profile]
-               [--inline-bus]
+  recompile.py [--game GAME] [--set SET] [--config Release] [--fast_inaccuracy] [--tgp-profile]
+               [--i960-profile] [--inline-bus] [--recomp-only]
 
-Needs the user's ROM set at roms/<set>.zip or roms/<set>.7z (git-ignored),
-or under one of the other archive names scripts/games.py gives that set (a
-merged srallycb archive holds srallyc's files too). The sets are
-scripts/games.py's (daytona93, the default, daytona, srallyc). Give each set
-other than daytona93 its own build directory, e.g. --build-dir build-daytona.
-Everything
-derived from it (images, generated C++) goes under the build directory,
-which is git-ignored: never commit it.
+The game is one of scripts/games.py's (daytona, the default, segarally);
+--set picks another of its sets (daytona: daytona93, the default, or
+daytona, Revision A). Needs the user's ROM set at roms/<set>.zip or
+roms/<set>.7z (git-ignored), or under one of the other archive names
+scripts/games.py gives that set (a merged srallycb archive holds srallyc's
+files too). Everything derived from it goes under the game's folder,
+build_<game>/ (git-ignored: never commit it):
+
+  build_<game>/recomp/<set>/rom_cache/  the images m2import makes from the ROMs
+  build_<game>/recomp/<set>/gen/        the recompiled C++ (the recompilation)
+  build_<game>/pc/<set>/                the desktop build: the tools that
+                                        recompile, m2run and the game
+
+--recomp-only stops after the recompilation (the Vita build needs only that
+and the tools).
 
 --fast_inaccuracy turns on every recompiler speed option
 for slow targets, above all the PS Vita:
@@ -46,7 +53,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from build_jobs import build_jobs  # noqa: E402
-from games import DEFAULT, GAMES  # noqa: E402
+import games  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -56,8 +63,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROM_REJECTED_EXIT = 3
 
 # Per set: the archive names under roms/ and the m2recomp options
-# (scripts/games.py). Kept under this name for the scripts that import it.
-SETS = GAMES
+# (scripts/games.py).
+SETS = games.SETS
 
 
 def run(cmd, **kw):
@@ -77,8 +84,8 @@ def tool(build, config, name):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--set", default=DEFAULT, choices=sorted(SETS))
-    ap.add_argument("--build-dir", default="build")
+    ap.add_argument("--game", choices=sorted(games.GAMES), help=f"the game (default {games.DEFAULT})")
+    ap.add_argument("--set", choices=sorted(SETS), help="another set of the game (default: its main set)")
     ap.add_argument("--config", default="Release")
     ap.add_argument("--fast_inaccuracy", action="store_true",
                     help="recompiler speed options (i960 block bookkeeping and direct chunk chaining, TGP block counting): faster (PS Vita), "
@@ -89,18 +96,26 @@ def main():
                     help="i960 profiling: block counters in the i960 code, time, work and bus report in m2run")
     ap.add_argument("--inline-bus", action="store_true",
                     help="the board's bus inlined in the i960 code (m2recomp --board, CMake M2_INLINE_BUS)")
+    ap.add_argument("--recomp-only", action="store_true",
+                    help="stop after the recompilation: build only the tools, not the desktop game")
     args = ap.parse_args()
-    build = os.path.join(ROOT, args.build_dir)
-    cache = os.path.join(build, "rom_cache", args.set)
+    try:
+        args.game, args.set = games.resolve(args.game, args.set)
+    except ValueError as error:
+        ap.error(str(error))
+    build = os.path.join(ROOT, games.pc_dir(args.set))
+    cache = os.path.join(ROOT, games.rom_cache(args.set))
+    gen_root = os.path.join(ROOT, games.gen_root(args.set))
+    print(f"recompile: {games.title(args.set)} -> {games.game_dir(args.game)}/", flush=True)
     roms = [os.path.join(ROOT, "roms", n + "." + ext) for n in SETS[args.set]["roms"] for ext in ("zip", "7z")]
     roms = [r for r in roms if os.path.exists(r)]
 
     build_cmd = ["cmake", "--build", build, "--config", args.config]
-    # the build directory is for one ROM set (CMake's M2_ROMSET); a new one gets
+    # the desktop build is for one ROM set (CMake's M2_ROMSET); a new one gets
     # --config as its build type, as setup.py does (none is -O0, where SoftFloat's
     # inline helpers are not emitted and test_fp does not link)
     fresh = not os.path.exists(os.path.join(build, "CMakeCache.txt"))
-    run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set,
+    run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set, "-DM2_GAME=" + args.game, "-DM2_GEN_ROOT=" + gen_root,
          "-DM2_TGP_PROFILE=" + ("ON" if args.tgp_profile else "OFF"),
          "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF"),
          "-DM2_INLINE_BUS=" + ("ON" if args.inline_bus else "OFF")] +
@@ -113,7 +128,7 @@ def main():
             sys.exit(ROM_REJECTED_EXIT)  # m2import printed which file is missing or wrong
     run(build_cmd + ["--target", "m2recomp", "m2tgprecomp", "m2sndrecomp"])
 
-    gen = os.path.join(build, "gen", args.set)
+    gen = os.path.join(gen_root, args.set)
     if os.path.isdir(gen):
         for f in os.listdir(gen):
             os.remove(os.path.join(gen, f))
@@ -130,21 +145,25 @@ def main():
     if args.inline_bus:
         recomp += ["--board", SETS[args.set]["board"]]
     run(recomp)
-    tgp = os.path.join(build, "gen", args.set + "_tgp")
+    tgp = os.path.join(gen_root, args.set + "_tgp")
     os.makedirs(tgp, exist_ok=True)
     run([tool(build, args.config, "m2tgprecomp"), os.path.join(cache, "tgp_program.bin"),
          os.path.join(tgp, "tgp_gen.cpp")] + (["--fast_inaccuracy"] if args.fast_inaccuracy else []) +
         (["--profile"] if args.tgp_profile else []))
 
-    snd = os.path.join(build, "gen", args.set + "_snd")
+    snd = os.path.join(gen_root, args.set + "_snd")
     os.makedirs(snd, exist_ok=True)
     snd_seeds = os.path.join("seeds", args.set + "_snd.txt")  # the sound 68000's indirect jump targets
     run([tool(build, args.config, "m2sndrecomp"), os.path.join(cache, "sound_program.bin"),
          os.path.join(snd, "snd_gen.cpp")] + SETS[args.set]["sndrecomp"] +
         (["--seeds", snd_seeds] if os.path.exists(os.path.join(ROOT, snd_seeds)) else []))
 
+    if args.recomp_only:
+        print(f"recompile: recompiled into {games.gen_root(args.set)}/ (--recomp-only: the desktop game is not built)")
+        return
     run(["cmake", "-S", ".", "-B", build])  # picks up the generated sources
     run(build_cmd + ["--parallel", str(build_jobs())])  # the game (daytona, m2run) and the check tools
+    print(f"recompile: built in {games.pc_dir(args.set)}/ (the game: {games.pc_dir(args.set)}/{args.game})")
 
 
 if __name__ == "__main__":

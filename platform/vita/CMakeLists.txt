@@ -69,7 +69,8 @@ set_source_files_properties(gpu_gl.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${VITA_2D_CORE}")
 set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE}")
-set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
+set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build_daytona/recomp/daytona93/gen" CACHE PATH
+    "Host-generated i960, TGP and 68000 C++ root (scripts/games.py gen_root: build_<game>/recomp/<set>/gen)")
 # The game: any set of scripts/games.py (its seeds/<set>.txt must exist).
 # build_vita.py passes the set, its package's title ID and name, and the
 # companion set's file name from there.
@@ -90,6 +91,14 @@ endif()
 # so several can be installed side by side.
 set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID (scripts/games.py vita_title_id)")
 set(DAYTONA_VITA_GAME_NAME "Daytona USA" CACHE STRING "The package's name (scripts/games.py vita_name)")
+# The package's file name and its icon/LiveArea images, both the game's (build_vita.py:
+# <game>.vpk or <game>_diag.vpk, platform/vita/logo_livearea/<game>/).
+set(DAYTONA_VITA_VPK "daytona.vpk" CACHE STRING "The package's file name (scripts/games.py vpk_name)")
+set(DAYTONA_VITA_LIVEAREA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/logo_livearea/daytona" CACHE PATH
+    "The game's icon and LiveArea images (platform/vita/logo_livearea/<game>)")
+if(NOT DAYTONA_VITA_VPK MATCHES "^[a-z0-9_]+\\.vpk$")
+    message(FATAL_ERROR "DAYTONA_VITA_VPK must be <name>.vpk (lower case, digits, _), not ${DAYTONA_VITA_VPK}")
+endif()
 set(VITA_TITLEID "${DAYTONA_VITA_TITLEID}")
 set(VITA_GAME_NAME "${DAYTONA_VITA_GAME_NAME}")
 if(NOT VITA_TITLEID MATCHES "^[A-Z][A-Z][A-Z][A-Z][0-9][0-9][0-9][0-9][0-9]$")
@@ -313,10 +322,11 @@ else()
         endif()
         set(VITA_OTHER_GAME FILE "${DAYTONA_VITA_REV_A_SELF}" "${DAYTONA_VITA_COMPANION}.self")
     endif()
-    # LiveArea images from platform/vita/logo_livearea, when present.
+    # LiveArea images from the game's folder in platform/vita/logo_livearea, when present.
+    set(VITA_LIVEAREA_DIR "${DAYTONA_VITA_LIVEAREA_DIR}")
     include("${CMAKE_CURRENT_SOURCE_DIR}/livearea.cmake")
-    message(STATUS "Vita LiveArea images: ${VITA_LIVEAREA_SUMMARY}")
-    vita_create_vpk(daytona_vita.vpk ${VITA_TITLEID} eboot.bin
+    message(STATUS "Vita LiveArea images (${VITA_LIVEAREA_DIR}): ${VITA_LIVEAREA_SUMMARY}")
+    vita_create_vpk(${DAYTONA_VITA_VPK} ${VITA_TITLEID} eboot.bin
         VERSION "01.24" NAME "${VITA_GAME_NAME}" # the game's home-screen name, the same for every build option
         ${VITA_LIVEAREA_FILES}
         FILE "${DAYTONA_ROOT}/THIRD_PARTY.md" "licenses/THIRD_PARTY.md"

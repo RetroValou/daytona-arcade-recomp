@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """The Dreamcast port's build driver. Run it after the desktop build: setup,
-then scripts/recompile.py --set daytona --build-dir build-daytona (Revision
-A, 1994, the set with link play; the port is built from that set only). It only reads the host build's generated code and ROM
-images; everything it makes goes under the host build directory's
-dreamcast-* folders (git-ignored), and nothing here changes the main tree.
+then scripts/recompile.py --set daytona (Revision A, 1994, the set with link
+play; the port is built from that set only). It only reads that set's
+recompilation in the game's folder (scripts/games.py: the generated code in
+build_daytona/recomp/daytona/gen, the ROM images in .../rom_cache, the desktop
+build in build_daytona/pc/daytona); everything it makes goes under
+build_daytona/dreamcast* (git-ignored), and nothing here changes the main tree.
 
   build_dreamcast.py kos
-  build_dreamcast.py selftest|videotest [--host-build-dir build-daytona]
+  build_dreamcast.py selftest|videotest
                     [--dreamsdk C:/DreamSDK] [--flycast FLYCAST.EXE] [--no-run]
-  build_dreamcast.py compile [--host-build-dir build-daytona] [--jobs N]
-  build_dreamcast.py tools   [--host-build-dir build-daytona]
-  build_dreamcast.py measure [--host-build-dir build-daytona]
-                             [--nvram DIR] [--frames N] [--sound] [SCRIPT ...]
+  build_dreamcast.py compile [--jobs N]
+  build_dreamcast.py tools
+  build_dreamcast.py measure [--nvram DIR] [--frames N] [--sound] [SCRIPT ...]
 
 kos:     sets up KallistiOS 2.2.1 in extern/kos-dc (git-ignored) and builds
          it with -m4-single; the other Dreamcast commands do this first.
@@ -38,6 +39,32 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+import games  # noqa: E402  scripts/games.py: the game's folder
+
+
+def gen_root(args):
+    """The set's recompiled code (<set>/, <set>_tgp/, <set>_snd/)."""
+    return (ROOT / games.gen_root(args.set)).resolve()
+
+
+def rom_images(args):
+    """The set's ROM images (m2import's output)."""
+    return (ROOT / games.rom_cache(args.set)).resolve()
+
+
+def pc_build(args):
+    """The set's desktop build."""
+    return (ROOT / games.pc_dir(args.set)).resolve()
+
+
+def out_dir(args, name):
+    """build_<game>/<name>: what this script makes (dreamcast, dreamcast-tools, dreamcast-measure)."""
+    return (ROOT / games.game_dir(games.game_of(args.set))).resolve() / name
+
+
+def recompile_hint(args):
+    return f"scripts/recompile.py --set {args.set}"
 
 
 def run(command, **kw):
@@ -128,7 +155,7 @@ def setup_kos(args):
 def kos_make(args, target):
     """make in platform/dreamcast, with extern/kos-dc's KOS."""
     setup_kos(args)
-    out = (ROOT / args.host_build_dir).resolve() / "dreamcast"
+    out = out_dir(args, "dreamcast")
     out.mkdir(parents=True, exist_ok=True)
     fix_dependency_files(out)
     shell(args, f"make -C {msys_path(HERE)} OUT={msys_path(out)} {target}")
@@ -159,10 +186,9 @@ TESTS = {
 
 def gen_dir(args):
     """The host recompile's generated code for Revision A."""
-    gen = (ROOT / args.host_build_dir).resolve() / "gen"
+    gen = gen_root(args)
     if not (gen / "daytona" / "gen_table.cpp").is_file():
-        sys.exit(f"build_dreamcast: no generated code in {gen / 'daytona'}; run "
-                 "scripts/recompile.py --set daytona --build-dir build-daytona first")
+        sys.exit(f"build_dreamcast: no generated code in {gen / 'daytona'}; run {recompile_hint(args)} first")
     return gen
 
 
@@ -174,13 +200,13 @@ SOUND_SCRIPTS = ["scripts/inputs/race_basic.txt", "scripts/inputs/attract_long.t
                  "scripts/inputs/course_advanced.txt", "scripts/inputs/course_expert.txt"]
 
 
-def sound_pack(args, host, nvram):
+def sound_pack(args, nvram):
     """The sound pack (scripts/sound_pack.py) from the samples the game plays
     (tools/soundusage, run once: it plays the scripts on the desktop)."""
-    out = host / "dreamcast"
+    out = out_dir(args, "dreamcast")
     out.mkdir(parents=True, exist_ok=True)
     usage, pack = out / "sound_usage.txt", out / "sound.pak"
-    images = host / "rom_cache" / "daytona"
+    images = rom_images(args)
     if not usage.is_file():
         tools = build_tools(args)
         exe = next((p for p in (tools / "Release" / "soundusage.exe", tools / "soundusage") if p.is_file()), None)
@@ -195,26 +221,26 @@ def sound_pack(args, host, nvram):
 def run_test(args, name, markers, timeout, start):
     game = ""
     if name == "game":
-        host = (ROOT / args.host_build_dir).resolve()
+        dc, gen = out_dir(args, "dreamcast"), gen_root(args)
         nvram = Path(args.nvram) if args.nvram else Path(os.environ.get("APPDATA", "~")) / "daytona-recomp" / "daytona"
         if not (nvram / "ioboard_eeprom.bin").is_file():
             sys.exit(f"build_dreamcast: no saved settings in {nvram}: set a single cabinet in test mode with "
-                     "build-daytona's daytona once (--nvram DIR)")
+                     f"{games.pc_dir(args.set)}'s daytona once (--nvram DIR)")
         # The i960 code with fewer lockstep checks and the TGP code with its
         # count in a local (scripts/fast_gen.py; it rewrites only the files
         # whose output changes).
-        fast = host / "dreamcast" / "gen_fast" / args.set
-        fast_tgp = host / "dreamcast" / "gen_fast" / f"{args.set}_tgp"
-        run([sys.executable, HERE / "scripts" / "fast_gen.py", host / "gen" / args.set, fast])
-        run([sys.executable, HERE / "scripts" / "fast_gen.py", host / "gen" / f"{args.set}_tgp", fast_tgp])
-        pack = sound_pack(args, host, nvram)
-        game = (f"-j{args.jobs} GEN={msys_path(host / 'gen')} GEN_I960={msys_path(fast)} GEN_TGP={msys_path(fast_tgp)} "
-                f"ROMS={msys_path(host / 'rom_cache' / 'daytona')} NVRAM={msys_path(nvram)} "
+        fast = dc / "gen_fast" / args.set
+        fast_tgp = dc / "gen_fast" / f"{args.set}_tgp"
+        run([sys.executable, HERE / "scripts" / "fast_gen.py", gen / args.set, fast])
+        run([sys.executable, HERE / "scripts" / "fast_gen.py", gen / f"{args.set}_tgp", fast_tgp])
+        pack = sound_pack(args, nvram)
+        game = (f"-j{args.jobs} GEN={msys_path(gen)} GEN_I960={msys_path(fast)} GEN_TGP={msys_path(fast_tgp)} "
+                f"ROMS={msys_path(rom_images(args))} NVRAM={msys_path(nvram)} "
                 f"SOUND_PACK={msys_path(pack)} NATIVE_GEO={int(args.native_geo)} ")
         # The recorded input script, compiled in (game/inputs.h; empty: the
         # pad). Written only when it changes, so make rebuilds only then.
         text = (ROOT / args.inputs).read_text() if args.inputs else ""
-        header = host / "dreamcast" / "game" / "inputs.h"
+        header = dc / "game" / "inputs.h"
         content = ("// Written by build_dreamcast.py: the recorded input script (--inputs), or none,\n"
                    "// and whether to sample the game thread's PC (--sample).\n"
                    f"static const char kInputs[] = R\"INPUTS({text})INPUTS\";\n"
@@ -225,7 +251,7 @@ def run_test(args, name, markers, timeout, start):
             header.write_text(content, newline="\n")
         # --native-geo, for the Makefile's geo.o rule (rewritten only when it
         # changes, so make rebuilds geo.o only then).
-        stamp = host / "dreamcast" / "game" / "native_geo.txt"
+        stamp = dc / "game" / "native_geo.txt"
         setting = f"{int(args.native_geo)}\n"
         if not stamp.is_file() or stamp.read_text() != setting:
             stamp.write_text(setting, newline="\n")
@@ -251,12 +277,10 @@ def run_test(args, name, markers, timeout, start):
 
 
 def build_tools(args):
-    host = (ROOT / args.host_build_dir).resolve()
-    gen = host / "gen"
+    host, gen = pc_build(args), gen_root(args)
     if not (gen / args.set / "gen_table.cpp").is_file():
-        sys.exit(f"build_dreamcast: no generated code in {gen / args.set}; run "
-                 f"scripts/recompile.py --set {args.set} --build-dir {args.host_build_dir} first")
-    build = host / "dreamcast-tools"
+        sys.exit(f"build_dreamcast: no generated code in {gen / args.set}; run {recompile_hint(args)} first")
+    build = out_dir(args, "dreamcast-tools")
     # The desktop build's compiled runtime and game code are linked as they
     # are, when complete; otherwise the tools project compiles them itself.
     run(["cmake", "-S", HERE / "tools", "-B", build, f"-DM2_ROMSET={args.set}", f"-DDAYTONA_GEN_ROOT={gen}",
@@ -268,10 +292,9 @@ def build_tools(args):
 def measure(args):
     build = build_tools(args)
     romuse = tool_path(build, "romuse")
-    host = (ROOT / args.host_build_dir).resolve()
-    images = host / "rom_cache" / args.set
-    out = host / "dreamcast-measure"
-    out.mkdir(exist_ok=True)
+    images = rom_images(args)
+    out = out_dir(args, "dreamcast-measure")
+    out.mkdir(parents=True, exist_ok=True)
     scripts = [Path(s) for s in args.scripts] or sorted(
         p for p in (ROOT / "scripts" / "inputs").glob("*.txt") if not p.name.startswith("test_"))
     for script in scripts:
@@ -296,7 +319,6 @@ def main(argv=None):
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 4)
     ap.add_argument("scripts", nargs="*", help="input scripts for measure")
     ap.add_argument("--set", default="daytona", choices=["daytona"], help="Revision A only")
-    ap.add_argument("--host-build-dir", default="build-daytona")
     ap.add_argument("--nvram", help="settings EEPROM and backup RAM to start from (the app's data folder)")
     ap.add_argument("--frames", type=int, default=0, help="default: each script's own frames line")
     ap.add_argument("--window", type=int, default=600, help="frames, for the peak-window figure")

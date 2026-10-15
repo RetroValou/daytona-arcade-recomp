@@ -17,7 +17,7 @@ android {
         externalNativeBuild {
             cmake {
                 arguments '-DCMAKE_BUILD_TYPE=Release',
-                          "-DM2_GEN_ROOT=${rootProject.projectDir}/../../../build/gen"
+                          "-DM2_GEN_ROOT=${rootProject.projectDir}/../../../build_daytona/recomp/daytona93/gen"
                 targets 'daytona'
                 cppFlags '-std=c++20'
             }

@@ -2,8 +2,9 @@
 
 ## You need
 
-* A Linux, macOS or WSL computer where the project is set up: your ROM set in
-  `roms/daytona93.zip`, then `python3 scripts/setup.py` (see [README.md](README.md)).
+* A Linux, macOS or WSL computer where the project is set up: your ROM sets in
+  `roms/` (`daytona93.zip` for Daytona USA, `srallyc.zip` or `srallycb.zip` for
+  Sega Rally Championship), then `python3 scripts/setup.py` (see [README.md](README.md)).
 * [VitaSDK](https://vitasdk.org) with its default packages (SDL2 and taiHEN are used),
   and `VITASDK` set.
 * On the Vita: homebrew enabled and `libshacccg.suprx` extracted
@@ -11,22 +12,45 @@
 
 ## Build
 
+Every game is built the same way, by its name in `scripts/games.py`
+(`daytona`, the default, or `segarally`), and everything it makes stays in its
+own folder, `build_<game>/`:
+
 ```sh
 export VITASDK=/usr/local/vitasdk
-python3 scripts/setup.py
-python3 scripts/recompile.py
-python3 scripts/setup_vitagl.py  # once: builds vitaGL in extern/vitagl
-python3 scripts/build_vita.py --gpu-gl --fast-inaccuracy --release
+python3 scripts/setup_vitagl.py                     # once: builds vitaGL in extern/vitagl
+python3 scripts/recompile.py --game GAME            # the recompilation and the PC build
+python3 scripts/build_vita.py --game GAME --gpu-gl --fast-inaccuracy --release
 ```
 
-The result is `build/vita/daytona_vita.vpk`. Install it with VitaShell and copy your
-ROM set to `ux0:data/daytona93/daytona93.zip`.
+| Game | `GAME` | Package | Title ID | ROM on the Vita |
+| --- | --- | --- | --- | --- |
+| Daytona USA | `daytona` | `build_daytona/vita/daytona.vpk` | DAYT00093 | `ux0:data/daytona93/daytona93.zip` |
+| Sega Rally Championship | `segarally` | `build_segarally/vita/segarally.vpk` | SRAL00094 | `ux0:data/srallyc/srallyc.zip` |
 
-Sega Rally Championship is a separate app (title ID SRAL00094, beside Daytona's
-DAYT00093): after `python3 scripts/recompile.py --set srallyc --build-dir build-srallyc`,
-`python3 scripts/build_vita.py --set srallyc --gpu-gl --release` gives
-`build/vita-srallyc/daytona_vita.vpk`; its ROM goes to `ux0:data/srallyc/srallyc.zip`.
-Sound: the SCSP sound board (recompiled 68000 and MAME's SCSP), reference audio only; the native audio engine is Daytona's.
+Install the VPK with VitaShell and copy the ROM set to the place above. The games
+are separate apps: they install side by side.
+
+The game's folder holds:
+
+```
+build_<game>/
+  recomp/<set>/rom_cache/   the images made from your ROM set
+  recomp/<set>/gen/         the recompiled code (C++)
+  pc/<set>/                 the PC build (the recompilers, m2run, the game)
+  vita/                     the release package, <game>.vpk
+  vita_diag/                --diagnostics: <game>_diag.vpk (its own app, title ID with a 9)
+```
+
+The home-screen icon and LiveArea images are the game's own, from
+`platform/vita/logo_livearea/<game>/` (see the README there).
+
+Notes:
+* `--fast-inaccuracy` is checked on both games; `--fast-gen` only on Daytona.
+* Sega Rally's sound is the SCSP sound board (recompiled 68000 and MAME's SCSP),
+  reference audio only; the native audio engine is Daytona's.
+* For test builds on the console, leave out `--release` (link-time optimization makes
+  the build much slower); `--diagnostics` writes the logs.
 
 ## How it runs
 

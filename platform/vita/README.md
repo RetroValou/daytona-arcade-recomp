@@ -104,10 +104,11 @@ python3 scripts/build_vita.py --gpu-gl --release --fast-inaccuracy        # pinn
 python3 scripts/build_vita.py --gpu-fast --release --fast-inaccuracy --free-core
 ```
 
-The home-screen name is "Daytona USA" for every build option. Icon and LiveArea
-images: put `icon0.png` (128x128), `bg.png` (840x500), `startup.png` (280x158) and
-optionally `template.xml` in `platform/vita/logo_livearea/` (8-bit indexed PNGs; see
-the README there). Each file present is packaged, a missing one keeps the Vita's
+The home-screen name is the game's (`vita_name` in `scripts/games.py`) for every
+build option. Icon and LiveArea images, per game: put `icon0.png` (128x128),
+`bg.png` (840x500), `startup.png` (280x158) and optionally `template.xml` in
+`platform/vita/logo_livearea/<game>/` (`daytona/`, `segarally/`; 8-bit indexed
+PNGs; see the README there). Each file present is packaged, a missing one keeps the Vita's
 default; the build summary lists them. They are not committed.
 
 ## Build
@@ -151,40 +152,41 @@ From the repository root, prepare the host build using your own complete
 ```sh
 python3 scripts/setup.py
 # After changing the seeds/recompilers, regenerate with the HOST compiler:
-python3 scripts/recompile.py
+python3 scripts/recompile.py --game GAME
 # Build a separate ARM executable and installable package:
-python3 scripts/build_vita.py
+python3 scripts/build_vita.py --game GAME --gpu-gl
 ```
 
-`setup.py` already recompiles when the ROM set is present. The explicit
-`recompile.py` command is only necessary after changes or when adding the
-ROM set later. The default output is:
+`GAME` is the game's name in `scripts/games.py` (`daytona`, the default, or
+`segarally`). `setup.py` already recompiles when the ROM set is present. The
+explicit `recompile.py` command is only necessary after changes or when adding
+the ROM set later. Everything a game makes stays in its folder:
 
 ```text
-build/vita/daytona_vita.vpk
+build_<game>/recomp/<set>/   rom_cache/ (the images) and gen/ (the recompiled code)
+build_<game>/pc/<set>/       the host build (the recompilers, m2run, the PC game)
+build_<game>/vita/           <game>.vpk
+build_<game>/vita_diag/      <game>_diag.vpk (--diagnostics)
 ```
 
-A different host build directory is supported:
+`--build-dir` puts the Vita build somewhere else (to keep two variants side by
+side, with `--title-id`). The equivalent CMake configuration is:
 
 ```sh
-python3 scripts/build_vita.py --host-build-dir build-host --build-dir build/vita --jobs 4
-```
-
-The equivalent CMake configuration is:
-
-```sh
-cmake -S platform/vita -B build/vita \
+cmake -S platform/vita -B build_daytona/vita \
   -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DDAYTONA_GEN_ROOT="$PWD/build/gen"
-cmake --build build/vita --parallel 4
+  -DDAYTONA_GEN_ROOT="$PWD/build_daytona/recomp/daytona93/gen" \
+  -DDAYTONA_VITA_VPK=daytona.vpk \
+  -DDAYTONA_VITA_LIVEAREA_DIR="$PWD/platform/vita/logo_livearea/daytona"
+cmake --build build_daytona/vita --parallel 4
 ```
 
 Do not configure the host build directory with the Vita toolchain. The
 importer and three recompilers run on your computer, not on the Vita. The
 Vita configuration fails rather than creating an empty game if any required
 generated source group is missing. Keep VPKs, ROM caches and generated C++
-local, under the ignored `build/` directory.
+local, under the ignored `build_<game>/` folders.
 
 ## Install and play
 
@@ -217,13 +219,12 @@ match (for example TWIN/JPN); otherwise the game can cancel the link.
 Frame sync is optional, off by default. For solo Revision A play, disable
 link and configure a single cabinet in test mode.
 
-Build each set's generated sources separately using `scripts/recompile.py
---set daytona --build-dir build/revision-a-host` and the existing daytona93
-host build. Then:
+Recompile each set separately (`scripts/recompile.py --game daytona` for
+daytona93, `--set daytona` for Revision A; both in `build_daytona/`). Then:
 
 ```sh
-python3 scripts/build_vita.py --set daytona --gpu-fast --host-build-dir build/revision-a-host --build-dir build/vita-revision-a
-python3 scripts/build_vita.py --set daytona93 --gpu-fast --host-build-dir build --build-dir build/vita-dual --revision-a-self build/vita-revision-a/eboot.bin
+python3 scripts/build_vita.py --set daytona --gpu-fast --build-dir build_daytona/vita_revision_a
+python3 scripts/build_vita.py --game daytona --gpu-fast --revision-a-self build_daytona/vita_revision_a/eboot.bin
 ```
 
 The second VPK contains both executables. Actual Vita-to-Vita/Vita-to-desktop
@@ -240,8 +241,8 @@ match the exact code over a 6,000-frame race on the PC); `--fast-gen` is
 Daytona-only:
 
 ```sh
-python3 scripts/recompile.py --set srallyc --build-dir build-srallyc
-python3 scripts/build_vita.py --set srallyc --gpu-gl --fast-inaccuracy --release   # build/vita-srallyc/daytona_vita.vpk
+python3 scripts/recompile.py --game segarally
+python3 scripts/build_vita.py --game segarally --gpu-gl --fast-inaccuracy --release   # build_segarally/vita/segarally.vpk
 ```
 
 The ROM goes to `ux0:data/srallyc/srallyc.zip` (MAME's merged

@@ -7,7 +7,7 @@
 #   make OUT=DIR NAME.cdi      either as a bootable disc image
 #   make OUT=DIR GEN=DIR game-objects
 #                              the runtime and the generated game code (from
-#                              the host recompile, GEN = build-daytona/gen),
+#                              the host recompile, GEN = build_daytona/recomp/daytona/gen),
 #                              compiled for the SH-4; game-sizes reports them
 
 OUT ?= $(error OUT must be the build directory)

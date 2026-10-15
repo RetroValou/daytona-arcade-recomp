@@ -35,9 +35,9 @@ ANALOG = {"steer", "accel", "brake"}
 
 def game_entry(game):
     """The scripts/games.py set a header's game name is (or begins with)."""
-    if game in games.GAMES:
+    if game in games.SETS:
         return game
-    return next((g for g in sorted(games.GAMES, key=len, reverse=True) if game.startswith(g)), game)
+    return next((g for g in sorted(games.SETS, key=len, reverse=True) if game.startswith(g)), game)
 
 
 def full_range(v):
@@ -69,7 +69,7 @@ def main():
     header, game, fields = read_header(open(header_path, "rb").read())
     game = game_entry(game)
     controls = games.controls(game)
-    rescale = games.GAMES.get(game, {}).get("full_range", False)
+    rescale = games.SETS.get(game, {}).get("full_range", False)
     index = {(port, mask): i for i, (port, mask, _, _) in enumerate(fields)}
 
     total = 0

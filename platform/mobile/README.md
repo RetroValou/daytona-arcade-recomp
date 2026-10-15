@@ -7,9 +7,9 @@ same recompiled game for Android and iOS.
 
 ROM-derived C++ is never committed. Build/recompile once on the host so these exist:
 
-- `build/gen/daytona93/*.cpp`
-- `build/gen/daytona93_tgp/tgp_gen.cpp`
-- `build/gen/daytona93_snd/snd_gen.cpp`
+- `build_daytona/recomp/daytona93/gen/daytona93/*.cpp`
+- `build_daytona/recomp/daytona93/gen/daytona93_tgp/tgp_gen.cpp`
+- `build_daytona/recomp/daytona93/gen/daytona93_snd/snd_gen.cpp`
 
 Normally:
 
@@ -77,10 +77,10 @@ For an unsigned IPA to sign and install through AltStore:
 UNSIGNED=1 platform/mobile/ios/build.sh
 ```
 
-The output is `build/ios/Daytona-unsigned.ipa`, containing the arm64 iPhoneOS app
+The output is `build_daytona/ios/Daytona-unsigned.ipa`, containing the arm64 iPhoneOS app
 inside `Payload/daytona.app`. This mode disables Xcode code signing; AltStore
 must sign the IPA before installation. It does not bundle a ROM archive. Set
-`M2_GEN_ROOT` if the generated sources are outside `build/gen`, and `BUILD_DIR`
+`M2_GEN_ROOT` if the generated sources are outside `build_daytona/recomp/daytona93/gen`, and `BUILD_DIR`
 to select a different output directory. Tested on devices (2026-10-06): Android and
 iOS play with no issues reported.
 

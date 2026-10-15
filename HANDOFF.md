@@ -1,5 +1,54 @@
 # Handoff
 
+## Builds per game: build_<game>/, --game, <game>.vpk (2026-10-15)
+
+Everything is built by game now, each in its own folder (scripts/games.py
+paths: game_dir, recomp_dir, rom_cache, gen_root, pc_dir, vita_dir, vpk_name):
+
+  build_<game>/recomp/<set>/rom_cache/  m2import's images
+  build_<game>/recomp/<set>/gen/        the recompiled code (CMake M2_GEN_ROOT;
+                                        inside: <set>/, <set>_tgp/, <set>_snd/ as before)
+  build_<game>/pc/<set>/                the desktop build (tools, m2run, the game)
+  build_<game>/vita/, vita_diag/        <game>.vpk, <game>_diag.vpk
+
+games.py: `GAMES` is now per game (daytona: daytona93, daytona; segarally:
+srallyc), with title, sets (main first), vita_title_id, vita_name; the per-set
+table is `SETS` (gains "game", loses title/vita_*). `resolve(game, set)`: the
+set alone gives its game, the game alone its main set, a set of another game
+is an error. recompile.py, build_vita.py, seed_scan.py take `--game` (default
+daytona) and `--set`; `--build-dir` is gone from recompile.py/seed_scan.py and
+`--host-build-dir` from build_vita.py (build_vita.py keeps `--build-dir` for
+side-by-side variants). recompile.py `--recomp-only` stops after the
+recompilation. setup.py builds the tools and tests in build_daytona/pc/daytona93
+(CI's ctest dir changed with it), then every set with a ROM into its game's
+folder. Vita CMake: DAYTONA_VITA_VPK (the package's file name) and
+DAYTONA_VITA_LIVEAREA_DIR; the icon/LiveArea images are per game in
+platform/vita/logo_livearea/<game>/ (committed empty, .gitkeep; images
+ignored). m2_check.sh and the three sound test scripts take their default
+paths from the same layout; the sound scripts find the generated objects with
+find (outside the build tree, CMake names them after their path).
+
+Checked: recompile.py --game segarally and recompile.py (daytona) from
+scratch; m2run race_basic / srallyc_race 3,000 frames, dumps every 250 + WAV,
+identical to the references (5d4b1b641acf6f5b, 4b73fca0c3d6b13e); ctest 19/19
+in both pc/ builds; Python tests (test_build_vita 27, test_setup, make_input,
+setup_vitagl) OK; build_vita.py --gpu-gl --fast-inaccuracy for both games:
+build_daytona/vita/daytona.vpk (DAYT00093), build_segarally/vita/segarally.vpk
+(SRAL00094), not yet run on the console. Old build/, build-*/ folders deleted locally.
+
+The desktop executable is named after the game (CMake `M2_GAME`, passed by
+recompile.py and setup.py; OUTPUT_NAME of the `daytona` target):
+build_daytona/pc/<set>/daytona, build_segarally/pc/srallyc/segarally.
+
+Dreamcast and mobile follow the layout too (asked for, though the rules
+leave them alone otherwise): build_dreamcast.py reads the daytona set's
+recompilation from build_daytona/recomp/daytona/ and writes to
+build_daytona/dreamcast*, its --host-build-dir is gone; its tools CMake,
+Makefile comment, pc_profile.py and flycast_shot.ps1 defaults likewise. The
+iOS script and the Android gradle read build_daytona/recomp/daytona93/gen (iOS
+output build_daytona/ios). Not built or run here (Dreamcast and mobile are not
+tested in this fork): only the Python parses and --help works.
+
 ## The TGP's FIFO inlined too; the inlined bus now opt-in (2026-10-15)
 
 Verdict first: the inlined bus (RAM, ROM, and now the TGP FIFO) gives no

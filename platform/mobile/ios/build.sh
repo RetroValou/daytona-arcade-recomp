@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-BUILD="${BUILD_DIR:-$ROOT/build/ios}"
-GEN="${M2_GEN_ROOT:-$ROOT/build/gen}"
+BUILD="${BUILD_DIR:-$ROOT/build_daytona/ios}"
+GEN="${M2_GEN_ROOT:-$ROOT/build_daytona/recomp/daytona93/gen}"
 UNSIGNED="${UNSIGNED:-0}"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then

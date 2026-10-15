@@ -1,9 +1,9 @@
 name: Vita compile check
 on:
   push:
-    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
+    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
   pull_request:
-    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
+    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
   workflow_dispatch:
 permissions:
   contents: read

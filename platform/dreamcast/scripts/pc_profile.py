@@ -31,8 +31,8 @@ def symbols(elf):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("serial", nargs="?", default=ROOT / "build-daytona/dreamcast/flycast/serial.txt")
-    ap.add_argument("--elf", default=ROOT / "build-daytona/dreamcast/game.elf")
+    ap.add_argument("serial", nargs="?", default=ROOT / "build_daytona/dreamcast/flycast/serial.txt")
+    ap.add_argument("--elf", default=ROOT / "build_daytona/dreamcast/game.elf")
     ap.add_argument("--top", type=int, default=40)
     ap.add_argument("--from", dest="first", type=int, default=0, help="only reports from this frame on")
     args = ap.parse_args()

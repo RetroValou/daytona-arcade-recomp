@@ -27,7 +27,7 @@ legal problem, or hours re-deriving something already established.
    `git.ignoredRepositories` in `.vscode/settings.json` in the same change, or
    VS Code's Source Control silently switches repository and a commit lands in
    the wrong place.
-5. **Build output is git-ignored** — `build/`, generated C++, CMake/Ninja
+5. **Build output is git-ignored** — `build_<game>/` (and the older `build/`), generated C++, CMake/Ninja
    state, shader caches, object files.
 
 ## Legal — the repository contains only our own code

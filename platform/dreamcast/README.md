@@ -16,7 +16,7 @@ every checkpoint. About 32 game frames/s in Flycast (the arcade runs
 ## Requirements
 
 - The desktop build first: setup, then
-  `python scripts/recompile.py --set daytona --build-dir build-daytona`.
+  `python scripts/recompile.py --set daytona` (Revision A, into `build_daytona/`).
 - An SH-4 toolchain. On Windows, [DreamSDK](https://dreamsdk.org/) (R4 tested,
   at `C:/DreamSDK`); elsewhere, a KOS dc-chain toolchain (`KOS_CC_BASE`).
 - KallistiOS 2.2.1 is set up by the driver in `extern/kos-dc` (git-ignored),
@@ -27,7 +27,8 @@ every checkpoint. About 32 game frames/s in Flycast (the arcade runs
 ## Commands
 
 All through `platform/dreamcast/build_dreamcast.py`; output goes under the
-host build directory (`build-daytona/dreamcast*`, git-ignored).
+game's folder (`build_daytona/dreamcast*`, git-ignored); the generated code and ROM
+images are read from `build_daytona/recomp/daytona/`.
 
 | Command | What it does |
 | --- | --- |
@@ -46,7 +47,7 @@ host build directory (`build-daytona/dreamcast*`, git-ignored).
 | (tools) `ipprof` | Where the i960 spends its instructions: IP samples every 61 instructions, busiest blocks and addresses. |
 
 `--flycast PATH` (or `FLYCAST`) points at `flycast.exe`. Flycast runs from a
-portable copy in `build-daytona/dreamcast/flycast` with its own `emu.cfg`, so
+portable copy in `build_daytona/dreamcast/flycast` with its own `emu.cfg`, so
 your own Flycast settings are not changed. The program's serial output is read
 from Flycast's console window (`scripts/flycast_run.py`).
 

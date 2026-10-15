@@ -1,11 +1,12 @@
 # PS Vita icon and LiveArea images
 
-Put your own images in this folder before running `scripts/build_vita.py`. Every
-file below that is present goes into the VPK; a missing one keeps the Vita's default
-(no file at all: the default icon and LiveArea). The game's name on the home screen
-is its `vita_name` in `scripts/games.py` ("Daytona USA", "Sega Rally
-Championship"), whatever the build options. The images are shared by every game's
-package.
+Each game has its own folder here, named after it in `scripts/games.py`:
+`daytona/` (Daytona USA) and `segarally/` (Sega Rally Championship). Put your
+own images in the game's folder before running `scripts/build_vita.py --game
+<game>`. Every file below that is present goes into that game's VPK; a missing
+one keeps the Vita's default (no file at all: the default icon and LiveArea).
+The game's name on the home screen is its `vita_name` in `scripts/games.py`
+("Daytona USA", "Sega Rally Championship"), whatever the build options.
 
 | File name (exact) | Size (pixels) | Shown as | In the VPK |
 | --- | --- | --- | --- |
@@ -30,5 +31,6 @@ summary lists the images used. If the Vita still shows the old icon after
 installing the new VPK, delete the application and install it again (the Vita keeps
 the icon of an installed title ID).
 
-These files are not committed (`.gitignore`): only this README is. Do not commit a
-logo or image taken from the game or its ROMs: it is Sega's.
+These files are not committed (`.gitignore`): only this README and the empty game
+folders are (each holds a `.gitkeep`). Do not commit a logo or image taken from the
+game or its ROMs: it is Sega's. A new game gets its folder here, with a `.gitkeep`.

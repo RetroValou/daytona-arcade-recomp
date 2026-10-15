@@ -96,6 +96,12 @@ set(M2_ROMSET daytona93 CACHE STRING "MAME ROM set to recompile (scripts/games.p
 if(NOT M2_ROMSET MATCHES "^[a-z0-9_]+$" OR NOT EXISTS ${CMAKE_SOURCE_DIR}/seeds/${M2_ROMSET}.txt)
     message(FATAL_ERROR "M2_ROMSET ${M2_ROMSET}: no seeds/${M2_ROMSET}.txt; known sets are listed in scripts/games.py")
 endif()
+# The game the set belongs to (scripts/games.py: daytona, segarally), which
+# recompile.py and setup.py pass: the desktop executable is named after it.
+set(M2_GAME daytona CACHE STRING "The game (scripts/games.py), the desktop executable's name")
+if(NOT M2_GAME MATCHES "^[a-z0-9_]+$")
+    message(FATAL_ERROR "M2_GAME ${M2_GAME}: lower-case letters, digits and _ only (scripts/games.py)")
+endif()
 
 add_library(runtime STATIC
     src/runtime/cpu.cpp
@@ -302,6 +308,7 @@ if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
                 XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
         else()
             add_executable(daytona WIN32 $<TARGET_OBJECTS:daytona_app> ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
+            set_target_properties(daytona PROPERTIES OUTPUT_NAME ${M2_GAME}) # build_<game>/pc/<set>/<game>
         endif()
         target_link_libraries(daytona PRIVATE runtime imgui gpurender ${M2_SDL_TARGET})
         if(WIN32)

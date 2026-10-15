@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-"""Cross-compile the Vita frontend using already generated host game code.
+"""Cross-compile a game's Vita package from its host recompilation.
 
-First run the setup/recompile pipeline with your own selected ROM set
-(python3 scripts/recompile.py, once, in any mode). --fast-inaccuracy and
---fast-gen then make the Vita's own game code here from the host tools and
-ROM cache, whatever mode the host code was generated in (see vita_code).
+  build_vita.py [--game GAME] [--set SET] [--gpu-gl] [--fast-inaccuracy] [--diagnostics | --release] ...
+
+First recompile the game on the host with your own ROM set (python3
+scripts/recompile.py --game GAME, once, in any mode; --recomp-only is
+enough). Everything stays in the game's folder (scripts/games.py):
+build_<game>/vita/<game>.vpk, or build_<game>/vita_diag/<game>_diag.vpk with
+--diagnostics. --fast-inaccuracy and --fast-gen make the Vita's own game code
+here from the host tools and ROM cache, whatever mode the host code was
+generated in (see vita_code). The package's images: platform/vita/logo_livearea/<game>/.
 This command never executes cross-built importers, copies ROMs, or packages
 ROM data. --compile-check builds objects without ROMs and does not make a VPK.
 """
@@ -19,7 +24,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from games import DEFAULT, GAMES, build_dir as host_build_dir  # noqa: E402
+import games  # noqa: E402
+from games import SETS  # noqa: E402
 
 # The generated sources a set's build needs, under gen/ ({set}: the set).
 REQUIRED = ("{set}/gen_table.cpp", "{set}_tgp/tgp_gen.cpp", "{set}_snd/snd_gen.cpp")
@@ -84,7 +90,7 @@ def direct_ram(folder):
     print(f"build_vita: {stats['wram']} work-RAM accesses direct", flush=True)
 
 
-def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=False, inline_bus=False):
+def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=False, inline_bus=False):  # game: the set
     """The game code of the Vita build, made here from the host build's tools and ROM
     cache (scripts/recompile.py, run once in any mode): the host's own generated code
     and the desktop build are left as they are. Into BUILD_DIR/gen_vita:
@@ -102,7 +108,7 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     inline_bus (--inline-bus; off by default, its gain on the Vita too small to
     measure): the i960 code with the set's board bus inlined (m2recomp --board,
     runtime M2_INLINE_BUS)."""
-    cache = host / "rom_cache" / game
+    cache = ROOT / games.rom_cache(game)
     i960_tool, tgp_tool = host_tool(host, "m2recomp"), host_tool(host, "m2tgprecomp")
     for need in (i960_tool, tgp_tool, cache / "program.bin", cache / "tgp_program.bin"):
         if not need or not Path(need).is_file():
@@ -112,7 +118,7 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     shutil.rmtree(tmp, ignore_errors=True)
     (tmp / "i960").mkdir(parents=True)
     (tmp / "tgp").mkdir(parents=True)
-    i960 = [i960_tool, cache / "program.bin", tmp / "i960", "--seeds", f"seeds/{game}.txt", *GAMES[game]["recomp"]]
+    i960 = [i960_tool, cache / "program.bin", tmp / "i960", "--seeds", f"seeds/{game}.txt", *SETS[game]["recomp"]]
     if (ROOT / f"seeds/{game}_hooks.txt").is_file():
         i960 += ["--hooks", f"seeds/{game}_hooks.txt"]
     if mode != "fast_gen":
@@ -120,7 +126,7 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     if i960_profile:
         i960.append("--profile")
     if inline_bus:
-        i960 += ["--board", GAMES[game]["board"]]
+        i960 += ["--board", SETS[game]["board"]]
     run(i960, os.environ)
     i960_out = tmp / "i960"
     if mode == "fast_inaccuracy":
@@ -139,15 +145,20 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
         shutil.rmtree(build / old, ignore_errors=True)
     return out, {"fast_inaccuracy": "i960 --fast_inaccuracy + direct work-RAM accesses",
                  "fast_gen": "i960 fast_gen.py rewrite"}[mode] + \
-        (", bus inlined (--board " + GAMES[game]["board"] + ")" if inline_bus else "") + ", TGP fast mode"
+        (", bus inlined (--board " + SETS[game]["board"] + ")" if inline_bus else "") + ", TGP fast mode"
 
 
 LIVEAREA_FILES = ("icon0.png", "bg.png", "startup.png", "template.xml")
 
 
-def livearea_summary():
-    """Images from platform/vita/logo_livearea packaged by platform/vita/livearea.cmake."""
-    folder = ROOT / "platform/vita/logo_livearea"
+def livearea_dir(game):
+    """The game's own icon and LiveArea images (platform/vita/logo_livearea/<game>/)."""
+    return ROOT / "platform/vita/logo_livearea" / game
+
+
+def livearea_summary(game):
+    """Images from the game's livearea_dir packaged by platform/vita/livearea.cmake."""
+    folder = livearea_dir(game)
     found = [name for name in LIVEAREA_FILES if (folder / name).is_file()]
     return ", ".join(found) if found else "none (Vita defaults)"
 
@@ -166,15 +177,14 @@ def vitagl_summary(prefix):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--host-build-dir", type=Path,
-                    help="host build holding gen/ (default: build, or build-SET for another set, as setup.py makes them)")
-    ap.add_argument("--set", choices=sorted(GAMES), default=DEFAULT,
-                    help="the game (scripts/games.py); each game is its own app, with its own title ID "
-                         "(Daytona DAYT00093, Sega Rally SRAL00094)")
+    ap.add_argument("--game", choices=sorted(games.GAMES),
+                    help=f"the game (scripts/games.py; default {games.DEFAULT}); each game is its own app, with its own "
+                         "title ID (Daytona DAYT00093, Sega Rally SRAL00094)")
+    ap.add_argument("--set", choices=sorted(SETS), help="another set of the game (default: its main set)")
     ap.add_argument("--title-id", default="", help="override the package's title ID (4 capital letters, 5 digits)")
     ap.add_argument("--revision-a-self", type=Path,
                     help="bundle the companion set's built eboot.bin as <companion>.self (daytona93: Revision A's, daytona.self)")
-    ap.add_argument("--build-dir", type=Path, help="default: build/vita for a set packaged as daytona93's, else build/vita-SET")
+    ap.add_argument("--build-dir", type=Path, help="default: build_<game>/vita, or build_<game>/vita_diag with --diagnostics")
     ap.add_argument("--vitasdk", type=Path, default=os.environ.get("VITASDK"))
     ap.add_argument("--jobs", type=int, default=min(os.cpu_count() or 2, 4))
     ap.add_argument("--compile-check", action="store_true")
@@ -210,23 +220,22 @@ def main(argv=None):
                       help="i960 default output rewritten by platform/dreamcast/scripts/fast_gen.py (exact, slower on the Vita), "
                            "TGP fast mode. Without either: the host-generated code as it is")
     args = ap.parse_args(argv)
-    game = GAMES[args.set]
-    if args.host_build_dir is None:
-        args.host_build_dir = Path(host_build_dir(args.set))
+    try:
+        args.game, args.set = games.resolve(args.game, args.set)
+    except ValueError as error:
+        ap.error(str(error))
+    game = dict(games.GAMES[args.game], **SETS[args.set])
     if args.tgp_profile or args.i960_profile:
         args.diagnostics = True  # checked against --release below
-    if args.build_dir is None:
-        same_app = game["vita_title_id"] == GAMES[DEFAULT]["vita_title_id"]
-        args.build_dir = Path("build/vita" if same_app else "build/vita-" + args.set)
-        if args.diagnostics:  # its own build directory: the release one is left as it is
-            args.build_dir = Path(str(args.build_dir) + "-diag")
+    if args.build_dir is None:  # diagnostics: its own build directory, the release one is left as it is
+        args.build_dir = Path(games.vita_dir(args.game, args.diagnostics))
     if args.title_id and not re.fullmatch(r"[A-Z]{4}[0-9]{5}", args.title_id):
         ap.error("--title-id must be 4 capital letters and 5 digits")
     gpu_build = args.gpu_fast or args.gpu_gl
-    if args.set != DEFAULT and not gpu_build:
+    if args.set != "daytona93" and not gpu_build:  # the old CPU frontend (main.cpp) only knows daytona93
         ap.error(f"{args.set} requires --gpu-fast or --gpu-gl")
-    if args.revision_a_self and (args.set != DEFAULT or not game["companion"] or not gpu_build):
-        ap.error(f"--revision-a-self requires the {DEFAULT} --gpu-fast or --gpu-gl launcher")
+    if args.revision_a_self and (args.set != games.main_set(args.game) or not game["companion"] or not gpu_build):
+        ap.error(f"--revision-a-self requires a game with a companion set, its main set and --gpu-fast or --gpu-gl")
     if args.code and args.code not in game["vita_fast"]:
         # Only the modes checked on the set (scripts/games.py vita_fast).
         flag = "--" + args.code.replace("_", "-")
@@ -252,17 +261,19 @@ def main(argv=None):
     toolchain = sdk / "share/vita.toolchain.cmake"
     if not toolchain.is_file():
         ap.error(f"missing VitaSDK toolchain: {toolchain}")
-    host = (ROOT / args.host_build_dir).resolve()
+    host = (ROOT / games.pc_dir(args.set)).resolve()
     build = (ROOT / args.build_dir).resolve()
-    gen = host / "gen"
-    if build == host or build == ROOT or build == gen or gen in build.parents:
+    gen = (ROOT / games.gen_root(args.set)).resolve()
+    if build == host or host in build.parents or build == ROOT or build == gen or gen in build.parents:
         ap.error("use a separate cross-build directory, not the host build or its generated sources")
     if not args.compile_check:
         required = tuple(name.format(set=args.set) for name in REQUIRED)
         missing = [str(gen / name) for name in required if not (gen / name).is_file()]
         if missing:
             ap.error("missing host-generated code:\n" + "\n".join(missing) +
-                     "\nRun python3 scripts/recompile.py with the host compiler first.")
+                     f"\nRun python3 scripts/recompile.py --game {args.game}" +
+                     (f" --set {args.set}" if args.set != games.main_set(args.game) else "") +
+                     " with the host compiler first.")
     # Every hook of the set's seeds/<set>_hooks.txt must be in its generated code.
     hooks = ROOT / f"seeds/{args.set}_hooks.txt"
     if gpu_build and not args.compile_check and hooks.is_file():
@@ -277,6 +288,7 @@ def main(argv=None):
     title_id = args.title_id or (game["vita_title_id"][:4] + "9" + game["vita_title_id"][5:] if args.diagnostics
                                  else game["vita_title_id"])
     app_name = game["vita_name"] + (" (diagnostics)" if args.diagnostics and not args.title_id else "")
+    package_name = games.vpk_name(args.game, args.diagnostics)
     code = "host-generated (scripts/recompile.py output as is)"
     if args.code and not args.compile_check:
         gen, code = vita_code(host, gen, build, args.code, args.set, args.tgp_profile, args.i960_profile,
@@ -296,6 +308,8 @@ def main(argv=None):
          f"-DDAYTONA_VITA_ROMSET={args.set}",
          f"-DDAYTONA_VITA_TITLEID={title_id}",
          f"-DDAYTONA_VITA_GAME_NAME={app_name}",
+         f"-DDAYTONA_VITA_VPK={package_name}",
+         f"-DDAYTONA_VITA_LIVEAREA_DIR={livearea_dir(args.game)}",
          f"-DDAYTONA_VITA_COMPANION={game['companion'] or ''}",
          f"-DDAYTONA_VITA_REV_A_SELF={(ROOT / args.revision_a_self).resolve() if args.revision_a_self else ''}",
          f"-DDAYTONA_VITA_RENDER_OPT={'OFF' if args.reference_renderer else 'ON'}",
@@ -314,7 +328,7 @@ def main(argv=None):
     if args.compile_check:
         print("Compile check complete. No linked game or VPK was built." + (f"\nvitaGL: {vitagl}" if args.gpu_gl else ""))
     else:
-        package = build / "daytona_vita.vpk"
+        package = build / package_name
         if not package.is_file():
             raise RuntimeError(f"build completed without the expected package: {package}")
         mode = "GPU GL (vitaGL)" if args.gpu_gl else ("GPU FAST" if args.gpu_fast else "CPU EXACT")
@@ -322,7 +336,7 @@ def main(argv=None):
         kind = "release (LTO, no logs)" if args.release else ("diagnostics (logs)" if args.diagnostics else "normal (no logs)")
         paths = "off (--no-fast-paths)" if args.no_fast_paths else "on (M2_FAST_BUS/TGP/CPU/GEO)"
         print(f"VPK: {package}\nRenderer build: {mode}\nvitaGL: {vitagl}\nCores: {cores}\nBuild: {kind}\nGame code: {code}\n"
-              f"Runtime fast paths: {paths}\nLiveArea images: {livearea_summary()}\nTitle ID: {title_id}\n"
+              f"Runtime fast paths: {paths}\nLiveArea images: {livearea_summary(args.game)}\nTitle ID: {title_id}\n"
               f"ROM location on Vita: ux0:data/{args.set}/{args.set}.zip")
     return 0
 

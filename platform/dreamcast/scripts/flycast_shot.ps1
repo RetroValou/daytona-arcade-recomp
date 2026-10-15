@@ -34,7 +34,7 @@ public static class Win {
     }
 }
 "@
-$pids = @(Get-Process flycast -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*build-daytona*" } |
+$pids = @(Get-Process flycast -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*build_daytona*" } |
     ForEach-Object { [uint32]$_.Id })
 $h = if ($pids.Count) { [Win]::Find($pids) } else { [IntPtr]::Zero }
 if ($h -eq [IntPtr]::Zero) { Write-Error "no Flycast window from the build's copy"; exit 1 }

@@ -1,7 +1,9 @@
-# Optional VPK images from platform/vita/logo_livearea (README.md there): each file
-# present is packaged, a missing one keeps the Vita's default. Sets VITA_LIVEAREA_FILES
-# (FILE arguments for vita_create_vpk) and VITA_LIVEAREA_SUMMARY.
-set(VITA_LIVEAREA_DIR "${CMAKE_CURRENT_LIST_DIR}/logo_livearea")
+# Optional VPK images from VITA_LIVEAREA_DIR, the game's folder in platform/vita/logo_livearea
+# (README.md there): each file present is packaged, a missing one keeps the Vita's default.
+# Sets VITA_LIVEAREA_FILES (FILE arguments for vita_create_vpk) and VITA_LIVEAREA_SUMMARY.
+if(NOT VITA_LIVEAREA_DIR)
+    message(FATAL_ERROR "livearea.cmake: set VITA_LIVEAREA_DIR (the game's folder in platform/vita/logo_livearea)")
+endif()
 set(VITA_LIVEAREA_FILES)
 set(VITA_LIVEAREA_FOUND)
 

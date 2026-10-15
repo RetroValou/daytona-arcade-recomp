@@ -6,7 +6,10 @@ existing games are the examples to follow: `src/games/daytona.cpp`
 (original Model 2, Model 1 sound board, two sets) and `src/games/srallyc.cpp`
 (Model 2A-CRX, program copied to RAM, SCSP sound board).
 
-Below, `<set>` is the game's MAME set name, such as `srallyc`.
+Below, `<set>` is the game's MAME set name, such as `srallyc`, and `<game>`
+the game's short name in the scripts, such as `segarally`: everything the
+game builds goes in its folder, `build_<game>/`, and its Vita package is
+`<game>.vpk`.
 
 ## 1. The game's record: `src/games/<game>.cpp`
 
@@ -46,24 +49,32 @@ do nothing while its option is off.
 
 ## 2. The scripts' entry: `scripts/games.py`
 
-Add `<set>` to `GAMES`: its title and label, the archive names to look for
-under `roms/`, the extra `m2recomp` options (`--no-mirror`, and an `--alias`
-for code the boot copies to RAM), the Vita title ID (4 capital letters and 5
-digits, one per game) and package name, `vita_fast` (the `--fast-*` Vita
-modes checked on it: empty until then), the companion set, and the input
-ports where they differ from the common layout. `recompile.py`, `setup.py`,
-`seed_scan.py`, `make_input.py`, `m2_check.sh` and `build_vita.py` all read it.
+Add the game to `GAMES` under its `<game>` name (lower case: it names the
+`build_<game>/` folder and the `<game>.vpk` package): its title, its sets (the
+main one first), the Vita title ID (4 capital letters and 5 digits, one per
+game) and package name. Then add each `<set>` to `SETS`: its game, its label,
+the archive names to look for under `roms/`, the board, the extra `m2recomp`
+options (`--no-mirror`, and an `--alias` for code the boot copies to RAM),
+`vita_fast` (the `--fast-*` Vita modes checked on it: empty until then), the
+companion set, and the input ports where they differ from the common layout.
+`recompile.py`, `setup.py`, `seed_scan.py`, `make_input.py`, `m2_check.sh` and
+`build_vita.py` all read it.
+
+Create the game's image folder for the Vita, `platform/vita/logo_livearea/<game>/`,
+with an empty `.gitkeep` in it (the images themselves are never committed).
 
 ## 3. Seeds: `seeds/<set>.txt`
 
 Create the file. CMake rejects a set without one. Then:
 
 ```sh
-python3 scripts/recompile.py --set <set> --build-dir build-<set>   # imports the ROMs, recompiles, builds
-python3 scripts/seed_scan.py --set <set> --build-dir build-<set> --append
-python3 scripts/recompile.py --set <set> --build-dir build-<set>
-./build-<set>/m2run build-<set>/rom_cache/<set> 1800 --dump out --every 300
+python3 scripts/recompile.py --game <game>   # imports the ROMs, recompiles, builds (build_<game>/)
+python3 scripts/seed_scan.py --game <game> --append
+python3 scripts/recompile.py --game <game>
+./build_<game>/pc/<set>/m2run build_<game>/recomp/<set>/rom_cache 1800 --dump out --every 300
 ```
+
+(`--set <set>` picks another of the game's sets.)
 
 A jump to code with no recompiled block stops the game and names the
 address. Add that address to the seeds and recompile. Optional hooks go in
@@ -79,7 +90,8 @@ second lists every address the 68000 executed. Check the result with
 - Look at m2run's dumps (`scripts/rgb2png.py`) next to MAME at the same
   frames.
 - Lockstep against MAME: record a stream header once, then
-  `SET=<set> BUILD=build-<set> scripts/m2_check.sh <scenario>` with an input
+  `SET=<set> scripts/m2_check.sh <scenario>` with an input
   script from `scripts/inputs/`.
-- Vita: `python3 scripts/build_vita.py --set <set> --gpu-gl`. For testing on
-  the console, never pass `--release` (LTO is much slower to build).
+- Vita: `python3 scripts/build_vita.py --game <game> --gpu-gl` gives
+  `build_<game>/vita/<game>.vpk`. For testing on the console, never pass
+  `--release` (LTO is much slower to build).

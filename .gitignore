@@ -20,9 +20,13 @@ platform/mobile/android/app/.cxx/
 *.ic*
 roms/*
 !roms/.gitkeep
-# Vita icon/LiveArea images are local only (a game logo is Sega's): only the README is kept.
+# Vita icon/LiveArea images are local only (a game logo is Sega's): only the README
+# and one empty folder per game (platform/vita/logo_livearea/<game>/.gitkeep) are kept.
 platform/vita/logo_livearea/*
 !platform/vita/logo_livearea/README.md
+!platform/vita/logo_livearea/*/
+platform/vita/logo_livearea/*/*
+!platform/vita/logo_livearea/*/.gitkeep
 rom/
 generated/
 extracted/
@@ -42,6 +46,8 @@ dumps/
 # ---- Build output ----
 build/
 build-*/
+# One folder per game (scripts/games.py): recompilation, desktop and Vita builds.
+build_*/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/

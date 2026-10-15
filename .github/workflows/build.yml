@@ -55,4 +55,4 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: ./setup.sh
       - name: Tests
-        run: ctest --test-dir build -C Release --output-on-failure
+        run: ctest --test-dir build_daytona/pc/daytona93 -C Release --output-on-failure

@@ -101,13 +101,13 @@ Setup prints each step. It is done when you see:
 
     Daytona USA Deluxe '93 (daytona93) is built. Start it with:
 
-        build/daytona
+        build_daytona/pc/daytona93/daytona
 
 With Revision A in `roms/` too, it is built as well, in its own folder:
 
     Daytona USA Revision A, 1994 (daytona) is built. Start it with:
 
-        build-daytona/daytona
+        build_daytona/pc/daytona/daytona
 
 If it stops before that, see [Troubleshooting](#troubleshooting).
 
@@ -115,21 +115,21 @@ If it stops before that, see [Troubleshooting](#troubleshooting).
 
 macOS and Linux:
 
-    build/daytona
+    build_daytona/pc/daytona93/daytona
 
 Windows:
 
-    build\Release\daytona.exe
+    build_daytona\pc\daytona93\Release\daytona.exe
 
-(Use the exact path setup printed: it is `build\daytona.exe` if setup
+(Use the exact path setup printed: it is `build_daytona\pc\daytona93\daytona.exe` if setup
 used Ninja.) On Windows the command prompt comes back straight away, as for
 any windowed program; the game's messages still appear in that window. To
 have the window wait until the game closes, use
-`start /wait build\Release\daytona.exe`. Started from Explorer or a
+`start /wait build_daytona\pc\daytona93\Release\daytona.exe`. Started from Explorer or a
 shortcut, the game writes its messages to `daytona.log` in its settings
 folder (see Starting again from scratch for where that is).
 
-Revision A is `build-daytona/daytona` (`build-daytona\Release\daytona.exe`
+Revision A is `build_daytona/pc/daytona/daytona` (`build_daytona\pc\daytona\Release\daytona.exe`
 on Windows); it keeps its own settings and saves.
 
 A launcher opens first. On the **Game** tab, click **Browse...**, choose
@@ -219,7 +219,7 @@ MASTER on one and SLAVE on the others, and a different **CAR NUMBER** on each
 (the factory setting is MASTER, car 1). Reset. The Game tab shows the link's
 state ("linked: cabinet 1 of 2"). The attract screen says 通信システム
 (communication system) when the link is up. To try it on one computer, start
-a second copy with `build-daytona/daytona --profile 2` (its own settings and
+a second copy with `build_daytona/pc/daytona/daytona --profile 2` (its own settings and
 saves), with port 15113 and next `127.0.0.1:15112`, and the first with port
 15112 and next `127.0.0.1:15113`. A firewall may ask to allow the
 connections.
@@ -229,7 +229,7 @@ the game starts straight away (Esc still brings the launcher back, where you
 can untick it). If the ROM set is missing or wrong, the launcher shows
 anyway, with the reason. For one run only:
 
-    build/daytona --rom roms/daytona93.zip --autostart
+    build_daytona/pc/daytona93/daytona --rom roms/daytona93.zip --autostart
 
 ## Dreamcast (in progress)
 
@@ -241,19 +241,19 @@ You need, besides the above: [DreamSDK](https://dreamsdk.org/) (R4, at
 `C:/DreamSDK`) on Windows, or a KallistiOS toolchain elsewhere, and
 [Flycast](https://github.com/flyinghead/flycast) to run it.
 
-1. Run setup as above, then recompile the Revision A set into its own
-   build folder:
+1. Run setup as above, then recompile the Revision A set (into
+   `build_daytona/`, next to Deluxe '93):
 
-       python scripts/recompile.py --set daytona --build-dir build-daytona
+       python scripts/recompile.py --set daytona
 
-2. Start `build-daytona`'s game once, set it to a single cabinet in test
+2. Start `build_daytona/pc/daytona/daytona` once, set it to a single cabinet in test
    mode, and quit: the Dreamcast build starts from those saved settings.
 3. Build the Dreamcast disc image and run it in Flycast:
 
        python platform/dreamcast/build_dreamcast.py game
 
    The first time it also sets up KallistiOS. The disc image is
-   `build-daytona/dreamcast/game.cdi` (`--no-run` builds it without
+   `build_daytona/dreamcast/game.cdi` (`--no-run` builds it without
    starting Flycast). It plays on the controller in port A: Y coin, Start,
    stick or D-pad to steer, triggers for the pedals, D-pad up/down to shift.
    `--draw-every N` sets how many frames per picture (default 2).
@@ -278,7 +278,7 @@ set. It is much quicker the second time.
 The script is `./setup.sh`.
 
 **`No ROM set: the tools are built, the game is not`**, or
-**`build/daytona: no such file or directory`**
+**`build_daytona/pc/daytona93/daytona: no such file or directory`**
 Setup did not find `roms/daytona93.zip` or `roms/daytona.zip` (or `.7z`).
 Check the folder is called `roms`, is inside the project folder, and the
 file is named exactly after its set (`daytona93.zip` for Deluxe '93,
@@ -324,7 +324,7 @@ Windows" and "MSBuild support for LLVM (clang-cl) toolset". Then run
 **Start is greyed out in the launcher**
 The line under the ROM path says why. If it says files are missing or
 wrong, the file you chose is not the set this build is for (`daytona93`
-for `build/daytona`, `daytona` for `build-daytona/daytona`). If it cannot open the
+for `build_daytona/pc/daytona93/daytona`, `daytona` for `build_daytona/pc/daytona/daytona`). If it cannot open the
 file, click **Browse...** and choose it again.
 
 **The game closes straight away, mentioning `SDL_CreateGPUDevice`**
@@ -350,7 +350,7 @@ It is waiting for a second, linked cabinet. Set a single cabinet in test
 mode (F2), as under [Play](#4-play).
 
 **Starting again from scratch**
-Delete the `build` folder (and `build-daytona`) and run setup again. Your
+Delete the game's folder (`build_daytona`, `build_segarally`) and run setup again. Your
 ROM sets in `roms/` are kept. Launcher settings, the game's settings EEPROM
 and backup RAM are in (`daytona` instead of `daytona93` for Revision A):
 

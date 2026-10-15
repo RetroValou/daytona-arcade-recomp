@@ -2,7 +2,7 @@
 """Find i960 entry points the MAME harvest never reached, by static analysis
 of the user's ROM set, and list them as seeds.
 
-  seed_scan.py [--set SET (scripts/games.py)] [--build-dir build] [--config Release] [--append]
+  seed_scan.py [--game GAME] [--set SET] (scripts/games.py) [--config Release] [--append]
 
 The game calls code it has only as a pointer: state machines store the next
 state's address (lda 0x2266f8,r5; st r5,0xc(r3)), jump tables are indexed
@@ -35,7 +35,8 @@ import struct
 import subprocess
 import sys
 
-from games import DEFAULT, GAMES as SETS
+import games
+from games import SETS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RET = 0x0A000000
@@ -57,13 +58,17 @@ def words(data):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--set", default=DEFAULT, choices=sorted(SETS))
-    ap.add_argument("--build-dir", default="build")
+    ap.add_argument("--game", choices=sorted(games.GAMES), help=f"the game (default {games.DEFAULT})")
+    ap.add_argument("--set", choices=sorted(SETS), help="another set of the game (default: its main set)")
     ap.add_argument("--config", default="Release")
     ap.add_argument("--append", action="store_true", help="add the new seeds to seeds/<set>.txt")
     args = ap.parse_args()
-    build = os.path.join(ROOT, args.build_dir)
-    cache = os.path.join(build, "rom_cache", args.set)
+    try:
+        args.game, args.set = games.resolve(args.game, args.set)
+    except ValueError as error:
+        ap.error(str(error))
+    build = os.path.join(ROOT, games.pc_dir(args.set))
+    cache = os.path.join(ROOT, games.rom_cache(args.set))
     seeds_path = os.path.join(ROOT, "seeds", args.set + ".txt")
     prog_path = os.path.join(cache, "program.bin")
     if not os.path.exists(prog_path):

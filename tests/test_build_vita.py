@@ -44,11 +44,11 @@ class BuildVitaTests(unittest.TestCase):
 
     def test_reject_host_directory(self):
         with self.assertRaises(SystemExit):
-            self.call("--compile-check", "--build-dir", "build")
+            self.call("--compile-check", "--build-dir", "build_daytona/pc/daytona93")
 
     def test_reject_generated_directory(self):
         with self.assertRaises(SystemExit):
-            self.call("--compile-check", "--build-dir", "build/gen/vita")
+            self.call("--compile-check", "--build-dir", "build_daytona/recomp/daytona93/gen/vita")
 
     def test_reject_nonpositive_jobs(self):
         with self.assertRaises(SystemExit):
@@ -79,7 +79,7 @@ class BuildVitaTests(unittest.TestCase):
 
     def test_success_requires_package(self):
         for name in BUILD.REQUIRED:
-            path = self.root / "build/gen" / name.format(set="daytona93")
+            path = self.root / "build_daytona/recomp/daytona93/gen" / name.format(set="daytona93")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()  # presence marker, not generated game code
         with patch.object(BUILD.subprocess, "run"):
@@ -90,7 +90,7 @@ class BuildVitaTests(unittest.TestCase):
         (self.root / "seeds").mkdir()
         (self.root / "seeds/daytona93_hooks.txt").write_text("# a comment\n00017078 draw_list\n")
         for name in BUILD.REQUIRED:
-            path = self.root / "build/gen" / name.format(set="daytona93")
+            path = self.root / "build_daytona/recomp/daytona93/gen" / name.format(set="daytona93")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.touch()
         with patch.object(BUILD.subprocess, "run") as run:
@@ -122,38 +122,72 @@ class BuildVitaTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.call("--compile-check", "--gpu-fast", "--gpu-gl")
 
-    def test_custom_host_directory(self):
+    def test_custom_cross_directory(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--host-build-dir", "host build", "--build-dir", "cross build")
-        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/host build/gen", run.call_args_list[0].args[0])
+            self.call("--compile-check", "--build-dir", "cross build")
+        configure = run.call_args_list[0].args[0]
+        self.assertIn(f"{self.root}/cross build", map(str, configure))
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_daytona/recomp/daytona93/gen", configure)
 
-    def test_livearea_summary(self):
-        self.assertEqual(BUILD.livearea_summary(), "none (Vita defaults)")
-        folder = self.root / "platform/vita/logo_livearea"
+    def test_livearea_summary_is_per_game(self):
+        self.assertEqual(BUILD.livearea_summary("daytona"), "none (Vita defaults)")
+        folder = self.root / "platform/vita/logo_livearea/segarally"
         folder.mkdir(parents=True)
-        (folder / "README.md").touch()
+        (folder / ".gitkeep").touch()
         (folder / "bg.png").touch()
         (folder / "icon0.png").touch()
-        self.assertEqual(BUILD.livearea_summary(), "icon0.png, bg.png")
+        self.assertEqual(BUILD.livearea_summary("segarally"), "icon0.png, bg.png")
+        self.assertEqual(BUILD.livearea_summary("daytona"), "none (Vita defaults)")
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--game", "segarally")
+        self.assertIn(f"-DDAYTONA_VITA_LIVEAREA_DIR={folder}", run.call_args_list[0].args[0])
 
     def test_title_id_follows_the_game(self):
         with patch.object(BUILD.subprocess, "run") as run:
             self.call("--compile-check", "--gpu-gl")
         configure = run.call_args_list[0].args[0]
         self.assertIn("-DDAYTONA_VITA_TITLEID=DAYT00093", configure)  # always passed: never a stale cache
-        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build/gen", configure)
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_daytona/recomp/daytona93/gen", configure)
+        self.assertIn(f"{self.root}/build_daytona/vita", map(str, configure))
+        self.assertIn("-DDAYTONA_VITA_VPK=daytona.vpk", configure)
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--set", "srallyc")
+            self.call("--compile-check", "--gpu-gl", "--game", "segarally")
         configure = run.call_args_list[0].args[0]
         self.assertIn("-DDAYTONA_VITA_ROMSET=srallyc", configure)
-        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build-srallyc/gen", configure)
-        self.assertIn(f"{self.root}/build/vita-srallyc", map(str, configure))
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_segarally/recomp/srallyc/gen", configure)
+        self.assertIn(f"{self.root}/build_segarally/vita", map(str, configure))
+        self.assertIn("-DDAYTONA_VITA_VPK=segarally.vpk", configure)
         self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00094", configure)
         self.assertIn("-DDAYTONA_VITA_GAME_NAME=Sega Rally Championship", configure)
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--set", "srallyc")  # the set alone gives its game
+        self.assertIn("-DDAYTONA_VITA_VPK=segarally.vpk", run.call_args_list[0].args[0])
+
+    def test_diagnostics_package_has_its_own_folder_and_name(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--diagnostics")
+        configure = run.call_args_list[0].args[0]
+        self.assertIn(f"{self.root}/build_segarally/vita_diag", map(str, configure))
+        self.assertIn("-DDAYTONA_VITA_VPK=segarally_diag.vpk", configure)
+        self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL90094", configure)
+
+    def test_revision_a_uses_the_games_folder(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            self.call("--compile-check", "--gpu-gl", "--set", "daytona")
+        configure = run.call_args_list[0].args[0]
+        self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_daytona/recomp/daytona/gen", configure)
+        self.assertIn("-DDAYTONA_VITA_VPK=daytona.vpk", configure)
+
+    def test_set_must_be_the_games(self):
+        with patch.object(BUILD.subprocess, "run") as run:
+            with self.assertRaises(SystemExit):
+                self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--set", "daytona93")
+            run.assert_not_called()
+        self.assertIn("not a set of segarally", self.output.getvalue())
 
     def test_title_id_override_is_checked(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--title-id", "SRAL00001")
+            self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--title-id", "SRAL00001")
         self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00001", run.call_args_list[0].args[0])
         with self.assertRaises(SystemExit):
             self.call("--compile-check", "--title-id", "sral1")

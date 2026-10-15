@@ -12,12 +12,13 @@ Always:
   - fetches Berkeley SoftFloat 3e, SDL 3, ymfm, the LZMA SDK and Dear ImGui
     at their pinned commits into extern/ (all built from source with the
     project, statically);
-  - configures and builds the tools and tests, runs the tests;
+  - configures and builds the tools and tests (in the default game's
+    desktop build, build_daytona/pc/daytona93/), runs the tests;
   - for every ROM set of scripts/games.py found in roms/ (roms/<set>.zip or
     .7z, or another archive name games.py gives, such as srallycb.zip):
-    imports it, recompiles the game's code to native C++ and builds it, in
-    build/ for daytona93 and build-<set>/ for the others (git-ignored; each
-    build directory is recompiled from one ROM set).
+    imports it, recompiles the game's code to native C++ and builds it, all
+    in the game's folder build_<game>/ (git-ignored): build_<game>/recomp/<set>/
+    for the recompilation, build_<game>/pc/<set>/ for the desktop build.
 Options:
   --test-extras  pip packages and modules for the optional tests (lupa for the
                  Lua plugin tests, pypcode + the Ghidra i960 module for the
@@ -161,8 +162,11 @@ def cached(build, key):
 
 
 def configure_and_build(build, romset="daytona93"):
-    say("Configuring and building" + ("" if romset == "daytona93" else f" ({romset})"))
-    cmd = ["cmake", "-S", ".", "-B", build, "-DCMAKE_BUILD_TYPE=Release", "-DM2_ROMSET=" + romset]
+    say(f"Configuring and building ({romset}, in {os.path.relpath(build, ROOT)})")
+    gen_root = os.path.join(ROOT, catalogue().gen_root(romset))  # the set's recompiled code (scripts/games.py)
+    game = catalogue().game_of(romset)  # the desktop executable's name
+    cmd = ["cmake", "-S", ".", "-B", build, "-DCMAKE_BUILD_TYPE=Release", "-DM2_ROMSET=" + romset, "-DM2_GAME=" + game,
+           "-DM2_GEN_ROOT=" + gen_root]
     want = {}  # cache entries that must match, or the build directory is reconfigured
     if WINDOWS and not (shutil.which("cl") and shutil.which("ninja")):
         # Visual Studio generator: finds the compiler without a developer prompt.
@@ -202,7 +206,7 @@ def configure_and_build(build, romset="daytona93"):
     if not os.path.exists(os.path.join(build, "CMakeCache.txt")):
         run(cmd)
     else:
-        run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + romset])
+        run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + romset, "-DM2_GAME=" + game, "-DM2_GEN_ROOT=" + gen_root])
     sys.path.insert(0, os.path.join(ROOT, "scripts"))
     from build_jobs import build_jobs  # bounded: a bare --parallel is make -j
     run(["cmake", "--build", build, "--config", "Release", "--parallel", str(build_jobs())])
@@ -214,9 +218,10 @@ def main():
     ap.add_argument("--with-mame", action="store_true")
     ap.add_argument("--build-mame", action="store_true")
     ap.add_argument("--no-build", action="store_true")
-    ap.add_argument("--build-dir", default="build")
     args = ap.parse_args()
-    build = os.path.join(ROOT, args.build_dir)
+    games = catalogue()
+    tools_set = games.main_set(games.DEFAULT)  # the tools and tests: the default game's desktop build
+    build = os.path.join(ROOT, games.pc_dir(tools_set))
 
     check_toolchain()
     os.makedirs(EXTERN, exist_ok=True)
@@ -256,38 +261,37 @@ def main():
 
     if args.no_build:
         return
-    configure_and_build(build)
+    configure_and_build(build, tools_set)
 
-    games = []  # (set, executable)
+    built = []  # (label, executable)
     for romset, label in sets():
         if not any(os.path.exists(os.path.join(ROOT, "roms", n + "." + e))
-                   for n in catalogue().GAMES[romset]["roms"] for e in ("zip", "7z")):
+                   for n in games.SETS[romset]["roms"] for e in ("zip", "7z")):
             continue
-        set_dir = catalogue().build_dir(romset, args.build_dir)
-        set_build = os.path.join(ROOT, set_dir)
+        set_build = os.path.join(ROOT, games.pc_dir(romset))
         if set_build != build:
             configure_and_build(set_build, romset)
-        say(f"Recompiling {label} to native code (your ROM set, kept in {set_dir}/)")
-        r = run([sys.executable, os.path.join("scripts", "recompile.py"), "--set", romset, "--build-dir", set_dir],
-                check=False)
+        say(f"Recompiling {label} to native code (your ROM set, kept in {games.game_dir(games.game_of(romset))}/)")
+        r = run([sys.executable, os.path.join("scripts", "recompile.py"), "--set", romset], check=False)
         if r.returncode == 3:  # recompile.py ROM_REJECTED_EXIT
             sys.exit(ROM_REJECTED.format(set=romset))
         if r.returncode:
             sys.exit(BUILD_FAILED)
-        exe = next((p for p in (os.path.join(set_build, "daytona" + EXE), os.path.join(set_build, "Release", "daytona" + EXE))
+        name = games.game_of(romset) + EXE  # the desktop executable is named after the game
+        exe = next((p for p in (os.path.join(set_build, name), os.path.join(set_build, "Release", name))
                     if os.path.exists(p)), None)
         if exe:
-            games.append((label, exe))
-    if not games:
+            built.append((label, exe))
+    if not built:
         say("No ROM set: the tools are built, the game is not")
         print(no_rom_help())
 
     say("Running the tests")
     run(["ctest", "--test-dir", build, "-C", "Release", "--output-on-failure"], check=False)
     say("Done")
-    for label, exe in games:
+    for label, exe in built:
         print(f"\n{label} is built. Start it with:\n\n    " + os.path.relpath(exe, ROOT))
-    if games:
+    if built:
         print()
 
 
@@ -303,10 +307,10 @@ def catalogue():
 
 
 def sets():
-    """(set, label) for every known set, the default first."""
+    """(set, label) for every known set, game by game, the default game first."""
     games = catalogue()
     order = [games.DEFAULT] + [g for g in games.GAMES if g != games.DEFAULT]
-    return [(g, f"{games.GAMES[g]['title']} {games.GAMES[g]['label']} ({g})") for g in order]
+    return [(s, games.title(s)) for g in order for s in games.GAMES[g]["sets"]]
 
 
 BUILD_FAILED = """
@@ -335,7 +339,7 @@ See docs/getting-started.md, "Troubleshooting".
 
 def no_rom_help():
     roms = os.path.join(ROOT, "roms")
-    games = catalogue().GAMES
+    games = catalogue().SETS
     named = {n + ext for g in games.values() for n in g["roms"] for ext in (".zip", ".7z")}
     found = sorted(f for f in os.listdir(roms) if f.lower().endswith((".zip", ".7z")) and f not in named) \
         if os.path.isdir(roms) else []

@@ -24,7 +24,7 @@ else()
 endif()
 
 set(M2_ROMSET daytona CACHE STRING "ROM set the generated code is from (the port uses daytona, Revision A)")
-set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build-daytona/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
+set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build_daytona/recomp/daytona/gen" CACHE PATH "Host-generated i960, TGP and 68000 C++ root")
 set(DAYTONA_HOST_BUILD "" CACHE PATH "Desktop build directory to reuse the compiled runtime and game code from")
 foreach(path ${M2_ROMSET}/gen_table.cpp ${M2_ROMSET}_tgp/tgp_gen.cpp ${M2_ROMSET}_snd/snd_gen.cpp)
     if(NOT EXISTS "${DAYTONA_GEN_ROOT}/${path}")
@@ -200,7 +200,7 @@ if(HOST_FILES)
     # dcfastcheck: dcmemcheck on the Dreamcast's rewritten i960 code
     # (scripts/fast_gen.py's output in DC_FAST_GEN), compiled here with the
     # runtime's Dreamcast defines; the TGP and 68000 code from the host build.
-    set(DC_FAST_GEN "" CACHE PATH "fast_gen.py output for M2_ROMSET (build-daytona/dreamcast/gen_fast/daytona)")
+    set(DC_FAST_GEN "" CACHE PATH "fast_gen.py output for M2_ROMSET (build_daytona/dreamcast/gen_fast/daytona)")
     if(DC_FAST_GEN)
         file(GLOB FAST_SOURCES CONFIGURE_DEPENDS "${DC_FAST_GEN}/*.cpp")
         set(HOST_TGP_SND ${HOST_OBJECTS})

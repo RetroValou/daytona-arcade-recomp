@@ -5,7 +5,7 @@
 # log through the recompiled TGP program (m2tgpcheck); m2native also holds
 # the native geometrizer to MAME's display lists at every vblank; and MAME's
 # sound-CPU log through the recompiled sound 68000 (m2sndcheck).
-# Game-derived files stay in git-ignored traces/ and build/.
+# Game-derived files stay in git-ignored traces/ and build_<game>/.
 #
 #   scripts/m2_check.sh                 600 frames of attract, no input
 #   scripts/m2_check.sh SCENARIO        scripts/inputs/SCENARIO.txt (coin up,
@@ -16,29 +16,31 @@
 # once with M2TRACE_RECORD_INPUT). The trace is deleted after the check
 # unless M2_CHECK_KEEP is set.
 #
-# SET and BUILD pick another ROM set and its build directory (default
-# daytona93 and build/), e.g. SET=srallyc BUILD=build-srallyc; that set's
+# SET picks another ROM set (default daytona93), e.g. SET=srallyc; its desktop
+# build and images are the game's folder's (scripts/games.py: build_<game>/pc/<set>,
+# build_<game>/recomp/<set>/rom_cache; BUILD overrides the first). That set's
 # stream header is traces/hdr_SET.m2in (traces/hdr.m2in for daytona93). A
 # set with no sound program skips m2sndcheck.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME="${1:-attract}"
 SET="${SET:-daytona93}"
-BUILD="${BUILD:-build}"
-IMG="$BUILD/rom_cache/$SET"
+games_path() { python3 -c "import sys; sys.path.insert(0, 'scripts'); import games; print(games.$1('$SET'))"; }
+BUILD="${BUILD:-$(cd "$ROOT" && games_path pc_dir)}"
+IMG="$(cd "$ROOT" && games_path rom_cache)"
 cd "$ROOT"
 if [ "$SET" = daytona93 ]; then
     HDR=traces/hdr.m2in
     [ -f "$IMG/tgp_program.bin" ] || python3 scripts/m2import.py roms/daytona93.zip "$IMG"
 else
     HDR="traces/hdr_$SET.m2in"
-    [ -f "$IMG/tgp_program.bin" ] || { echo "no $IMG: run scripts/recompile.py --set $SET --build-dir $BUILD" >&2; exit 1; }
+    [ -f "$IMG/tgp_program.bin" ] || { echo "no $IMG: run scripts/recompile.py --set $SET" >&2; exit 1; }
     # MAME wants roms/SET.zip; when the set is in another archive
     # (scripts/games.py: srallycb.zip holds srallyc), link it under that
     # name in traces/roms and point MAME there.
     if [ ! -f "roms/$SET.zip" ]; then
         A="$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games, os
-print(next(f'roms/{n}.zip' for n in games.GAMES['$SET']['roms'] if os.path.exists(f'roms/{n}.zip')))")"
+print(next(f'roms/{n}.zip' for n in games.SETS['$SET']['roms'] if os.path.exists(f'roms/{n}.zip')))")"
         mkdir -p traces/roms
         ln -sf "$ROOT/$A" "traces/roms/$SET.zip"
         export ROMPATH="$ROOT/traces/roms;$ROOT/roms"
