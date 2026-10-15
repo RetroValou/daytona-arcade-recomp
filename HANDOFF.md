@@ -46,6 +46,16 @@ the sound core: the 68000 (VF2's driver costs twice Sega Rally's on the PC)
 and the slots. Sega Rally rebuilt through the new chain (dsp_program.bin
 empty, dsp_gen.cpp registers nothing): race_basic parity 13/13, VPK built.
 
+VF2 --fast-inaccuracy (games.py vita_fast): recompile.py --fast_inaccuracy
+on the PC, vf2_fight 6,000 frames: the frames differ from the exact code's
+from frame 1000 (the interrupts a few instructions late move the game's
+timing: the same scenes, other animation phases; Sega Rally's stayed
+identical) and the run stopped at 0x355e0, an entry point the exact code
+does not reach there: seeded (seeds/vf2.txt 2,291). Then vf2_fight and
+8,000 frames of attract run through; the fight plays (Akira against Lau,
+round 1 at 4000), sound RMS -21.8 against -21.7 dBFS exact. Vita VPK built
+with --fast-inaccuracy; not yet run there.
+
 ## Vita vitaGL: textures kept from rewritten texture RAM (2026-10-15)
 
 Reported on the Vita (vitaGL), Virtua Fighter 2: once a game starts, every

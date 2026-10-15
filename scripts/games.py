@@ -101,11 +101,13 @@ SETS = {
     },
     # Model 2A-CRX like srallyc, but its program runs from ROM (no alias). One
     # player: the joystick and Punch/Kick/Guard on MAME's IN1 (src/games/vf2.cpp
-    # maps them from the common controls); vita_fast empty until checked.
+    # maps them from the common controls). --fast-inaccuracy checked on the PC:
+    # vf2_fight and 8,000 frames of attract run through (one more seed), the same
+    # scenes and sound level as the exact code, not the same frames (timing).
     "vf2": {
         "game": "virtuafighter2", "label": "Version 2.1",
         "roms": ["vf2"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": (), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04)},
         "full_range": False,
     },

@@ -47,8 +47,7 @@ The home-screen icon and LiveArea images are the game's own, from
 `platform/vita/logo_livearea/<game>/` (see the README there).
 
 Notes:
-* `--fast-inaccuracy` is checked on Daytona and Sega Rally (not yet on Virtua Fighter 2:
-  build it without, the host's exact code); `--fast-gen` only on Daytona.
+* `--fast-inaccuracy` is checked on every game; `--fast-gen` only on Daytona.
 * Virtua Fighter 2 is played by one player: D-pad or left stick to move, Cross / Circle /
   Square for Punch / Kick / Guard (rebindable on the Controls page).
 * Sega Rally's sound is the SCSP sound board (recompiled 68000 and MAME's SCSP),
