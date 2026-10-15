@@ -150,7 +150,7 @@ vita::Pad read_pad() {
     SceCtrlData native{};
     vita::Pad pad;
     if (sceCtrlPeekBufferPositive(0, &native, 1) <= 0) return pad;
-    pad.lx = native.lx; pad.ry = native.ry;
+    pad.lx = native.lx; pad.ry = native.ry; pad.ly = native.ly;
     const struct { uint32_t native, portable; } map[] = {
         {SCE_CTRL_CROSS, vita::Cross}, {SCE_CTRL_CIRCLE, vita::Circle},
         {SCE_CTRL_SQUARE, vita::Square}, {SCE_CTRL_TRIANGLE, vita::Triangle},
@@ -381,8 +381,19 @@ int cycle_value(int value, const int *choices, int count, int direction) {
 
 uint32_t ui_buttons = 0;
 rt::TestHold test_hold;
-// Rows of the Controls page: the actions, then reset and back.
-constexpr int kBindRows = vita::ActionCount + 2;
+// The game's control scheme (rt::Game::controls): a fighting game's joystick and
+// buttons, else the driving cabinet's.
+bool fighting() { return rt::game().controls == rt::ControlScheme::Fighting; }
+// Rows of the Controls page: the actions the game uses, then reset (-1) and back (-2).
+constexpr int kMaxBindRows = vita::ActionCount + 2;
+int bind_rows(int (&rows)[kMaxBindRows]) {
+    int n = 0;
+    for (int a = 0; a < vita::ActionCount; ++a)
+        if (vita::action_used(a, fighting())) rows[n++] = a;
+    rows[n++] = -1;
+    rows[n++] = -2;
+    return n;
+}
 
 // The Options page's rows, in display order.
 enum Option {
@@ -447,18 +458,21 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
                                      binds != previous_binds;
     if (ImGui::BeginChild("settings", {0, -100}, ImGuiChildFlags_None)) {
         if (binds) {
-            char rows[vita::ActionCount][64];
-            for (int i = 0; i < kBindRows; ++i) {
-                const char *label = i == vita::ActionCount ? "RESET CONTROLS TO DEFAULTS" : "BACK";
-                if (i < vita::ActionCount) {
-                    std::snprintf(rows[i], sizeof rows[i], "%s: %s", vita::action_name(i),
-                                  capture == i ? "PRESS A BUTTON..." : vita::button_name(settings.bindings.button[i]));
+            char rows[kMaxBindRows][64];
+            int actions[kMaxBindRows];
+            const int bound = bind_rows(actions);
+            for (int i = 0; i < bound; ++i) {
+                const int a = actions[i];
+                const char *label = a == -1 ? "RESET CONTROLS TO DEFAULTS" : "BACK";
+                if (a >= 0) {
+                    std::snprintf(rows[i], sizeof rows[i], "%s: %s", vita::action_name(a, fighting()),
+                                  capture == a ? "PRESS A BUTTON..." : vita::button_name(settings.bindings.button[a]));
                     label = rows[i];
                 }
                 ImGui::PushID(i);
                 if (ImGui::Selectable(label, selection == i, 0, {760, 32})) { selection = i; ui_buttons = vita::Cross; }
                 if (selection == i && scroll_to_selection) ImGui::SetScrollHereY();
-                if (i < vita::ActionCount) {
+                if (a >= 0) {
                     ImGui::SameLine();
                     if (ImGui::SmallButton("<")) { selection = i; ui_buttons = vita::Left; }
                     ImGui::SameLine();
@@ -755,6 +769,7 @@ int main(int, char **) {
         controls.set_steer_invert(settings.steer_invert);
         controls.set_steer_curve(settings.steer_curve);
         controls.set_bindings(settings.bindings);
+        controls.set_fighting(fighting());
         rt::GameLoop::set_draw_distance(settings.draw_distance);
         if (game) {
             static constexpr double aspects[] = {0, 16.0/10, 16.0/9, 21.0/9};
@@ -913,8 +928,12 @@ int main(int, char **) {
             apply_geometry();
             controls = vita::Controls{};
             apply_preferences();
-            status = std::string("START+SELECT MENU. ") + vita::button_name(settings.bindings.button[vita::ShiftUp]) +
-                "/" + vita::button_name(settings.bindings.button[vita::ShiftDown]) + " SHIFT UP/DOWN.";
+            const auto &bound = settings.bindings.button;
+            status = fighting()
+                ? std::string("START+SELECT MENU. PUNCH ") + vita::button_name(bound[vita::View1]) + ", KICK " +
+                      vita::button_name(bound[vita::View2]) + ", GUARD " + vita::button_name(bound[vita::View3]) + "."
+                : std::string("START+SELECT MENU. ") + vita::button_name(bound[vita::ShiftUp]) + "/" +
+                      vita::button_name(bound[vita::ShiftDown]) + " SHIFT UP/DOWN.";
             wait_release = true;
             return true;
         } catch (const std::exception &e) {
@@ -957,27 +976,31 @@ int main(int, char **) {
                     const uint32_t button = pad_pressed & (~pad_pressed + 1);
                     settings.bindings.bind(capture, button);
                     commit_settings(false);
-                    status = std::string(vita::action_name(capture)) + ": " + vita::button_name(button) +
+                    status = std::string(vita::action_name(capture, fighting())) + ": " + vita::button_name(button) +
                         ". START+SELECT MENU AND SELECT+TRIANGLE/SQUARE TEST/SERVICE STAY FIXED.";
                     capture = -1; wait_release = true;
                 }
             } else if (binds) {
-                if (pressed & vita::Up) selection = (selection + kBindRows - 1) % kBindRows;
-                if (pressed & vita::Down) selection = (selection + 1) % kBindRows;
+                int actions[kMaxBindRows];
+                const int bound = bind_rows(actions);
+                selection = std::clamp(selection, 0, bound - 1);
+                if (pressed & vita::Up) selection = (selection + bound - 1) % bound;
+                if (pressed & vita::Down) selection = (selection + 1) % bound;
+                const int action = actions[selection];
                 const int direction = (pressed & vita::Left) ? -1 : ((pressed & vita::Right) ? 1 : 0);
                 if (pressed & vita::Circle) { binds = false; selection = 3; wait_release = true; }
-                else if (selection < vita::ActionCount && (pressed & vita::Cross)) {
-                    capture = selection; wait_release = true;
-                    status = std::string("PRESS THE NEW BUTTON FOR ") + vita::action_name(selection) +
+                else if (action >= 0 && (pressed & vita::Cross)) {
+                    capture = action; wait_release = true;
+                    status = std::string("PRESS THE NEW BUTTON FOR ") + vita::action_name(action, fighting()) +
                         " (ITS CURRENT BUTTON KEEPS IT).";
-                } else if (selection < vita::ActionCount && direction) {
-                    settings.bindings.cycle(selection, direction);
+                } else if (action >= 0 && direction) {
+                    settings.bindings.cycle(action, direction);
                     commit_settings(false);
-                } else if (selection == vita::ActionCount && (pressed & vita::Cross)) {
+                } else if (action == -1 && (pressed & vita::Cross)) {
                     settings.bindings = vita::Bindings{};
                     commit_settings(false);
                     status = "CONTROLS RESET TO DEFAULTS. " + status;
-                } else if (selection == vita::ActionCount + 1 && (pressed & vita::Cross)) {
+                } else if (action == -2 && (pressed & vita::Cross)) {
                     binds = false; selection = 3; wait_release = true;
                 }
             } else if (options) {

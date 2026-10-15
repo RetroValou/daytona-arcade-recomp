@@ -12,8 +12,8 @@ The aim is to play Sega Model 2 games on the PS Vita in decent conditions. It
 is not to reproduce the hardware 100% exactly, nor to turn the game code into
 readable source.
 
-Games so far: Daytona USA (daytona93, daytona) and Sega Rally Championship
-(srallyc). What is specific to a game (its ROMs, addresses,
+Games so far: Daytona USA (daytona93, daytona), Sega Rally Championship
+(srallyc) and Virtua Fighter 2 (vf2, Version 2.1, one player). What is specific to a game (its ROMs, addresses,
 input wiring, hooks) lives in `src/games/` and `scripts/games.py`; the rest
 is the Model 2 board, shared by every game. To add one, see
 [docs/adding-a-game.md](docs/adding-a-game.md).

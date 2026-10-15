@@ -128,6 +128,25 @@ int main() {
         CHECK(!std::strcmp(vita::button_name(vita::Select), "SELECT"));
         CHECK(!std::strcmp(vita::button_name(0), "NONE"));
     }
+    { // fighting games (vf2): the same bindings as a joystick and three buttons
+        vita::Controls f;
+        f.set_fighting(true);
+        auto i = f.sample({});
+        CHECK(i.steer == 0x80 && i.accel == 0x20 && i.brake == 0x20 && i.in0 == 0xff);
+        CHECK(f.sample({vita::Left}).steer == 0x20 && f.sample({vita::Right}).steer == 0xe0);
+        CHECK(f.sample({vita::Up}).accel == 0xe0 && f.sample({vita::Down}).brake == 0xe0);
+        CHECK(f.sample({vita::Up | vita::Down}).accel == 0x20); // opposite directions cancel
+        CHECK(f.gear() == 1);                                     // up/down do not shift
+        CHECK(f.sample({0, 0, 128, 128}).steer == 0x20);          // left stick
+        CHECK(f.sample({0, 128, 128, 0}).accel == 0xe0);          // left stick up
+        CHECK(f.sample({0, 128, 0, 128}).accel == 0x20);          // not the right stick
+        i = f.sample({vita::Cross | vita::Circle | vita::Square});
+        CHECK((i.in0 & 0xe0) == 0);                               // punch, kick, guard
+        f.sample({vita::Select}); CHECK((f.sample({}).in0 & 0x01) == 0); // coin on release
+        CHECK((f.sample({vita::Start}).in0 & 0x10) == 0);
+        CHECK(!std::strcmp(vita::action_name(vita::View1, true), "PUNCH"));
+        CHECK(!vita::action_used(vita::Accelerate, true) && vita::action_used(vita::Accelerate, false));
+    }
     vita::FrameClock clock(16000000.0 / (656.0 * 424.0));
     int frames = 0;
     for (int i = 0; i < 6000; ++i) frames += clock.advance(1.0 / 60.0);

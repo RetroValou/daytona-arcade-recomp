@@ -1,7 +1,8 @@
 # PS Vita icon and LiveArea images
 
 Each game has its own folder here, named after it in `scripts/games.py`:
-`daytona/` (Daytona USA) and `segarally/` (Sega Rally Championship). Put your
+`daytona/` (Daytona USA), `segarally/` (Sega Rally Championship) and
+`virtuafighter2/` (Virtua Fighter 2). Put your
 own images in the game's folder before running `scripts/build_vita.py --game
 <game>`. Every file below that is present goes into that game's VPK; a missing
 one keeps the Vita's default (no file at all: the default icon and LiveArea).

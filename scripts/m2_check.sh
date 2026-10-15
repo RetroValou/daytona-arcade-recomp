@@ -62,6 +62,8 @@ STATUS=0
 [ -x "$BUILD/m2native" ] && { "./$BUILD/m2native" "$IMG" "$OUT/trace.m2tr" "$OUT.irq" "$OUT.geo" || STATUS=1; }
 [ -n "${M2_CHECK_REPLAY:-}" ] || [ "$NAME" = attract ] && { "./$BUILD/m2replay" "$IMG" "$OUT/trace.m2tr" "$OUT.irq" || STATUS=1; }
 [ -x "$BUILD/m2tgpcheck" ] && { "./$BUILD/m2tgpcheck" "$IMG" "$OUT.tgp" || STATUS=1; }
-[ -x "$BUILD/m2sndcheck" ] && [ -s "$IMG/sound_program.bin" ] && { "./$BUILD/m2sndcheck" "$IMG/sound_program.bin" "$OUT.snd" || STATUS=1; }
+# The SCSP sound board (scripts/games.py: m2sndrecomp --scsp) needs its map and samples.
+SCSP="$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games; print('1' if '--scsp' in games.SETS['$SET']['sndrecomp'] else '')")"
+[ -x "$BUILD/m2sndcheck" ] && [ -s "$IMG/sound_program.bin" ] && { "./$BUILD/m2sndcheck" "$IMG/sound_program.bin" "$OUT.snd" ${SCSP:+--scsp "$IMG/samples.bin"} || STATUS=1; }
 [ -n "${M2_CHECK_KEEP:-}" ] || rm -f "$OUT/trace.m2tr" "$OUT.tgp" "$OUT.geo" "$OUT.snd"
 exit $STATUS

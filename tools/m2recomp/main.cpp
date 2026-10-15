@@ -448,6 +448,11 @@ struct Emitter {
                                "; const uint64_t res = uint64_t(t2) + uint64_t(t1) + ((AC >> 1) & 1); " + d +
                                " = uint32_t(res & 0xffffffff); AC &= ~0x3u; AC |= (res & (uint64_t(1) << 32)) ? 0x2u : 0u; "
                                "AC |= ((res ^ t1) & (res ^ t2) & 0x80000000) ? 1u : 0u; }"; break;
+            // subc (MAME's): src2 + ~src1 + carry in 33 bits; cc = 0CV.
+            case 0x5b2: body = "{ const uint32_t t1 = " + s1(in) + ", t2 = " + s2(in) +
+                               "; const uint64_t res = uint64_t(t2) + uint64_t(~t1) + ((AC >> 1) & 1); " + d +
+                               " = uint32_t(res & 0xffffffff); AC &= ~0x7u; AC |= (res & (uint64_t(1) << 32)) ? 0x2u : 0u; "
+                               "AC |= ((t2 ^ t1) & (t2 ^ res) & 0x80000000) ? 1u : 0u; }"; break;
             case 0x5cc: set(s1(in)); break;                                // mov
             case 0x5dc: case 0x5ec: case 0x5fc: {                          // movl/movt/movq
                 const int n = code == 0x5dc ? 2 : code == 0x5ec ? 3 : 4;
@@ -468,6 +473,16 @@ struct Emitter {
                                "; c.send_iac(t2); } else { for (uint32_t k = 0; k < 16; k += 4) c.bus->write_dword(t1 + k, c.bus->read_dword(t2 + k)); } "
                                "AC = (AC & ~7u) | 2u; }";
                         exit = "if (c.m_IP != " + hex(next) + " && c.m_IP != " + hex(pc) + ") goto dispatch;"; break; // synmovq (an IAC can reinit)
+            // spanbit, scanbit (MAME's): the highest clear / set bit of src1, or 0xffffffff
+            // when there is none; condition 2 when found, else 0.
+            case 0x640: body = "{ const uint32_t t1 = " + s1(in) + "; AC &= ~7u; uint32_t res = 0xffffffffu; "
+                               "if (~t1) { res = 31u - uint32_t(std::countl_zero(~t1)); AC |= 2u; } " + d + " = res; }"; break; // spanbit
+            case 0x641: body = "{ const uint32_t t1 = " + s1(in) + "; AC &= ~7u; uint32_t res = 0xffffffffu; "
+                               "if (t1) { res = 31u - uint32_t(std::countl_zero(t1)); AC |= 2u; } " + d + " = res; }"; break; // scanbit
+            // dmovt (MAME's): the move, and cc 010 unless the low byte is an ASCII digit;
+            // MAME's AC &= 0xfff8 also clears AC's upper half.
+            case 0x644: body = "{ const uint32_t t1 = " + s1(in) + "; " + d + " = t1; AC &= 0xfff8u; "
+                               "if ((t1 & 0xff) < 0x30 || (t1 & 0xff) > 0x39) AC |= 2u; }"; break; // dmovt
             case 0x645: body = "{ const uint32_t t1 = " + s1(in) + ", t2 = " + s2(in) + "; " + d + " = AC; AC = (AC & ~t1) | (t2 & t1); }"; break; // modac
             case 0x655: body = "{ const uint32_t t1 = c.m_PC, t2 = " + s2(in) + "; c.m_PC = (c.m_PC & ~t2) | (" + d + " & t2); " + d +
                                " = t1; c.m_IP = " + hex(next) + "; if ((t1 >> 16 & 0x1f) > (c.m_PC >> 16 & 0x1f)) c.check_pending_irqs(); }";

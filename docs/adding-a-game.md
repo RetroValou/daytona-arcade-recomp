@@ -3,8 +3,14 @@
 The runtime is the Model 2 board. A game is described in a few places, and
 the board code is not touched (design doc, Architecture, "Games"). The
 existing games are the examples to follow: `src/games/daytona.cpp`
-(original Model 2, Model 1 sound board, two sets) and `src/games/srallyc.cpp`
-(Model 2A-CRX, program copied to RAM, SCSP sound board).
+(original Model 2, Model 1 sound board, two sets), `src/games/srallyc.cpp`
+(Model 2A-CRX, program copied to RAM, SCSP sound board) and `src/games/vf2.cpp`
+(Model 2A-CRX, program in ROM, one player's joystick: `ControlScheme::Fighting`).
+VF2's bring-up (HANDOFF.md, 15 Oct 2026) is a worked example of every step below:
+seeds from MAME's harvest (`run_trace.sh`'s branches.txt, `M2TRACE_SNDPCS` for the
+sound 68000's jump tables), new instruction templates from MAME's executor, the
+wait-for-vblank loop from `recompile.py --i960-profile`'s hottest block, then
+`m2_check.sh` against MAME.
 
 Below, `<set>` is the game's MAME set name, such as `srallyc`, and `<game>`
 the game's short name in the scripts, such as `segarally`: everything the

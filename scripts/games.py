@@ -66,6 +66,10 @@ GAMES = {
         "title": "Sega Rally Championship", "sets": ("srallyc",),
         "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship",
     },
+    "virtuafighter2": {
+        "title": "Virtua Fighter 2", "sets": ("vf2",),
+        "vita_title_id": "VFTR00095", "vita_name": "Virtua Fighter 2",
+    },
 }
 
 # The game the scripts build when none is given.
@@ -94,6 +98,16 @@ SETS = {
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN0", 0x20), "vr2": (":IN0", 0x20),
                    "vr3": (":IN0", 0x20), "vr4": (":IN0", 0x20), "handbrake": (":IN2", 0xFF)},
         "full_range": True,
+    },
+    # Model 2A-CRX like srallyc, but its program runs from ROM (no alias). One
+    # player: the joystick and Punch/Kick/Guard on MAME's IN1 (src/games/vf2.cpp
+    # maps them from the common controls); vita_fast empty until checked.
+    "vf2": {
+        "game": "virtuafighter2", "label": "Version 2.1",
+        "roms": ["vf2"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
+        "vita_fast": (), "companion": None,
+        "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04)},
+        "full_range": False,
     },
 }
 

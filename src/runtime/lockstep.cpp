@@ -62,7 +62,8 @@ uint32_t Lockstep::check(uint32_t ip) {
 bool Lockstep::apply() {
     if (count >= end_count) return true;
     const uint32_t ip_before = core_.m_IP;
-    while (next_ < log_.size() && log_[next_].count == count && log_[next_].kind != Event::Pend) {
+    while (next_ < log_.size() && (log_[next_].count == count || (deferred_ && log_[next_].count + 1 == count)) &&
+           log_[next_].kind != Event::Pend) {
         const Event &e = log_[next_];
         if (e.kind == Event::Call) {
             const size_t fn = e.fn; // the callback may add events (e moves)
@@ -82,6 +83,18 @@ bool Lockstep::apply() {
             call();
 #endif
         } else if (e.kind == Event::Line) {
+            // MAME holds immediate interrupts while a multi-word load or store
+            // waits on an empty or full FIFO (burst stall, i960.cpp execute_run)
+            // and takes them when it completes: the IP past it, before it is
+            // counted. Ours never stalls (the TGP runs on demand), so it would
+            // take the line one instruction early: when MAME's take of it, at
+            // this count, is at another IP, the line waits for the instruction
+            // (found in vf2: ldq from the TGP's output FIFO, 0x7dc4).
+            if (!deferred_ && e.b && next_ + 1 < log_.size() && log_[next_ + 1].kind == Event::Imm &&
+                log_[next_ + 1].count == count && log_[next_ + 1].ip != core_.m_IP) {
+                deferred_ = true;
+                break;
+            }
             ++next_;
             core_.execute_set_input(e.a, e.b);
         } else if (e.kind == Event::Imm) {
@@ -154,7 +167,8 @@ void Lockstep::on_take(void *ctx, int vector, uint32_t ip, bool pending) {
     }
     const auto &log = t.log_;
     const size_t n = t.next_;
-    if (n >= log.size() || log[n].count != t.count || log[n].a != vector || log[n].ip != ip ||
+    if (n >= log.size() || !(log[n].count == t.count || (t.deferred_ && log[n].count + 1 == t.count)) ||
+        log[n].a != vector || log[n].ip != ip ||
         (log[n].kind == Event::Pend) != pending || (log[n].kind == Event::Imm) != !pending) {
         char buf[256];
         std::snprintf(buf, sizeof buf,
@@ -166,6 +180,7 @@ void Lockstep::on_take(void *ctx, int vector, uint32_t ip, bool pending) {
     }
     ++t.next_;
     ++t.taken_;
+    t.deferred_ = false;
     t.refresh_next();
 }
 

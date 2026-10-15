@@ -27,6 +27,7 @@ python3 scripts/build_vita.py --game GAME --gpu-gl --fast-inaccuracy --release
 | --- | --- | --- | --- | --- |
 | Daytona USA | `daytona` | `build_daytona/vita/daytona.vpk` | DAYT00093 | `ux0:data/daytona93/daytona93.zip` |
 | Sega Rally Championship | `segarally` | `build_segarally/vita/segarally.vpk` | SRAL00094 | `ux0:data/srallyc/srallyc.zip` |
+| Virtua Fighter 2 | `virtuafighter2` | `build_virtuafighter2/vita/virtuafighter2.vpk` | VFTR00095 | `ux0:data/vf2/vf2.zip` |
 
 Install the VPK with VitaShell and copy the ROM set to the place above. The games
 are separate apps: they install side by side.
@@ -46,7 +47,10 @@ The home-screen icon and LiveArea images are the game's own, from
 `platform/vita/logo_livearea/<game>/` (see the README there).
 
 Notes:
-* `--fast-inaccuracy` is checked on both games; `--fast-gen` only on Daytona.
+* `--fast-inaccuracy` is checked on Daytona and Sega Rally (not yet on Virtua Fighter 2:
+  build it without, the host's exact code); `--fast-gen` only on Daytona.
+* Virtua Fighter 2 is played by one player: D-pad or left stick to move, Cross / Circle /
+  Square for Punch / Kick / Guard (rebindable on the Controls page).
 * Sega Rally's sound is the SCSP sound board (recompiled 68000 and MAME's SCSP),
   reference audio only; the native audio engine is Daytona's.
 * For test builds on the console, leave out `--release` (link-time optimization makes

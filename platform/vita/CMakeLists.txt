@@ -150,7 +150,7 @@ set(RUNTIME_SOURCES)
 foreach(name IN LISTS RUNTIME_FILES)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
 endforeach()
-foreach(name games daytona srallyc) # every game's record and hooks (src/games/)
+foreach(name games daytona srallyc vf2) # every game's record and hooks (src/games/)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/games/${name}.cpp")
 endforeach()
 # Vita replacement of the geometrizer (platform/vita/src/runtime/geo.h/.cpp).

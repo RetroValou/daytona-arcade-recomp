@@ -10,7 +10,7 @@ enum Button : uint32_t {
     Up = 1u << 4, Down = 1u << 5, Left = 1u << 6, Right = 1u << 7,
     L = 1u << 8, R = 1u << 9, Start = 1u << 10, Select = 1u << 11
 };
-struct Pad { uint32_t buttons = 0; uint8_t lx = 128, ry = 128; };
+struct Pad { uint32_t buttons = 0; uint8_t lx = 128, ry = 128, ly = 128; }; // ly: the fighting games' up/down
 struct Input {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20;
     uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;
@@ -34,10 +34,18 @@ enum Action : int {
     StartButton, Coin, View1, View2, View3, View4, ActionCount
 };
 inline constexpr uint32_t kButtonMask = 0xfffu;
-inline const char *action_name(int action) {
+// Fighting games (rt::ControlScheme::Fighting, one player) use the same bindings:
+// the steering and shift buttons are the four directions (with the left stick),
+// view buttons 1-3 Punch, Kick and Guard; Accelerate, Brake and View 4 are unused.
+inline const char *action_name(int action, bool fighting = false) {
     static const char *names[ActionCount] = {"ACCELERATE", "BRAKE", "STEER LEFT", "STEER RIGHT",
         "SHIFT UP", "SHIFT DOWN", "START", "COIN", "VIEW 1", "VIEW 2", "VIEW 3", "VIEW 4"};
-    return action >= 0 && action < ActionCount ? names[action] : "?";
+    static const char *fight[ActionCount] = {"-", "-", "LEFT", "RIGHT", "UP", "DOWN", "START", "COIN",
+        "PUNCH", "KICK", "GUARD", "-"};
+    return action >= 0 && action < ActionCount ? (fighting ? fight : names)[action] : "?";
+}
+inline bool action_used(int action, bool fighting) {
+    return !fighting || (action != Accelerate && action != Brake && action != View4);
 }
 inline bool single_button(uint32_t button) {
     return button && !(button & ~kButtonMask) && !(button & (button - 1));
@@ -102,6 +110,7 @@ public:
                 return in;
             }
         }
+        if (fighting_) return sample_fighting(pad, previous, in);
         float steer = axis(pad.lx, deadzone_);
         if (steer_curve_ == 1) steer *= std::abs(steer);
         else if (steer_curve_ == 2) steer = steer * steer * steer;
@@ -128,6 +137,10 @@ public:
         return in;
     }
     void latch(uint32_t buttons) { held_ = buttons; if (buttons & bindings_.button[Coin]) coin_used_ = true; }
+    // The game's control scheme: the fighting games' joystick and buttons (see
+    // action_name), else the driving cabinet's.
+    void set_fighting(bool value) { fighting_ = value; }
+    bool fighting() const { return fighting_; }
     int gear() const { return gear_; }
     void set_deadzone(float value) { deadzone_ = std::clamp(value, 0.0f, 0.4f); }
     void set_steer_curve(int value) { steer_curve_ = std::clamp(value, 0, 2); }
@@ -135,6 +148,25 @@ public:
     void set_bindings(const Bindings &value) { bindings_ = value; bindings_.sanitize(); }
     const Bindings &bindings() const { return bindings_; }
 private:
+    // One player's joystick and buttons, in the form every game's wiring reads
+    // (src/games/vf2.cpp): left/right as the wheel at its ends, up and down as
+    // the accelerator and brake fully pressed, Punch/Kick/Guard as view buttons
+    // 1-3 (IN0 0x20/0x40/0x80); coin and start as for driving.
+    Input sample_fighting(const Pad &pad, uint32_t previous, Input in) {
+        const auto &b = bindings_.button;
+        const float x = axis(pad.lx, deadzone_), y = axis(pad.ly, deadzone_);
+        const bool left = (pad.buttons & b[SteerLeft]) || x < -0.5f, right = (pad.buttons & b[SteerRight]) || x > 0.5f;
+        const bool up = (pad.buttons & b[ShiftUp]) || y < -0.5f, down = (pad.buttons & b[ShiftDown]) || y > 0.5f;
+        in.steer = left == right ? 0x80 : left ? 0x20 : 0xe0;
+        in.accel = up && !down ? 0xe0 : 0x20;
+        in.brake = down && !up ? 0xe0 : 0x20;
+        if ((previous & b[Coin]) && !(pad.buttons & b[Coin]) && !coin_used_) in.in0 &= uint8_t(~0x01);
+        if (pad.buttons & b[StartButton]) in.in0 &= uint8_t(~0x10);
+        if (pad.buttons & b[View1]) in.in0 &= uint8_t(~0x20);
+        if (pad.buttons & b[View2]) in.in0 &= uint8_t(~0x40);
+        if (pad.buttons & b[View3]) in.in0 &= uint8_t(~0x80);
+        return in;
+    }
     void set_gear(Input &in) const {
         // Same gearbox encoding as src/app/controls.cpp.
         constexpr uint8_t codes[] = {0, 2, 1, 6, 5};
@@ -144,7 +176,7 @@ private:
     uint32_t held_ = 0;
     int gear_ = 1, steer_curve_ = 0;
     float deadzone_ = 0.12f;
-    bool steer_invert_ = false, coin_used_ = false;
+    bool steer_invert_ = false, coin_used_ = false, fighting_ = false;
 };
 
 // Host time only; each simulation step still advances at GameLoop::kFrameHz.

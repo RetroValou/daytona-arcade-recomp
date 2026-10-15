@@ -1,5 +1,83 @@
 # Handoff
 
+## Virtua Fighter 2 (vf2, Version 2.1; Model 2A-CRX), one player (2026-10-15)
+
+New game `virtuafighter2` (scripts/games.py; build_virtuafighter2/, Vita
+virtuafighter2.vpk, title ID VFTR00095, images platform/vita/logo_livearea/
+virtuafighter2/): src/games/vf2.cpp, seeds/vf2.txt (2,290), seeds/vf2_snd.txt
+(144), scripts/inputs/vf2_attract.txt and vf2_fight.txt. MAME runs it on its
+`model2a` machine, which is Sega Rally's board without the drive board and
+analog inputs: no runtime change was needed for the board. Differences are
+the game's: program 512 KB in ROM, run from ROM (no --alias, only
+--no-mirror); no copro data ROM; textures with a gap (0x400000-0x7fffff,
+0xff in MAME, 0 here; not read); the TGP program in the program ROM at
+0x3e90, 3,802 words, CRC 0xFD8D0383 (equal to MAME's copro_tgp_program after
+boot, dumped with a Lua -autoboot_script); port E drives a billboard (its
+bytes go to the drive board queue, unused).
+
+State, all against MAME (scripts/m2_check.sh, SET=vf2):
+- attract 600 frames: m2native and m2replay MATCH (71.3 M instructions).
+- vf2_attract 1,800 frames: m2native MATCH, 213.1 M i960 instructions, 3,680
+  interrupts; TGP 55.7 M, 750,192 output words; 696,630 polygons; 3D layer
+  809/809 and screen 1,796/1,796 frames identical; sound 22.5 M 68000
+  instructions, 33,055 register checkpoints MATCH.
+- vf2_fight 6,000 frames (2 coins, start, punch/kick: Akira against Lau):
+  m2native MATCH, 626.0 M i960 instructions, 12,222 interrupts; TGP 332.8 M,
+  4.79 M output words; 7.07 M polygons; 3D 4,951/4,951, screen 5,996/5,996;
+  m2sndcheck MATCH, 72.9 M instructions, 116,860 checkpoints, 99,100
+  interrupts. Only the measured buffer RAM reads differ (the TGP's mailbox
+  timing, as Daytona's).
+- m2run, 8,000 frames: 434.7 M i960 instructions with the idle loop (1,212.4
+  M without: every frame to the cap), 206 frames/s on this PC.
+
+What it took:
+- i960 templates from MAME's executor (tools/m2recomp): spanbit/scanbit
+  (0x640/0x641), subc (0x5b2, 64-bit math routines at 0x6cbe8-0x6da18),
+  dmovt (0x644; MAME's AC &= 0xfff8 also clears AC's upper half).
+- TGP: one word MAME marks unimplemented (0x1b4: 3c0f0000, opcode 0f
+  subop 7): MAME runs only its ALU part, as clr1/set; m2tgprecomp now does
+  too for subops 4-7 instead of failing.
+- Seeds: MAME's harvest (branches.txt targets) of attract runs of 1,800,
+  3,600 and 8,000 frames and an 8,000-frame fight, plus seed_scan.py: 54,252
+  instructions. Sound: two "jmp (d16,pc)" tables (0x6013de, 128 entries;
+  0x601fbc, 16), found from M2TRACE_SNDPCS (needs M2TRACE_SNDLOG set too,
+  /dev/null will do): 2,312 instructions, every address MAME's 68000 ran.
+- Idle loop 0x10f98-0x10fa3 (ldob 0x500000 / cmpibe, as Daytona's 0x1394),
+  found as the hottest block of recompile.py --i960-profile (62 %).
+- Lockstep: MAME holds immediate interrupts while a multi-word load waits
+  on the TGP's empty output FIFO (burst stall) and takes them when it
+  completes, IP past it, before counting it; ours never stalls. Seen at
+  0x7dc4 (ldq from 0x00884000), 127 M instructions in. Lockstep::apply now
+  lets such a line wait one instruction when MAME's take is at another IP,
+  and on_take accepts the count one higher (deferred_). Test harness only;
+  the game's behaviour is unchanged (the clockless TGP, design doc).
+- m2_check.sh ran m2sndcheck without --scsp (the Model 1 board's map) on
+  SCSP games, so it always failed there ("no recompiled code at 012000");
+  it now passes --scsp and the samples when scripts/games.py says --scsp.
+  Sega Rally's sound had never been checked that way through m2_check.sh.
+- Sound: the driver's voice table is laid out as Sega Rally's (A1 = 0x2800 +
+  slot x 0x10 at every key-on routine, owner byte +5): Game::scsp_voices.
+  Effects alone are silent on the music-only intro (9-17 s) and 13 dB below
+  the music in a fight (-35.1 against -22.5 dBFS). Loudness: RMS -22.8
+  dBFS in a fight, peak -4.7: output_gain 1.5 (+3.5 dB). Default mix 100/100.
+- Controls: rt::ControlScheme (Game::controls), Fighting for vf2. The
+  frontends keep rt::Inputs: left/right as the wheel at its ends, up/down as
+  the accelerator/brake fully pressed, Punch/Kick/Guard as view buttons 1-3;
+  vf2.cpp's port() turns them into MAME's IN1 (player 2 released). Vita:
+  vita::Controls::set_fighting (the steering and shift bindings and the left
+  stick as directions; Pad::ly added), Controls page lists only the used
+  actions with their fighting names; tests/test_vita_controls.cpp covers it.
+  The desktop app has no fighting layout yet (its driving keys still reach
+  the same Inputs: arrows, pedals and view keys).
+
+Regression after the recompiler, lockstep and game.h changes: daytona93
+race_basic and srallyc srallyc_race, 3,000 frames, dumps and WAV identical
+(13/13 each); ctest 19/19.
+
+Next: the Vita VPK on hardware (speed with the exact code; --fast-inaccuracy
+not checked on vf2, games.py vita_fast empty); a desktop fighting layout;
+two players if wanted (IN2).
+
 ## Per-game default settings; the coin at start: the backup RAM, now opt-in (2026-10-15)
 
 `rt::Game::defaults` (FrontendDefaults: music_volume, effects_volume in %):

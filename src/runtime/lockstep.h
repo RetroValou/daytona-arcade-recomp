@@ -103,6 +103,9 @@ private:
     size_t next_ = 0;
     bool free_run_ = false, poked_ = false;
     int taken_ = 0;
+    // A line whose take MAME logged at another IP waits one instruction
+    // (apply: MAME's burst stall); on_take then accepts the count one higher.
+    bool deferred_ = false;
     // Slots of calls_ already called or cancelled, for reuse: free run adds
     // a callback every 1024 instructions and the board timers several a
     // frame, and calls_ never shrinks (16 bytes each on the SH-4: 1 MB by

@@ -256,7 +256,9 @@ Insn decode(uint32_t pc, uint32_t o) {
                 in.body = b + " t.r = " + hx(o & 0xff) + ";";
             return in;
         case 3: break; // set: MAME does nothing (flag mapping unknown)
-        default: return bad("0f subop " + hx(sub2) + " unimplemented in MAME");
+        // 4-7: MAME logs "unimplemented opcode 0f/x" and runs the ALU part only, as
+        // clr1 and set (vf2's program has one, 0x1b4: 3c0f0000).
+        default: break;
         }
         in.body = b + " t.alu_post_1<" + A + ">();";
         return in;
