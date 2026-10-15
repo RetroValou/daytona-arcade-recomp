@@ -1,5 +1,32 @@
 # Handoff
 
+## Vita reference audio: one rate conversion, in the callback (2026-10-15)
+
+platform/vita/audio.h no longer uses SDL_AudioStream. push() (sound core)
+copies the board's samples at their own rate into two FrameRings (PCM, FM;
+audio_rate.h, half a second each, cleared past 250 ms as before); the SDL
+callback converts them straight to 48 kHz with StereoResampler, ratio =
+board rate / 48 kHz x AudioRate's speed correction. Before, SDL resampled
+to 48 kHz in SDL_AudioStreamPut on the sound core and the callback
+interpolated a second time for the speed. Silent FM is still not queued
+(padded with silence when it starts again); the FM resampler restarts from
+silence when its queue is empty. StereoResampler is now cubic (Catmull-
+Rom; at ratio 1 a copy three frames late instead of two).
+
+Measured on the PC (scratch tools, not committed): VF2 fight audio at the
+board's 44.1 kHz (m2run, 6,000 frames), the old path (host SDL 2.30
+AudioStream) against the new. Band power against SDL: linear interpolation
+-0.5 dB at 4-8 kHz, -1.3 at 8-12, -2.5 at 12-16, -3.1 at 16-20; cubic
+-0.1, -0.4, -1.1, -1.4 (those bands are 9-34 dB below the total). Above
+22 kHz SDL2 leaks images too (-48.5 dB, cubic -46.2). Cost per emulated
+frame: SDL put 15 us, linear 6.6 us, cubic 13.9 us: on the PC (SSE in
+SDL) no gain. The Vita's 1.6 ms "sample conversion/queue" (VF2's
+perf_base.log) is 100x the PC figure: not explained yet (lock wait?).
+NOT measured on the Vita: next, a --diagnostics VPK before/after, same
+session, the "sample conversion/queue" line. Revert if no gain there.
+Tests: vita_audio_rate (FrameRing; a 1 kHz tone 44.1 -> 48 kHz within
+5e-5), vita_audio_worker (the queueing gate moved to the device lock).
+
 ## Vita controls per game (2026-10-15)
 
 The Vita had two fixed schemes (driving, fighting: rt::ControlScheme). Now

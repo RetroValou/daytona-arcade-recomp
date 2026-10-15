@@ -86,8 +86,9 @@ build (`main.cpp`, no `--gpu-*`) keeps everything on one game thread.
 * **CPU 500 MHz** and the fourth core are the options described below, in both builds.
 * **Emulated sound (reference engine).** `audio.h` + `audio_rate.h`: a 64 ms cushion kept
   by a slight resampling speed change instead of crackles when a frame is late, one short
-  silent gap after an underrun, and silent FM not resampled (~1.6 ms per frame saved on
-  the sound core). The native engine is unchanged.
+  silent gap after an underrun, and silent FM not queued. The board's samples are queued
+  at its own rate and converted once, in the callback (cubic interpolation, rate and speed
+  together): no SDL_AudioStream. The native engine is unchanged.
 * **Widescreen** (aspect, HUD at the edges, stretched backdrop) is drawn by the GXM build
   only for now; the vitaGL build keeps the original 4:3 picture and shows those options
   as GXM-only.
@@ -311,8 +312,9 @@ See [PERFORMANCE.md](PERFORMANCE.md) for the stage timings now written to
 
 ## Sound and saved data
 
-FM and PCM are resampled independently to the output device rate, mixed,
-clamped and played as stereo signed 16-bit audio. The callback only consumes
+FM and PCM are queued at the board's rates and resampled independently to the
+output device rate in the audio callback (audio_rate.h), mixed, clamped and
+played as stereo signed 16-bit audio. The callback only consumes
 samples; board execution stays on the main thread. Queues are bounded and
 cleared on pause/reset. Mute is saved independently of board state.
 

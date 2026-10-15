@@ -54,12 +54,39 @@ Result simulate(double seconds, double speed, double hitch_ms, double hitch_ever
 } // namespace
 
 int main() {
-    // Resampler at ratio 1: an exact copy, two frames late.
+    // Resampler at ratio 1: an exact copy, three frames late.
     vita::StereoResampler copy;
     float in[64], out[64];
     for (int i = 0; i < 64; ++i) in[i] = float(i + 1);
     CHECK(copy.needed(32, 1.0) == 32 && copy.run(in, 32, out, 32, 1.0) == 32);
-    for (int i = 2; i < 32; ++i) CHECK(out[2 * i] == in[2 * (i - 2)] && out[2 * i + 1] == in[2 * (i - 2) + 1]);
+    for (int i = 3; i < 32; ++i) CHECK(out[2 * i] == in[2 * (i - 3)] && out[2 * i + 1] == in[2 * (i - 3) + 1]);
+
+    // The board's queue: wraps, keeps order, refuses what does not fit.
+    vita::FrameRing ring;
+    ring.init(5);
+    float a[8] = {1, 2, 3, 4, 5, 6, 7, 8}, b[10] = {};
+    CHECK(ring.push(a, 3) == 3 && ring.pop(b, 2) == 2 && b[0] == 1 && b[3] == 4);
+    CHECK(ring.push(a, 4) == 4 && ring.push(a, 1) == 0 && ring.available() == 5); // wrapped, full
+    CHECK(ring.pop(b, 9) == 5 && b[0] == 5 && b[1] == 6 && b[2] == 1 && b[9] == 8 && ring.available() == 0);
+    CHECK(ring.push_silence(2) == 2 && ring.pop(b, 2) == 2 && b[0] == 0 && b[3] == 0);
+
+    // One conversion from the board's rate: a 1 kHz tone at 44.1 kHz comes out a 1 kHz
+    // tone at 48 kHz (the SCSP games), within the cubic interpolation's error.
+    {
+        constexpr double kPi = 3.14159265358979323846, kIn = 44100.0, kTone = 1000.0;
+        const double ratio = kIn / kRate;
+        std::vector<float> tone(2 * 44100), res(2 * 48000);
+        for (int i = 0; i < 44100; ++i) tone[2 * i] = tone[2 * i + 1] = float(std::sin(2 * kPi * kTone * i / kIn));
+        vita::StereoResampler r;
+        const int need = r.needed(47000, ratio);
+        CHECK(std::abs(need - 47000 * ratio) <= 1.0);
+        CHECK(r.run(tone.data(), need, res.data(), 47000, ratio) == need);
+        double worst = 0;
+        for (int i = 100; i < 47000; ++i) // output frame i is input frame i * ratio - 3
+            worst = std::fmax(worst, std::fabs(res[2 * i] - std::sin(2 * kPi * kTone * (i * ratio - 3) / kIn)));
+        std::printf("44.1 -> 48 kHz, 1 kHz tone: largest error %.5f (%.1f dB)\n", worst, 20 * std::log10(worst));
+        CHECK(worst < 0.0005); // linear interpolation: (2 pi f / fs)^2 / 8 = 0.0025
+    }
 
     const Result steady = simulate(120, 1.0, 0, 0);
     CHECK(steady.gaps == 0);

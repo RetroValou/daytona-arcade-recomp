@@ -1,5 +1,5 @@
-// The production Audio queue/mixer runs against SDL-shaped streams and real
-// host threads. Stream mocks preserve bytes; they do not validate SDL resampling.
+// The production Audio queue/mixer (its own queues and resampler, audio.h) runs
+// against a mocked SDL device and real host threads.
 #include "../platform/vita/audio.h"
 #include "../platform/vita/sound_worker.h"
 #include <array>
@@ -36,7 +36,6 @@ void require_locked(SDL_AudioDeviceID id) {
 }
 std::vector<int16_t> render(SDL_AudioDeviceID id, int samples);
 }
-struct SDL_AudioStream { SDL_AudioDeviceID owner; std::vector<uint8_t> data; };
 
 SDL_AudioDeviceID SDL_OpenAudioDevice(const char *, int, const SDL_AudioSpec *want, SDL_AudioSpec *got, int) {
     if (audio_mock::fail_open) return 0;
@@ -52,6 +51,14 @@ void SDL_CloseAudioDevice(SDL_AudioDeviceID id) {
     device.alive = false;
 }
 void SDL_LockAudioDevice(SDL_AudioDeviceID id) {
+    {
+        // Holds the queueing (push takes the device lock) while the test checks finish().
+        std::unique_lock<std::mutex> lock(audio_mock::queue_gate);
+        if (audio_mock::block_queue) {
+            audio_mock::entered_queue = true; audio_mock::queue_changed.notify_all();
+            audio_mock::queue_changed.wait(lock, [] { return !audio_mock::block_queue; });
+        }
+    }
     auto &device = audio_mock::device(id);
     device.lock.lock(); device.lock_owner = std::this_thread::get_id();
 }
@@ -63,40 +70,6 @@ void SDL_PauseAudioDevice(SDL_AudioDeviceID id, int paused) {
     SDL_LockAudioDevice(id);
     audio_mock::device(id).paused = paused != 0;
     SDL_UnlockAudioDevice(id);
-}
-SDL_AudioStream *SDL_NewAudioStream(Uint16 src, Uint8 src_channels, int src_rate,
-                                   Uint16 dst, Uint8 dst_channels, int dst_rate) {
-    mock::require(src == AUDIO_F32SYS && dst == AUDIO_F32SYS &&
-                  src_channels == 2 && dst_channels == 2 && dst_rate == 48000 &&
-                  (src_rate == 55556 || src_rate == 44643), "original SDL resampler configuration preserved");
-    return new SDL_AudioStream{audio_mock::last_id, {}};
-}
-void SDL_FreeAudioStream(SDL_AudioStream *stream) { delete stream; }
-int SDL_AudioStreamAvailable(SDL_AudioStream *stream) {
-    audio_mock::require_locked(stream->owner); return int(stream->data.size());
-}
-int SDL_AudioStreamGet(SDL_AudioStream *stream, void *output, int bytes) {
-    audio_mock::require_locked(stream->owner);
-    const int count = std::min(bytes, int(stream->data.size()));
-    std::memcpy(output, stream->data.data(), size_t(count));
-    stream->data.erase(stream->data.begin(), stream->data.begin() + count);
-    return count;
-}
-int SDL_AudioStreamPut(SDL_AudioStream *stream, const void *input, int bytes) {
-    audio_mock::require_locked(stream->owner);
-    {
-        std::unique_lock<std::mutex> lock(audio_mock::queue_gate);
-        if (audio_mock::block_queue) {
-            audio_mock::entered_queue = true; audio_mock::queue_changed.notify_all();
-            audio_mock::queue_changed.wait(lock, [] { return !audio_mock::block_queue; });
-        }
-    }
-    const auto *data = static_cast<const uint8_t *>(input);
-    stream->data.insert(stream->data.end(), data, data + bytes);
-    return 0;
-}
-void SDL_AudioStreamClear(SDL_AudioStream *stream) {
-    audio_mock::require_locked(stream->owner); stream->data.clear();
 }
 const char *SDL_GetError() { return "mock audio unavailable"; }
 std::vector<int16_t> audio_mock::render(SDL_AudioDeviceID id, int samples) {
@@ -178,8 +151,8 @@ int main() {
         }
         reference.pause(); threaded.pause();
 
-        // Block inside stream conversion: dispatch returns, and finish must
-        // wait for conversion as well as emulation before main may touch audio.
+        // Block inside the queueing: dispatch returns, and finish must wait for
+        // the queueing as well as emulation before main may touch audio.
         {
             std::lock_guard<std::mutex> lock(audio_mock::queue_gate);
             audio_mock::block_queue = true; audio_mock::entered_queue = false;
