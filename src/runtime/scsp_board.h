@@ -12,6 +12,7 @@
 // SCSP renders up to the current count before each register access.
 #pragma once
 
+#include "runtime/game.h"
 #include "runtime/scsp.h"
 #include "runtime/snd_board.h"
 #include "runtime/snd_gen_support.h"
@@ -30,7 +31,9 @@ public:
     static constexpr uint32_t kBaud = 31250; // MIDI-rate serial line from the i960
     static constexpr uint32_t kByteBits = 10;
 
-    ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples);
+    // voices: the driver's voice table (rt::Game::scsp_voices), or nullptr.
+    ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples,
+              const rt::ScspVoices *voices = nullptr);
 
     // Board
     void send(const uint8_t *bytes, size_t n) override;
@@ -42,6 +45,10 @@ public:
     std::vector<uint8_t> take_replies() override { return std::exchange(replies_, {}); }
     uint64_t instructions() const override { return sched_.count; }
     size_t bytes_received() const override { return received_; }
+    // The music and effects volumes: only with the driver's voice table.
+    void set_volumes(float music, float effects) override {
+        if (voices_) scsp_.set_volumes(music, effects);
+    }
 
     // Devices (the 68000's view, outside RAM and program ROM)
     uint16_t read16(uint32_t addr) override;
@@ -51,12 +58,14 @@ public:
     void scsp_irq(int level, bool assert) override;
     void scsp_timer(int n, double seconds) override;
     void scsp_midi_out(uint8_t byte) override { replies_.push_back(byte); }
+    bool scsp_slot_effect(int slot) override;
 
 private:
     void run_to(uint64_t count);
     void render_to(uint64_t count);
 
     std::vector<uint8_t> program_, samples_;
+    const rt::ScspVoices *voices_;
     Cpu68k cpu_;
     Sched sched_{cpu_};
     sndgen::Env env_{cpu_, sched_};

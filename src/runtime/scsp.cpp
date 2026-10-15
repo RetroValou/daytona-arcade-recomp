@@ -140,6 +140,7 @@ void Scsp::render(float *stereo, int n) {
                 uint16_t Enc;
 
                 int32_t sample = UpdateSlot(slot);
+                if (!unity_) sample = int32_t(float(sample) * (slot->effect ? effects_ : music_));
 
                 // SDIR bypasses the EG and the TL attenuator in both the DSP
                 // input feed and the direct-output mix (MAME's comment).
@@ -345,6 +346,7 @@ void Scsp::Compute_LFO(SCSP_SLOT *slot) {
 }
 
 void Scsp::StartSlot(SCSP_SLOT *slot) {
+    slot->effect = host_.scsp_slot_effect(int(slot - m_Slots));
     slot->active = 1;
     slot->cur_addr = 0;
     slot->nxt_addr = 1 << SHIFT;

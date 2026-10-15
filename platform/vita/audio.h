@@ -108,6 +108,12 @@ public:
         volume_ = std::clamp(value, 0.0f, 1.0f);
         if (device_) SDL_UnlockAudioDevice(device_);
     }
+    // The game's output gain (rt::Game::output_gain), on top of the volume.
+    void gain(float value) {
+        if (device_) SDL_LockAudioDevice(device_);
+        gain_ = std::max(value, 0.0f);
+        if (device_) SDL_UnlockAudioDevice(device_);
+    }
     void mute(bool muted) {
         if (device_) SDL_LockAudioDevice(device_);
         muted_ = muted;
@@ -172,7 +178,7 @@ private:
             queued -= got;
             self.resampler_.run(pcm, got, mixed, n, ratio);
             for (int i = 0; i < n * 2; ++i) {
-                float sample = self.muted_ ? 0.f : mixed[i] * self.volume_;
+                float sample = self.muted_ ? 0.f : mixed[i] * self.volume_ * self.gain_;
                 if (!std::isfinite(sample)) sample = 0.f;
                 out[i] = int16_t(std::clamp(sample, -1.f, 1.f) * 32767.f);
             }
@@ -184,7 +190,7 @@ private:
     int rate_ = 48000, fm_rate_ = 55556;
     bool fm_active_ = false; // the last FM block was queued (not silent); worker side, under the device lock
     bool playing_ = false, muted_ = false;
-    float volume_ = 0.8f;
+    float volume_ = 0.8f, gain_ = 1.0f;
     // Output pacing, touched by the callback and under the device lock only.
     AudioRate rate_control_;
     StereoResampler resampler_;

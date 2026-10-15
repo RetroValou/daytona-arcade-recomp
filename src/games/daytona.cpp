@@ -93,7 +93,7 @@ extern const Game daytona93_game = {
     .roms = kDaytona93Roms, .mirror_from = 0x900000, .tgp = {false, 0x860020, 2024, 0xD6D611DDu},
     .idle = {{0x12b0, 0x12bb}, {0x12f0, 0x12ff}},
     .sound = SoundBoardType::Model1, .native_sound = &kDaytona93Sound,
-    .io = {}, .link = false,
+    .io = {}, .link = false, .draw_distance = true, // hook_draw_list
 };
 extern const Game daytona_game = {
     .set = "daytona", .title = "Daytona USA", .label = "Revision A, 1994", .companion = "daytona93",
@@ -102,6 +102,7 @@ extern const Game daytona_game = {
     .idle = {{0x12b0, 0x12bb}, {0x12f0, 0x12ff}},
     .sound = SoundBoardType::Model1, .native_sound = &kDaytonaSound,
     .io = {}, .link = true, // the communication board (837-10537)
+    .draw_distance = true,  // hook_draw_list
 };
 
 

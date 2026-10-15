@@ -66,6 +66,23 @@ struct SoundLayout {
     uint32_t sequence_banks, profiles, fine_pitch, bend_curves, note_codes, velocity, instruments, percussion;
 };
 
+// The SCSP sound driver's voice table in the 68000's RAM, which says whose
+// voice each SCSP slot plays: `entry` bytes per slot from `table`, the owner
+// at `owner` (0: the music's sequence, else a sound effect's). Read at each
+// key-on, for the music and effects volumes (snd::ScspBoard::set_volumes).
+struct ScspVoices {
+    uint32_t table, entry, owner;
+};
+
+// A frontend's default settings for the game (the Vita's: platform/vita
+// VitaSettings; RESET DEFAULTS goes back to them). Volumes in percent.
+struct FrontendDefaults {
+    int music_volume = 100;
+    // The effects against the music: Daytona's effects cover its music on the
+    // Vita's speakers, so 20 % by default.
+    int effects_volume = 20;
+};
+
 // How the cabinet's controls reach a Model 2A-CRX board's 315-5649 I/O chip
 // (MAME's INPUT_PORTS for the game). port: 1 = port B (IN0, outside the
 // EEPROM mode), 2 = C (IN1), 3 = D (IN2); channel: the analog mux, 0-7.
@@ -101,7 +118,27 @@ struct Game {
 
     CrxInputs io;    // Model 2A-CRX boards only
     bool link;       // has the communication board (link play)
+    // The draw distance enhancement works on it (Enhance::draw_distance: a
+    // hook of the game's, src/games/hooks.h). Frontends list the option only then.
+    bool draw_distance = false;
+    // SCSP board: its driver's voice table (music or effect per slot), or
+    // nullptr (no music and effects volumes).
+    const ScspVoices *scsp_voices = nullptr;
+    // The frontends' output gain for the reference audio: the game's own
+    // levels against Daytona's (the cabinet's amplifier makes up the rest).
+    // m2run's WAV and every parity check stay at the board's output.
+    float output_gain = 1.0f;
+    // The frontends' default settings for it.
+    FrontendDefaults defaults{};
 };
+
+
+// The game's sound board can mix its music and effects at their own volumes
+// (snd::Board::set_volumes): the Model 1 board (its driver's voice pools) or
+// an SCSP board whose driver's voice table is known.
+inline bool has_music_effects(const Game &g) {
+    return g.sound == SoundBoardType::Model1 || g.scsp_voices != nullptr;
+}
 
 // Every game the runtime knows (src/games/games.cpp).
 std::span<const Game *const> games();

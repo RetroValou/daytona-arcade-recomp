@@ -86,7 +86,6 @@ namespace {
 using Renderer = vita::GpuGlRenderer;
 constexpr const char *kGfxApi = "VITAGL";
 constexpr const char *kRendererName = "VITAGL";
-constexpr const char *kGfxLabel = "GRAPHICS API: VITAGL";
 // Widescreen (aspect, HUD at the edges, stretched backdrop) is drawn by the GXM renderer
 // only for now: the vitaGL build keeps the original 4:3 picture.
 constexpr bool kWidescreen = false;
@@ -102,7 +101,6 @@ void gfx_fini() { vita::gl_fini(); }
 using Renderer = vita::GpuFastRenderer;
 constexpr const char *kGfxApi = "GXM";
 constexpr const char *kRendererName = "VITA2D";
-constexpr const char *kGfxLabel = "GRAPHICS API: GXM (VITA2D)";
 constexpr bool kWidescreen = true;
 bool gfx_init(const char *&error) {
     if (vita2d_init_advanced(8 * 1024 * 1024) < 0) { error = "vita2d init failed"; return false; }
@@ -247,15 +245,21 @@ struct VitaSettings {
     int gpu_clock = kDefaultGpuClock;
     int volume = 80;
     // Balance between the music and the effects (engine, skids, crashes), as the
-    // desktop launcher's; 100/100 is the arcade's mix. Effects default lower: on
-    // the Vita's speakers they cover the music.
-    int music_volume = 100, effects_volume = 20;
+    // desktop launcher's; 100/100 is the arcade's mix. The defaults are the game's
+    // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85).
+    int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
     int deadzone = 12;
     int aspect = 0, draw_distance = 0, steer_curve = 0;
     bool hud_edges = false;
 
     bool fourth_core = false;
     bool stretch_backdrop = false, skip_launcher = false;
+    // The game's battery-backed RAM (backup_ram.bin: records, bookkeeping, and the
+    // coins not used yet, which a cabinet keeps through a power cut: with them a
+    // game can start a race on its own at the next launch). Off: neither loaded
+    // nor saved, every start is a cabinet switched on afresh. The settings EEPROM
+    // (ioboard_eeprom.bin: test mode settings) is always kept.
+    bool save_backup = false;
     bool mute = false;
     bool native_audio = false; // explicitly selected while native fidelity is validated
     bool steer_invert = false;
@@ -304,6 +308,7 @@ struct VitaSettings {
             else if (!std::strcmp(key, "next_ip3")) next_ip[3] = value;
             else if (!std::strcmp(key, "stretch_backdrop")) stretch_backdrop = value != 0;
             else if (!std::strcmp(key, "skip_launcher")) skip_launcher = value != 0;
+            else if (!std::strcmp(key, "save_backup")) save_backup = value != 0;
             else if (!std::strcmp(key, "steer_curve")) steer_curve = value;
             else if (!std::strcmp(key, "aspect")) aspect = value;
             else if (!std::strcmp(key, "draw_distance")) draw_distance = value;
@@ -328,7 +333,8 @@ struct VitaSettings {
         std::fprintf(f, "cpu_clock=%d\ngpu_clock=%d\nvolume=%d\nmute=%d\nnative_audio=%d\ndeadzone=%d\nsteer_invert=%d\n",
                      cpu_clock, gpu_clock, volume, int(mute), int(native_audio), deadzone, int(steer_invert));
         std::fprintf(f, "music_volume=%d\neffects_volume=%d\n", music_volume, effects_volume);
-        std::fprintf(f, "stretch_backdrop=%d\nskip_launcher=%d\n", int(stretch_backdrop), int(skip_launcher));
+        std::fprintf(f, "stretch_backdrop=%d\nskip_launcher=%d\nsave_backup=%d\n", int(stretch_backdrop), int(skip_launcher),
+                     int(save_backup));
         std::fprintf(f, "fourth_core=%d\n", int(fourth_core));
         std::fprintf(f, "link_enabled=%d\nlink_sync=%d\nlink_port=%d\nnext_port=%d\n",
             int(link_enabled), int(link_sync), link_port, next_port);
@@ -377,6 +383,50 @@ uint32_t ui_buttons = 0;
 rt::TestHold test_hold;
 // Rows of the Controls page: the actions, then reset and back.
 constexpr int kBindRows = vita::ActionCount + 2;
+
+// The Options page's rows, in display order.
+enum Option {
+    OptCpu, OptGpu, OptVolume, OptMute, OptMusic, OptEffects, OptDeadzone, OptInvert, OptAudioEngine, OptRom,
+    OptAspect, OptHud, OptDistance, OptSteerCurve, OptStretch, OptSkipLauncher, OptSaveBackup, OptFourthCore,
+    OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync,
+    OptTestHold, OptDefaults, OptBack, kOptions
+};
+// The package holds the companion set's executable (the ROM option can switch).
+bool rom_switch_packaged() {
+    static const bool packaged = companion() &&
+        (app_file(std::string("app0:/") + companion()->set + ".self") ||
+         app_file(std::string("app0:/") + rt::game().set + ".self"));
+    return packaged;
+}
+// Only the options that can change something in this build, for this game, are
+// listed: none fixed at build time (renderer, fullscreen), none the game or the
+// renderer has no use for (widescreen on vitaGL, the native audio engine without
+// the game's driver tables, the music and effects volumes when neither the native
+// engine nor the sound board can tell them apart, the draw distance without its hook,
+// link play without the communication board, the ROM switch without a second
+// executable).
+bool option_available(Option o, const VitaSettings &s) {
+    const bool native = rt::game().native_sound != nullptr;
+    switch (o) {
+    // the native engine's own mix, or the sound board's (its driver's voices known)
+    case OptMusic: case OptEffects: return (native && s.native_audio) || rt::has_music_effects(rt::game());
+    case OptAudioEngine: return native;
+    case OptRom: return rom_switch_packaged();
+    case OptAspect: case OptHud: case OptStretch: return kWidescreen;
+    case OptDistance: return rt::game().draw_distance;
+    case OptLink: return rt::game().link;
+    case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
+        return rt::game().link && s.link_enabled;
+    default: return true;
+    }
+}
+// The listed rows; returns their count.
+int listed_options(const VitaSettings &s, Option (&rows)[kOptions]) {
+    int n = 0;
+    for (int o = 0; o < kOptions; ++o)
+        if (option_available(Option(o), s)) rows[n++] = Option(o);
+    return n;
+}
 void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int capture,
                const VitaSettings &settings, const std::string &status, double fps) {
     ImGui::SetNextWindowPos({12, 12});
@@ -424,17 +474,17 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
                 if (selection == i && scroll_to_selection) ImGui::SetScrollHereY();
             }
         } else {
-    const char *values[31];
+    const char *values[kOptions];
     char link_fields[6][64];
     for (int i = 0; i < 4; ++i) {
         std::snprintf(link_fields[i], sizeof link_fields[i], "NEXT CABINET IP OCTET %d: %d", i + 1, settings.next_ip[i]);
-        values[21+i] = link_fields[i];
+        values[OptIp0 + i] = link_fields[i];
     }
     std::snprintf(link_fields[4], sizeof link_fields[4], "LISTEN PORT: %d", settings.link_port);
     std::snprintf(link_fields[5], sizeof link_fields[5], "NEXT CABINET PORT: %d", settings.next_port);
-    values[25] = link_fields[4]; values[26] = link_fields[5];
-    values[20] = settings.link_enabled ? "LINK PLAY: ON" : "LINK PLAY: OFF";
-    values[27] = settings.link_sync ? "LINK FRAME SYNC: ON" : "LINK FRAME SYNC: OFF";
+    values[OptListenPort] = link_fields[4]; values[OptNextPort] = link_fields[5];
+    values[OptLink] = settings.link_enabled ? "LINK PLAY: ON" : "LINK PLAY: OFF";
+    values[OptLinkSync] = settings.link_sync ? "LINK FRAME SYNC: ON" : "LINK FRAME SYNC: OFF";
     char cpu[64], gpu[32], volume[32], mute[32], music[32], effects[32], deadzone[32], invert[32];
     std::snprintf(cpu, sizeof cpu, "CPU CLOCK: %d MHz (ACTUAL %d)", settings.cpu_clock,
                   scePowerGetArmClockFrequency());
@@ -445,34 +495,31 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
     std::snprintf(effects, sizeof effects, "EFFECTS: %d%%", settings.effects_volume);
     std::snprintf(deadzone, sizeof deadzone, "DEAD ZONE: %d%%", settings.deadzone);
     std::snprintf(invert, sizeof invert, "INVERT STEERING: %s", settings.steer_invert ? "ON" : "OFF");
-    values[0]=cpu; values[1]=gpu; values[2]=volume; values[3]=mute; values[4]=music; values[5]=effects; values[6]=deadzone; values[7]=invert;
-    values[8]=settings.native_audio ? "AUDIO ENGINE: NATIVE (TEST)" : "AUDIO ENGINE: REFERENCE";
-    values[9]=kGfxLabel; values[10]="FULLSCREEN: ON";
+    values[OptCpu]=cpu; values[OptGpu]=gpu; values[OptVolume]=volume; values[OptMute]=mute;
+    values[OptMusic]=music; values[OptEffects]=effects; values[OptDeadzone]=deadzone; values[OptInvert]=invert;
+    values[OptAudioEngine]=settings.native_audio ? "AUDIO ENGINE: NATIVE (TEST)" : "AUDIO ENGINE: REFERENCE";
     static std::string rom;
     rom = rom_label(selected_game(settings.use_companion));
-    values[11]=rom.c_str();
-    values[12]="BINDS: SELECT+TRIANGLE TEST / SELECT+SQUARE SERVICE";
+    values[OptRom]=rom.c_str();
     static const char* aspects[] = {"ASPECT: ORIGINAL", "ASPECT: 16:10", "ASPECT: 16:9", "ASPECT: 21:9"};
     static const char* distances[] = {"DISTANCE: SHORTEST", "DISTANCE: SHORTER", "DISTANCE: DEFAULT", "DISTANCE: FURTHER", "DISTANCE: FURTHEST"};
-    values[13]=aspects[settings.aspect]; values[14]=settings.hud_edges ? "HUD: SCREEN EDGES" : "HUD: CENTRED";
-    values[15]=distances[settings.draw_distance + 2];
-    values[28]=test_hold.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF";
-    values[29]="RESET DEFAULTS"; values[30]="BACK";
-    values[19]=!settings.fourth_core ? "4TH CORE: OFF" :
+    values[OptAspect]=aspects[settings.aspect]; values[OptHud]=settings.hud_edges ? "HUD: SCREEN EDGES" : "HUD: CENTRED";
+    values[OptDistance]=distances[settings.draw_distance + 2];
+    values[OptTestHold]=test_hold.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF";
+    values[OptDefaults]="RESET DEFAULTS"; values[OptBack]="BACK";
+    values[OptFourthCore]=!settings.fourth_core ? "4TH CORE: OFF" :
         vita::fourth_core_active() ? "4TH CORE: ENABLED" : "4TH CORE: UNAVAILABLE (PLUGIN REQUIRED)";
-    values[17]=settings.stretch_backdrop ? "STRETCH TILE BACKGROUND: ON" : "STRETCH TILE BACKGROUND: OFF";
-    values[18]=settings.skip_launcher ? "SKIP LAUNCHER: ON" : "SKIP LAUNCHER: OFF";
+    values[OptStretch]=settings.stretch_backdrop ? "STRETCH TILE BACKGROUND: ON" : "STRETCH TILE BACKGROUND: OFF";
+    values[OptSkipLauncher]=settings.skip_launcher ? "SKIP LAUNCHER: ON" : "SKIP LAUNCHER: OFF";
+    values[OptSaveBackup]=settings.save_backup ? "SAVE RECORDS (BACKUP RAM): ON" : "SAVE RECORDS (BACKUP RAM): OFF";
     static const char* curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
-    values[16]=curves[settings.steer_curve];
-    if (!kWidescreen) { // the vitaGL build draws the original 4:3 picture only (for now)
-        values[13]="ASPECT: ORIGINAL (WIDESCREEN: GXM BUILD)";
-        values[14]="HUD: CENTRED (WIDESCREEN: GXM BUILD)";
-        values[17]="STRETCH TILE BACKGROUND: N/A (GXM BUILD)";
-    }
+    values[OptSteerCurve]=curves[settings.steer_curve];
+    Option rows[kOptions];
+    const int listed = listed_options(settings, rows);
 
-            for (int i = 0; i < 31; ++i) {
+            for (int i = 0; i < listed; ++i) {
                 ImGui::PushID(i);
-                if (ImGui::Selectable(values[i], selection == i, 0, {760, 32})) { selection = i; ui_buttons = vita::Cross; }
+                if (ImGui::Selectable(values[rows[i]], selection == i, 0, {760, 32})) { selection = i; ui_buttons = vita::Cross; }
                 if (selection == i && scroll_to_selection) ImGui::SetScrollHereY();
                 ImGui::SameLine();
                 if (ImGui::SmallButton("<")) { selection = i; ui_buttons = vita::Left; }
@@ -699,6 +746,7 @@ int main(int, char **) {
             applied_core_setting = int(settings.fourth_core);
         }
         audio.volume(float(settings.volume) / 100.0f);
+        audio.gain(rt::game().output_gain);
         audio.mute(settings.mute);
         native_audio.volume(float(settings.volume) / 100.0f);
         native_audio.volumes(float(settings.music_volume) / 100.0f, float(settings.effects_volume) / 100.0f);
@@ -744,7 +792,7 @@ int main(int, char **) {
         if (!finish_sound()) return false;
         if (!game) return true;
         const bool a = save_nv("ioboard_eeprom.bin", game->board().io().eeprom);
-        const bool b = save_nv("backup_ram.bin", game->board().backup_ram());
+        const bool b = !settings.save_backup || save_nv("backup_ram.bin", game->board().backup_ram());
         if (!a || !b) perf_log.sync([&] { log.fault("GPU25: save failed\n"); });
         return a && b;
     };
@@ -854,7 +902,7 @@ int main(int, char **) {
             i960_report.start(game->instructions(), uint64_t(game->interrupts()));
 #endif
             load_nv("ioboard_eeprom.bin", game->board().io().eeprom);
-            load_nv("backup_ram.bin", game->board().backup_ram());
+            if (settings.save_backup) load_nv("backup_ram.bin", game->board().backup_ram());
             if (settings.link_enabled) {
                 link = std::make_unique<vita::TcpLink>(settings.link_port, settings.next_address(), settings.next_port);
                 if (!link->error().empty()) throw std::runtime_error("LINK: " + link->error());
@@ -933,101 +981,144 @@ int main(int, char **) {
                     binds = false; selection = 3; wait_release = true;
                 }
             } else if (options) {
-                constexpr int kOptionCount = 31;
-                if (pressed & vita::Up) selection = (selection + kOptionCount - 1) % kOptionCount;
-                if (pressed & vita::Down) selection = (selection + 1) % kOptionCount;
+                Option rows[kOptions];
+                const int listed = listed_options(settings, rows);
+                selection = std::clamp(selection, 0, listed - 1);
+                if (pressed & vita::Up) selection = (selection + listed - 1) % listed;
+                if (pressed & vita::Down) selection = (selection + 1) % listed;
+                const Option option = rows[selection];
                 if (pressed & vita::Circle) { options = false; selection = 2; wait_release = true; }
                 else {
                     const int direction = (pressed & vita::Left) ? -1 : ((pressed & vita::Right) ? 1 : 0);
                     const bool activate = (pressed & vita::Cross) != 0;
+                    const bool step = direction || activate;
                     bool changed = false, clocks_changed = false;
                     static const int cpu_choices[] = {111, 222, 333, 444, 500};
                     static const int gpu_choices[] = {41, 77, 111, 166};
-                    if (!kWidescreen && (selection == 13 || selection == 14 || selection == 17) && (direction || activate)) {
-                        status = "WIDESCREEN IS DRAWN BY THE GXM (--GPU-FAST) BUILD ONLY FOR NOW.";
-                    } else if (selection == 0 && (direction || activate)) {
-                        settings.cpu_clock = cycle_value(settings.cpu_clock, cpu_choices, 5, direction < 0 ? -1 : 1);
-                        changed = clocks_changed = true;
-                    } else if (selection == 1 && (direction || activate)) {
-                        settings.gpu_clock = cycle_value(settings.gpu_clock, gpu_choices, 4, direction < 0 ? -1 : 1);
-                        changed = clocks_changed = true;
-                    } else if (selection == 2 && (direction || activate)) {
-                        settings.volume = std::clamp(settings.volume + (direction < 0 ? -10 : 10), 0, 100);
-                        changed = true;
-                    } else if (selection == 3 && (direction || activate)) {
-                        settings.mute = !settings.mute; changed = true;
-                    } else if ((selection == 4 || selection == 5) && (direction || activate)) {
-                        int &level = selection == 4 ? settings.music_volume : settings.effects_volume;
-                        level = std::clamp(level + (direction < 0 ? -5 : 5), 0, 100);
-                        changed = true;
-                    } else if (selection == 6 && (direction || activate)) {
-                        settings.deadzone = std::clamp(settings.deadzone + (direction < 0 ? -5 : 5), 0, 40);
-                        changed = true;
-                    } else if (selection == 7 && (direction || activate)) {
-                        settings.steer_invert = !settings.steer_invert; changed = true;
-                    } else if (selection == 8 && (direction || activate)) {
-                        settings.native_audio = !settings.native_audio; changed = true;
-                    } else if (selection == 9 && activate) {
-                        status = DAYTONA_VITA_GPU_GL ? "RENDERER FIXED AT BUILD: VITAGL (--GPU-GL)."
-                                                     : "RENDERER FIXED AT BUILD: GXM GPU FAST (--GPU-FAST).";
-                    } else if (selection == 10 && activate) {
-                        status = "VITA OUTPUT IS FIXED FULLSCREEN AT 960 X 544.";
-                    } else if (selection == 11 && (direction || activate) && !companion()) {
-                        status = "ONE ROM SET IN THIS PACKAGE: OTHER GAMES ARE SEPARATE APPS.";
-                    } else if (selection == 11 && (direction || activate)) {
-                        settings.use_companion = !settings.use_companion;
-                        status = "ROM SELECTED. CHOOSE START/RESET TO SWITCH. SAVES ARE SEPARATE.";
-                    } else if (selection == 12 && activate) {
-                        status = "TEST: SELECT+TRIANGLE  SERVICE: SELECT+SQUARE  MENU: CROSS NEXT / START ENTER";
-                    } else if (selection == 13 && (direction || activate)) {
-                        settings.aspect = (settings.aspect + (direction < 0 ? 3 : 1)) % 4; changed = true;
-                    } else if (selection == 14 && (direction || activate)) {
-                        settings.hud_edges = !settings.hud_edges; changed = true;
-                    } else if (selection == 15 && (direction || activate)) {
-                        settings.draw_distance = std::clamp(settings.draw_distance + (direction < 0 ? -1 : 1), -2, 2);
-                        changed = true;
-                    } else if (selection == 16 && (direction || activate)) {
-                        settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true;
-                    } else if (selection == 17 && (direction || activate)) {
-                        settings.stretch_backdrop = !settings.stretch_backdrop; changed = true;
-                    } else if (selection == 18 && (direction || activate)) {
-                        settings.skip_launcher = !settings.skip_launcher; changed = true;
-                    } else if (selection == 19 && (direction || activate)) {
-                        settings.fourth_core = !settings.fourth_core; changed = true;
-                    } else if (selection == 20 && (direction || activate)) {
-                        settings.link_enabled = !settings.link_enabled; changed = true;
-                    } else if (selection >= 21 && selection <= 24 && (direction || activate)) {
-                        int &octet = settings.next_ip[selection - 21];
-                        octet = (octet + (direction < 0 ? 255 : 1)) % 256; changed = true;
-                    } else if ((selection == 25 || selection == 26) && (direction || activate)) {
-                        int &port = selection == 25 ? settings.link_port : settings.next_port;
-                        port = std::clamp(port + (direction < 0 ? -1 : 1), 1, 65535); changed = true;
-                    } else if (selection == 27 && (direction || activate)) {
-                        settings.link_sync = !settings.link_sync; changed = true;
-                    } else if (selection == 28 && (direction || activate)) {
-                        if (test_hold.armed()) test_hold.cancel(); else test_hold.arm();
-                    } else if (selection == 29 && activate) {
-                        test_hold.cancel();
-                        settings.defaults(); changed = clocks_changed = true;
-                    } else if (selection == 30 && activate) {
-                        options = false; selection = 2; wait_release = true;
+                    switch (option) {
+                    case OptCpu:
+                        if (step) {
+                            settings.cpu_clock = cycle_value(settings.cpu_clock, cpu_choices, 5, direction < 0 ? -1 : 1);
+                            changed = clocks_changed = true;
+                        }
+                        break;
+                    case OptGpu:
+                        if (step) {
+                            settings.gpu_clock = cycle_value(settings.gpu_clock, gpu_choices, 4, direction < 0 ? -1 : 1);
+                            changed = clocks_changed = true;
+                        }
+                        break;
+                    case OptVolume:
+                        if (step) { settings.volume = std::clamp(settings.volume + (direction < 0 ? -10 : 10), 0, 100); changed = true; }
+                        break;
+                    case OptMute:
+                        if (step) { settings.mute = !settings.mute; changed = true; }
+                        break;
+                    case OptMusic: case OptEffects:
+                        if (step) {
+                            int &level = option == OptMusic ? settings.music_volume : settings.effects_volume;
+                            level = std::clamp(level + (direction < 0 ? -5 : 5), 0, 100);
+                            changed = true;
+                        }
+                        break;
+                    case OptDeadzone:
+                        if (step) { settings.deadzone = std::clamp(settings.deadzone + (direction < 0 ? -5 : 5), 0, 40); changed = true; }
+                        break;
+                    case OptInvert:
+                        if (step) { settings.steer_invert = !settings.steer_invert; changed = true; }
+                        break;
+                    case OptAudioEngine:
+                        if (step) { settings.native_audio = !settings.native_audio; changed = true; }
+                        break;
+                    case OptRom:
+                        if (step) {
+                            settings.use_companion = !settings.use_companion;
+                            status = "ROM SELECTED. CHOOSE START/RESET TO SWITCH. SAVES ARE SEPARATE.";
+                        }
+                        break;
+                    case OptAspect:
+                        if (step) { settings.aspect = (settings.aspect + (direction < 0 ? 3 : 1)) % 4; changed = true; }
+                        break;
+                    case OptHud:
+                        if (step) { settings.hud_edges = !settings.hud_edges; changed = true; }
+                        break;
+                    case OptDistance:
+                        if (step) {
+                            settings.draw_distance = std::clamp(settings.draw_distance + (direction < 0 ? -1 : 1), -2, 2);
+                            changed = true;
+                        }
+                        break;
+                    case OptSteerCurve:
+                        if (step) { settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true; }
+                        break;
+                    case OptStretch:
+                        if (step) { settings.stretch_backdrop = !settings.stretch_backdrop; changed = true; }
+                        break;
+                    case OptSkipLauncher:
+                        if (step) { settings.skip_launcher = !settings.skip_launcher; changed = true; }
+                        break;
+                    case OptSaveBackup:
+                        if (step) { settings.save_backup = !settings.save_backup; changed = true; }
+                        break;
+                    case OptFourthCore:
+                        if (step) { settings.fourth_core = !settings.fourth_core; changed = true; }
+                        break;
+                    case OptLink:
+                        if (step) { settings.link_enabled = !settings.link_enabled; changed = true; }
+                        break;
+                    case OptIp0: case OptIp1: case OptIp2: case OptIp3:
+                        if (step) {
+                            int &octet = settings.next_ip[option - OptIp0];
+                            octet = (octet + (direction < 0 ? 255 : 1)) % 256; changed = true;
+                        }
+                        break;
+                    case OptListenPort: case OptNextPort:
+                        if (step) {
+                            int &port = option == OptListenPort ? settings.link_port : settings.next_port;
+                            port = std::clamp(port + (direction < 0 ? -1 : 1), 1, 65535); changed = true;
+                        }
+                        break;
+                    case OptLinkSync:
+                        if (step) { settings.link_sync = !settings.link_sync; changed = true; }
+                        break;
+                    case OptTestHold:
+                        if (step) { if (test_hold.armed()) test_hold.cancel(); else test_hold.arm(); }
+                        break;
+                    case OptDefaults:
+                        if (activate) { test_hold.cancel(); settings.defaults(); changed = clocks_changed = true; }
+                        break;
+                    case OptBack:
+                        if (activate) { options = false; selection = 2; wait_release = true; }
+                        break;
+                    case kOptions:
+                        break;
                     }
                     if (changed) {
                         commit_settings(clocks_changed);
-                        if (selection >= 20 && selection <= 27)
+                        if (option >= OptLink && option <= OptLinkSync)
                             status = "LINK SETTINGS SAVED. RESET GAME TO APPLY. NEXT: " +
                                 settings.next_address() + ":" + std::to_string(settings.next_port);
-                        if (selection == 19) status = !settings.fourth_core
+                        if (option == OptFourthCore) status = !settings.fourth_core
                             ? "4TH CORE OFF: ORDINARY THREE-CORE SCHEDULING."
                             : !vita::fourth_core_active()
                                 ? "4TH CORE REJECTED. REQUIRES A WORKING CORE-UNLOCK PLUGIN."
                                 : kPinnedCores
                                     ? "4TH CORE ALLOWED FOR THE AUDIO CALLBACKS. GAME THREADS STAY PINNED (BUILD WITH --FREE-CORE)."
                                     : "4TH CORE ALLOWED FOR GAME, GEOMETRY AND AUDIO THREADS (FREE CORES).";
-                        if (selection == 0 && settings.cpu_clock == 500 && scePowerGetArmClockFrequency() != 500)
+                        if (option == OptCpu && settings.cpu_clock == 500 && scePowerGetArmClockFrequency() != 500)
                             status += " 500 NOT ACTIVE: CHECK OVERCLOCK PLUGIN/PROFILE.";
-                        if (selection == 15) status = "FURTHER DISTANCES ADD SCENERY AND MAY REDUCE FPS.";
-                        if (selection == 8) status = "AUDIO ENGINE CHANGE SAVED. RESET GAME TO APPLY. NATIVE IS EXPERIMENTAL.";
+                        if (option == OptDistance) status = "FURTHER DISTANCES ADD SCENERY AND MAY REDUCE FPS.";
+                        if (option == OptSaveBackup) status = settings.save_backup
+                            ? "RECORDS KEPT FROM THE NEXT START. UNUSED COINS ARE KEPT TOO, AS ON A CABINET."
+                            : "RECORDS NOT SAVED: EACH START IS A FRESH CABINET. TEST MODE SETTINGS STAY SAVED.";
+                        if (option == OptAudioEngine) status = "AUDIO ENGINE CHANGE SAVED. RESET GAME TO APPLY. NATIVE IS EXPERIMENTAL.";
+                        // A change can list or unlist rows (link play's, the native engine's volumes):
+                        // the cursor stays on the option just changed.
+                        if (options) {
+                            const int now_listed = listed_options(settings, rows);
+                            for (int i = 0; i < now_listed; ++i)
+                                if (rows[i] == option) selection = i;
+                        }
                     }
                 }
             } else {

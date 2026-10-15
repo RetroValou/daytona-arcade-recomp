@@ -67,6 +67,13 @@ uint8_t analog(unsigned ch, const Inputs &in) {
 }
 
 // The TGP program: in the program ROM at 0x5ae94, 1,665 words, equal to
+// The sound driver's voice table: 16 bytes per SCSP slot from 0x2800 in the
+// 68000's RAM (the key-on routines take the slot's register offset from its
+// first word, 0x600eba, 0x60103a), whose byte 5 is the voice's owner at
+// key-on: 0 for the music's sequence (the whole attract, music only), 1-15
+// for the sound effects' (only in a race; one in the attract, at the coin's
+// effect). Found by logging the driver's A1 at every key-on (15 Oct 2026).
+constexpr ScspVoices kVoices = {0x2800, 0x10, 5};
 // MAME's copro_tgp_program after boot; the game uploads it from its RAM copy
 // (0x5f9e94), with the count at 0x5fb898 (ROM 0x5c898).
 // The wait for the next frame: 0x5a379c (in its RAM copy of the program ROM,
@@ -80,6 +87,13 @@ extern const Game srallyc_game = {
     .idle = {{0x5a379c, 0x5a37b3}, {0, 0}},
     .sound = SoundBoardType::Scsp, .native_sound = nullptr,
     .io = {port, analog}, .link = false,
+    .scsp_voices = &kVoices,
+    // Its reference audio is 20-25 dB below Daytona's (m2run WAVs, 6,000
+    // frames: RMS -38.5/-47.3 dBFS in race/attract against -14.4/-21.8; peak
+    // -20.9 against -0.9): x10 (+20 dB) brings its race peaks to Daytona's.
+    .output_gain = 10.0f,
+    // Its effects (engine, gravel, co-driver) need more than Daytona's 20 %.
+    .defaults = {.effects_volume = 85},
 };
 
 

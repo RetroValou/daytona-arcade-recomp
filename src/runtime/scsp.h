@@ -25,6 +25,9 @@ public:
     virtual void scsp_timer(int n, double seconds) = 0;
     // A byte the SCSP sends on its MIDI output (Model 2: to the i960's UART).
     virtual void scsp_midi_out(uint8_t byte) = 0;
+    // At a slot's key-on: whether it plays a sound effect rather than the
+    // music (the driver's own bookkeeping; false when unknown).
+    virtual bool scsp_slot_effect(int) { return false; }
 };
 
 // MAME SCSPDSP.
@@ -70,6 +73,13 @@ public:
     void write(uint32_t offset, uint16_t data, uint16_t mem_mask);
     // A byte received on the MIDI input (MAME rcv_complete).
     void midi_in(uint8_t byte);
+    // The music and effects volumes (0..1; both 1, the default: MAME's output,
+    // untouched). Each slot's output, direct and to the DSP, is scaled by its
+    // owner's volume (ScspHost::scsp_slot_effect at its key-on).
+    void set_volumes(float music, float effects) {
+        music_ = music, effects_ = effects;
+        unity_ = music == 1.0f && effects == 1.0f;
+    }
     // Timer n expired (MAME timerA_cb ...).
     void timer_expired(int n);
     // Render n samples (MAME sound_stream_update): interleaved stereo, the
@@ -115,10 +125,13 @@ private:
         SCSP_LFO_t ALFO;   // Amplitude LFO
         int slot;
         int16_t Prev; // Previous sample (for interpolation)
+        bool effect;  // keyed for a sound effect (set_volumes), else the music
     };
 
     ScspHost &host_;
     uint8_t *ram_;
+    float music_ = 1.0f, effects_ = 1.0f;
+    bool unity_ = true; // both volumes 1: the samples are not touched
     uint32_t rand_ = 0x12345678; // machine().rand() stand-in (noise; LFO noise tables)
     uint32_t rand();
     int8_t read_byte(uint32_t a) const { return a < 0x80000 ? int8_t(ram_[a]) : 0; }

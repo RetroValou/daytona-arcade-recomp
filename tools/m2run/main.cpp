@@ -4,7 +4,7 @@
 //
 //   m2run IMAGES_DIR FRAMES [--inputs scripts/inputs/X.txt] [--dump DIR --every N] [--wav FILE]
 //         [--aspect W:H [--hud-edges] [--stretch-backdrop]] [--draw-distance N] [--frame-skip N]
-//         [--native-audio-check] [--nvram DIR] [--save-nvram DIR] [--link-listen PORT --link-next HOST:PORT [--link-sync]]
+//         [--native-audio-check] [--volumes MUSIC,EFFECTS] [--nvram DIR] [--save-nvram DIR] [--link-listen PORT --link-next HOST:PORT [--link-sync]]
 //
 // --nvram DIR starts from the app's saved settings EEPROM and backup RAM
 // (tools/common/nvram.h). --link-listen/--link-next: link play (the
@@ -17,7 +17,9 @@
 // --aspect widens the screen (the widescreen enhancement, e.g. 16:9); dumps
 // are then wider than 496 (the width is printed).
 // --wav writes the sound board's output (YM3438 + both MultiPCMs, mixed at
-// 48 kHz, 16-bit stereo).
+// 48 kHz, 16-bit stereo). --volumes sets the board's music and effects
+// volumes (0..1, snd::Board::set_volumes, as the frontends' options; e.g.
+// 1,0 for the music alone): not the game as MAME runs it.
 //
 // Frame pacing is the game's own: vblank starts when the game has finished
 // its frame and waits in its idle loop (or after a cap, for frames that never
@@ -91,6 +93,7 @@ int main(int argc, char **argv) {
     uint64_t every = 0;
     double aspect = 0;
     int frame_skip = 0;
+    float music_volume = 1.0f, effects_volume = 1.0f; // --volumes
     bool hud_edges = false, stretch_backdrop = false;
     for (int i = 3; i < argc; i++) {
         if (!std::strcmp(argv[i], "--hud-edges")) hud_edges = true;
@@ -111,6 +114,9 @@ int main(int argc, char **argv) {
         else if (!std::strcmp(argv[i], "--link-next")) link_next = argv[i + 1];
         else if (!std::strcmp(argv[i], "--draw-distance")) rt::GameLoop::set_draw_distance(std::atoi(argv[i + 1]));
         else if (!std::strcmp(argv[i], "--frame-skip")) frame_skip = std::atoi(argv[i + 1]);
+        else if (!std::strcmp(argv[i], "--volumes")) {
+            if (std::sscanf(argv[i + 1], "%f,%f", &music_volume, &effects_volume) != 2) music_volume = effects_volume = 1.0f;
+        }
         else if (!std::strcmp(argv[i], "--aspect")) {
             double w = 0, h = 0;
             if (std::sscanf(argv[i + 1], "%lf:%lf", &w, &h) == 2 && h > 0) aspect = w / h;
@@ -119,6 +125,7 @@ int main(int argc, char **argv) {
 
     try {
         rt::GameLoop game(dir, !native_check);
+        if (game.sound()) game.sound()->set_volumes(music_volume, effects_volume);
         std::unique_ptr<snd::NativeSoundEngine> native;
         if (native_check) {
             if (!rt::game().native_sound) throw std::runtime_error(std::string(rt::game().set) + " has no native audio (src/games/)");

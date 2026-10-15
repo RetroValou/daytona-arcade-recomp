@@ -1,5 +1,98 @@
 # Handoff
 
+## Per-game default settings; the coin at start: the backup RAM, now opt-in (2026-10-15)
+
+`rt::Game::defaults` (FrontendDefaults: music_volume, effects_volume in %):
+the Vita's VitaSettings take their defaults from it (RESET DEFAULTS too).
+Daytona 100/20 (the old global default), Sega Rally 100/85. A vita.cfg saved
+before keeps its own values until RESET DEFAULTS.
+
+Reported on the Vita: a game sometimes (Sega Rally almost always) starts a
+race by itself at launch; a coin inserted survives Reset and quitting.
+Cause, reproduced on the PC with m2run --save-nvram/--nvram: both games keep
+the coins and credits paid for but unused in their battery-backed RAM, as a
+cabinet does through a power cut, and the Vita saved backup_ram.bin at every
+pause and quit and loaded it at start. Once the unused coins make a credit,
+the game starts a race on its own about 2 s later, without Start (Daytona: 3
+coins at frames 1200-1289, Circuit Select by 1400; the same as MAME's, the
+parity runs show it). Not an uninitialized array: the inputs, the I/O board
+and the Vita's runtime were checked and start released.
+Decision (the user's): the Vita's new option SAVE RECORDS (BACKUP RAM), off by
+default: backup_ram.bin neither loaded nor saved, each start is a cabinet
+switched on afresh; ioboard_eeprom.bin (test mode settings) always kept. On:
+records and bookkeeping kept, and the unused coins too (as on a cabinet).
+Wrong turn, written and removed the same day: clearing the unused coins in
+the loaded image (rt::clear_pending_credits, m2run --clear-credits); it
+worked, the user preferred the option. What it had found, for later:
+- daytona93: a block at 0x100 and its copy at 0x180, CRC16 (XMODEM: poly
+  0x1021, init 0, MSB first) of +6..+0x7f stored little-endian at +4; +0x28
+  the unused coins (full credits included), +0x10/+0x18 coin totals.
+  Revision A not checked.
+- srallyc: a block at 0 and its copy at 0xc68, CRC16 (poly 0x1021, its own
+  initial value: XMODEM of +2..+0x147 XOR 0x7de8 in every save) at +0,
+  little-endian; +0x20 coins toward the next credit, +0x22 whole credits,
+  +0x04 credits bought, +0x0c/+0x3c coin totals, +0x34 play statistics.
+- The CRC is linear, so a byte change only needs the checksum XOR the CRC
+  (init 0) of the change, from the byte to the CRC's end; tested: the game
+  kept its totals (the block accepted) and started in attract at CREDIT 0.
+
+## Sega Rally sound: as loud as Daytona, music and effects volumes (2026-10-15)
+
+Reported on the Vita: Sega Rally (SCSP board) far quieter than Daytona, and
+the Music/Effects options without effect on it.
+
+Loudness, m2run WAVs, 6,000 frames, after the first 10 s: srallyc RMS -38.5
+dBFS race / -47.3 attract, peak -20.9; daytona93 -14.4 / -21.8, peak -0.9.
+Not an emulation fault: our SCSP is MAME's and the game's own levels (MVOL,
+TL) are low; the cabinet's amplifier makes it up. So a per-game frontend
+gain, `Game::output_gain` (default 1; srallyc 10, +20 dB: its race peaks at
+Daytona's, no clipping), applied by the Vita (vita::Audio::gain, reference
+audio) and the desktop app (stream gain); m2run's WAV and the parity checks
+stay at the board's output.
+
+Music/effects: the Model 1 board splits them through its driver's voice
+pools (SoundBoard::voice_channel); the SCSP board did nothing. Sega Rally's
+driver keeps one 16-byte record per SCSP slot at 0x2800 in the 68000's RAM:
+the key-on routines (0x600ec6, 0x601046, 0x601092, 0x6010de: ori.b #$18 to
+the slot's register) take the slot's register offset from its first word
+(A1 = 0x2800 + slot x 0x10); its byte 5 is the owner, 0 for the music's
+sequence (2,886 of 2,887 attract key-ons, the other at the coin's effect),
+1-15 for effects (22 % of race key-ons). Found by logging the 68000's PC/A1
+and that record at every key-on (attract vs race), after RAM-snapshot
+statistics alone had been inconclusive (the driver reuses records, so the
+slot number is not rewritten at most key-ons). Described as data,
+`Game::scsp_voices` = {0x2800, 0x10, 5} (src/games/srallyc.cpp);
+ScspBoard::scsp_slot_effect reads it at each Scsp::StartSlot; Scsp scales a
+slot's sample (direct and DSP send) by its owner's volume, and leaves the
+samples untouched while both are 1 (MAME's output). Check (m2run --volumes,
+new): attract music alone -47.3 dBFS = all, effects alone -74.8; race music
+-44.5, effects -39.8, together -38.5. Parity with both at 1: daytona93 and
+srallyc 3,000-frame race dumps + WAV identical; ctest 19/19. Not done: the
+DSP's own output (EFREG, reverb) is not split, it follows the slots' sends.
+Not yet heard on the console.
+
+## Vita Options page: only the options that can change something (2026-10-15)
+
+platform/vita/main_gpu.cpp: the Options rows are an enum (`Option`), and
+`option_available(option, settings)` decides from the build and the game's
+record, never a set name: Aspect/HUD/Stretch only with the GXM renderer
+(kWidescreen; vitaGL draws 4:3 only), Audio engine only with
+Game::native_sound, Music/Effects when the board can split them
+(rt::has_music_effects) or the native engine is selected (corrected the same
+day: the Model 1 board's reference audio splits them too), Draw distance only with the new
+`Game::draw_distance` (src/runtime/game.h, default false; true on both
+Daytona sets, whose hook_draw_list serves it), Link play only with
+Game::link and its 7 detail rows only once it is on, ROM only when the
+package holds the companion's executable (as start_game looks for it). The
+Graphics API, Fullscreen and Binds rows are gone (fixed or informative;
+the footer shows the chords). Input handling goes by the listed row's
+Option; after a change that lists or unlists rows the cursor stays on the
+option changed. vitaGL lists 14 rows for Daytona '93 (was 31; +2 with the
+native engine selected, +1 in a two-ROM package), 12 for Sega Rally.
+Built: daytona and segarally --gpu-gl --fast-inaccuracy VPKs, GXM
+--compile-check, desktop builds and ctest 19/19 (game.h shared). Not yet
+run on the console.
+
 ## Builds per game: build_<game>/, --game, <game>.vpk (2026-10-15)
 
 Everything is built by game now, each in its own folder (scripts/games.py

@@ -540,7 +540,8 @@ int main(int argc, char **argv) {
             launcher.set_link_status(link_status(game->board().comm_board(), link.get(), cfg));
             if (game->sound()) {
                 game->sound()->set_volumes(cfg.music_volume, cfg.effects_volume);
-                if (have_audio) audio.push(*game->sound(), cfg.mute ? 0.0f : cfg.volume, pacer.pacing().game_hz / kArcadeHz);
+                if (have_audio) audio.push(*game->sound(), cfg.mute ? 0.0f : cfg.volume * rt::game().output_gain, // the game's level against Daytona's
+                                                pacer.pacing().game_hz / kArcadeHz);
                 else game->sound()->take_fm(), game->sound()->take_pcm(); // nowhere to play it
             }
         } else {

@@ -374,6 +374,25 @@ See [HANDOFF.md](HANDOFF.md) for the port's status and
 
 ## Widescreen, draw distance and cabinet controls
 
+The Options page lists only what can be changed in this build, for this game
+(`option_available` in `main_gpu.cpp`): Aspect, HUD and Stretch Tile Background
+with the GXM renderer only (vitaGL draws the original 4:3 picture); the audio
+engine for a game whose driver tables are known (`Game::native_sound`); Music
+and Effects when the sound board can tell them apart (`rt::has_music_effects`:
+the Model 1 board, or an SCSP board with its driver's voice table,
+`Game::scsp_voices`) or the native engine is selected; Draw Distance
+for a game with its hook (`Game::draw_distance`); Link Play, and its addresses,
+ports and frame sync once it is on, for a game with the communication board
+(`Game::link`); the ROM switch when the package holds the companion set's
+executable. Nothing fixed at build time is listed (renderer, fullscreen).
+
+SAVE RECORDS (BACKUP RAM), off by default: whether the game's battery-backed
+RAM (`backup_ram.bin`: records, bookkeeping, and the coins not used yet) is
+loaded at start and saved at each pause and on quitting. Off, every start is
+a cabinet switched on afresh: coins left from an earlier session cannot start
+a race on their own. The test mode settings (`ioboard_eeprom.bin`) are always
+kept.
+
 The GXM Options menu now saves Aspect (Original, 16:10, 16:9, 21:9),
 HUD (Centred or Screen Edges), and scenery Draw Distance (Shortest through
 Furthest). Changes apply on resume; original aspect, centred HUD and default
@@ -395,7 +414,7 @@ Release between presses. Cross supplies VR1 (menu next) and Start supplies
 cabinet Start (menu select), as used by the game's test screens.
 Start+Select still opens the frontend pause menu.
 Plain Select inserts a coin on release; Test/Service chords do not insert
-coins or operate view buttons. The bindings are listed in Options.
+coins or operate view buttons. The menu's footer lists the fixed chords.
 
 Draw distance requires generated code with seeds/daytona93_hooks.txt:
 regenerate with scripts/recompile.py before building. Merely linking the

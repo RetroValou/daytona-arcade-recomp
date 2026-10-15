@@ -11,8 +11,9 @@ namespace snd {
 double board_fm_rate() { return rt::game().sound == rt::SoundBoardType::Scsp ? Scsp::kRate : SoundBoard::kYmClock / 144.0; }
 double board_pcm_rate() { return rt::game().sound == rt::SoundBoardType::Scsp ? Scsp::kRate : SoundBoard::kPcmClock / 224.0; }
 
-ScspBoard::ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples)
-    : program_(program), samples_(samples), scsp_(*this, (cpu_.ram.assign(0x80000, 0), cpu_.ram.data())) {
+ScspBoard::ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples,
+                     const rt::ScspVoices *voices)
+    : program_(program), samples_(samples), voices_(voices), scsp_(*this, (cpu_.ram.assign(0x80000, 0), cpu_.ram.data())) {
     if (program_.size() < 0x80000 || samples_.size() < 0x800000)
         throw rt::Fatal("SCSP sound board images missing or short (re-run the importer)");
     cpu_.map = kScspMap;
@@ -86,6 +87,12 @@ void ScspBoard::write16(uint32_t addr, uint16_t data, uint16_t mask) {
     }
     // 0x400000: model2snd_ctrl, sample banking for sets over 8 MiB only;
     // writes elsewhere (the program ROM) are ignored, as MAME's
+}
+
+bool ScspBoard::scsp_slot_effect(int slot) {
+    if (!voices_) return false;
+    const uint32_t a = voices_->table + uint32_t(slot) * voices_->entry + voices_->owner;
+    return a < cpu_.ram.size() && cpu_.ram[a] != 0; // owner 0: the music's sequence
 }
 
 void ScspBoard::scsp_irq(int level, bool assert) {
