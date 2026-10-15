@@ -32,6 +32,11 @@ struct VideoMem {
     const uint32_t *tex0 = nullptr;     // texture RAM 0, packed as MAME stores it (0x80000 dwords)
     const uint32_t *tex1 = nullptr;     // texture RAM 1
     uint64_t tex_generation = 0;        // counts writes to texture RAM (changes when either sheet does)
+    // tex_generation at each 4 KB page's last write, as tex0/tex1 store it (byte
+    // offset / 4096): sheet 0's kTexPages, then sheet 1's. A renderer that caches
+    // textures built from texture RAM drops those whose pages moved (the Vita's).
+    static constexpr uint32_t kTexPages = 512;
+    const uint64_t *tex_page_generation = nullptr;
 };
 
 class Raster {

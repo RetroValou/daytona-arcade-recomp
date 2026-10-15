@@ -1,5 +1,30 @@
 # Handoff
 
+## Vita vitaGL: textures kept from rewritten texture RAM (2026-10-15)
+
+Reported on the Vita (vitaGL), Virtua Fighter 2: once a game starts, every
+fighter wore the attract's old man's textures (Shun Di), in fights too; the
+PC was right. Cause: GpuGlRenderer caches each index texture built from
+texture RAM, keyed by the polygon's texture header (size, position) only;
+VF2 loads each fight's characters into texture RAM where the attract's were,
+so the Vita kept the old pictures (the desktop GPU renderer re-uploads
+texture RAM whenever VideoMem::tex_generation moves). Daytona and Sega Rally
+hardly write texture RAM, hence never seen. Measured (m2run, temporary
+probe, not committed): vf2_fight writes texture RAM on 567 of 6,000 frames,
+in bursts (attract scenes, character select 1414-1562: 940,000 writes,
+round ends ~1,365 a frame), none while fighting: clearing every texture on
+a write frame would rebuild them all at each round change.
+Fix: M2Board keeps tex_generation at each 4 KB page's last write
+(VideoMem::tex_page_generation, 2 x 512 pages, set in tex_write); each
+gpu_gl Source records the generation it was built at and the pages it reads
+(texel_index's addressing, per row pair, both fold halves);
+drop_rewritten_sources, once per frame and only when tex_generation moved,
+deletes the sources one of whose pages was written since (source_cache_
+cleared, refilled on use). Checked on the Vita by the user: right
+textures. Daytona parity unchanged (race_basic 3,000 frames, 13/13).
+Not done: gpu_fast (GXM) caches its sources the same way and has the same
+fault (not reported: not tested on vf2).
+
 ## Virtua Fighter 2 (vf2, Version 2.1; Model 2A-CRX), one player (2026-10-15)
 
 New game `virtuafighter2` (scripts/games.py; build_virtuafighter2/, Vita

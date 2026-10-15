@@ -1161,6 +1161,20 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
                     if (la[j + 1]) { la[i] = la[j]; break; }
             }
     }
+    // The texture RAM pages it was decoded from (texel_index's addressing: each row pair
+    // of texels is one run of words; the x >= 1024 half is folded), for drop_rewritten_sources.
+    s.generation = mem.tex_generation;
+    s.sheet = (poly.texheader[2] & 0x1000) ? 1 : 0;
+    for (uint32_t half = 0; half < 2; ++half) {
+        const uint32_t x0 = std::max(bx, half ? 1024u : 0u), x1 = std::min(bx + s.source_w, half ? 2048u : 1024u);
+        if (x0 >= x1) continue;
+        const uint32_t fold = half ? 512 : 0, xa = (x0 - (half ? 1024 : 0)) >> 1, xb = (x1 - 1 - (half ? 1024 : 0)) >> 1;
+        for (uint32_t r = by >> 1; r <= (by + s.source_h - 1) >> 1; ++r) {
+            const uint32_t row = (r ^ fold) << 9;
+            const uint32_t first = ((((row + xa) >> 1) & 0x7ffff) * 4) >> 12, last = ((((row + xb) >> 1) & 0x7ffff) * 4) >> 12;
+            for (uint32_t p = first; p <= last && p < rt::VideoMem::kTexPages; ++p) s.pages[p >> 6] |= uint64_t(1) << (p & 63);
+        }
+    }
     // Mirror flags map to GL mirrored repeat, otherwise plain repeat (road textures repeat).
     s.texture = make_texture(w, h, true, ((poly.texheader[0] >> 8) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT,
                              ((poly.texheader[0] >> 9) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT, GL_LUMINANCE_ALPHA,
@@ -1204,6 +1218,27 @@ int GpuGlRenderer::palette_row(const rt::GeoPoly &poly, const rt::VideoMem &mem)
     return int(row);
 }
 
+void GpuGlRenderer::drop_rewritten_sources(const rt::VideoMem &mem) {
+    if (mem.tex_generation == tex_generation_ || !mem.tex_page_generation) return;
+    tex_generation_ = mem.tex_generation;
+    bool dropped = false;
+    for (auto it = sources_.begin(); it != sources_.end();) {
+        const Source &s = it->second;
+        const uint64_t *gen = mem.tex_page_generation + size_t(s.sheet) * rt::VideoMem::kTexPages;
+        bool stale = false;
+        for (uint32_t w = 0; w < rt::VideoMem::kTexPages / 64 && !stale; ++w)
+            for (uint64_t bits = s.pages[w]; bits && !stale; bits &= bits - 1)
+                stale = gen[w * 64 + uint32_t(__builtin_ctzll(bits))] > s.generation;
+        if (!stale) { ++it; continue; }
+        GLuint t = s.texture;
+        if (t) glDeleteTextures(1, &t);
+        cached_bytes_ -= std::min(cached_bytes_, s.bytes);
+        it = sources_.erase(it);
+        dropped = true;
+    }
+    if (dropped) source_cache_.clear(); // it points into sources_; refilled on use
+}
+
 uint32_t GpuGlRenderer::solid_color(const rt::GeoPoly &poly, const rt::VideoMem &mem) const {
     const uint32_t color = le16(mem.palram, ((poly.texheader[3] >> 6) & 0x3ff) + 0x1000);
     const uint32_t luma = poly.luma >> 2;
@@ -1238,6 +1273,9 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         palette_index_.clear();
         palette_used_ = 0;
     }
+    // Texture RAM rewritten (Virtua Fighter 2 loads each fight's characters there): the
+    // index textures decoded from those pages are stale, the others are kept.
+    drop_rewritten_sources(mem);
 
     // Per-polygon state, cached on two levels and reused while the following polygons match:
     //   * Material: everything that depends on the header (texheader, viewport, window):

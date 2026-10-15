@@ -133,7 +133,15 @@ private:
         uint32_t source_w = 1, source_h = 1; // size in Model 2 texels
         bool transparent = false;            // texel 15 is see-through: alpha-test shader
         std::size_t bytes = 0;
+        // Texture RAM it was decoded from: VideoMem::tex_generation then, and its
+        // sheet's 4 KB pages (bit n: page n), to drop it once one of them is written.
+        uint64_t generation = 0;
+        uint8_t sheet = 0;
+        uint64_t pages[rt::VideoMem::kTexPages / 64] = {};
     };
+    // Drops the sources whose texture RAM pages were written since they were built
+    // (Virtua Fighter 2 loads each fight's characters there). Once per frame.
+    void drop_rewritten_sources(const rt::VideoMem &mem);
 
     static constexpr std::size_t kSourceCacheBytes = 24u * 1024u * 1024u;
     // New index textures per frame: at most kSourceBuildBudget, and at most
@@ -205,6 +213,7 @@ private:
     FlatIndex<uint32_t, uint32_t, 12> palette_index_; // palette key -> row (at most kPaletteRows)
     uint32_t palette_used_ = 0;        // rows
     uint64_t colour_generation_ = 0;   // Video::colour_generation the rows were built at (fades rebuild them)
+    uint64_t tex_generation_ = 0;      // VideoMem::tex_generation sources were last checked at
     uint8_t gamma_[256]{};
 
     // Diagnostics
