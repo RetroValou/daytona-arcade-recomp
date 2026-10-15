@@ -66,6 +66,15 @@ struct SoundLayout {
     uint32_t sequence_banks, profiles, fine_pitch, bend_curves, note_codes, velocity, instruments, percussion;
 };
 
+// The SCSP DSP program the sound driver copies into the SCSP's MPRO registers
+// at boot: in the 68000's program ROM at `offset` (byte offset in
+// sound_program.bin, big-endian words as there), `steps` steps of 4 words,
+// CRC-32 `crc` of those bytes. m2import cuts it out (dsp_program.bin) and
+// m2dsprecomp recompiles it; steps 0: none (the DSP interpreter only).
+struct ScspDspProgram {
+    uint32_t offset = 0, steps = 0, crc = 0;
+};
+
 // The SCSP sound driver's voice table in the 68000's RAM, which says whose
 // voice each SCSP slot plays: `entry` bytes per slot from `table`, the owner
 // at `owner` (0: the music's sequence, else a sound effect's). Read at each
@@ -138,6 +147,8 @@ struct Game {
     // The frontends' default settings for it.
     FrontendDefaults defaults{};
     ControlScheme controls = ControlScheme::Driving;
+    // SCSP board: its DSP program, recompiled (tools/m2dsprecomp), or none.
+    ScspDspProgram dsp{};
 };
 
 

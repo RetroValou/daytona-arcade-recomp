@@ -30,6 +30,58 @@ public:
     virtual bool scsp_slot_effect(int) { return false; }
 };
 
+// MAME scspdsp.cpp's helpers, shared by the DSP interpreter (scsp.cpp) and the
+// recompiled DSP programs (tools/m2dsprecomp).
+namespace dsp {
+inline int32_t sext(int32_t v, int bits) { return int32_t(uint32_t(v) << (32 - bits)) >> (32 - bits); }
+inline uint16_t PACK(int32_t val) {
+    int const sign = (val >> 23) & 1;
+    uint32_t temp = uint32_t(val ^ (val << 1)) & 0xFFFFFF;
+    int exponent = 0;
+    for (int k = 0; k < 12; k++) {
+        if (temp & 0x800000) break;
+        temp <<= 1;
+        exponent += 1;
+    }
+    if (exponent < 12) val = (val << exponent) & 0x3FFFFF;
+    else val <<= 11;
+    val >>= 11;
+    val &= 0x7FF;
+    val |= sign << 15;
+    val |= exponent << 11;
+    return uint16_t(val);
+}
+
+inline int32_t UNPACK(uint16_t val) {
+    int const sign = (val >> 15) & 1;
+    int exponent = (val >> 11) & 0xF;
+    int const mantissa = val & 0x7FF;
+    int32_t uval = mantissa << 11;
+    if (exponent > 11) {
+        exponent = 11;
+        uval |= sign << 22;
+    } else {
+        uval |= (sign ^ 1) << 22;
+    }
+    uval |= sign << 23;
+    uval <<= 8;
+    uval >>= 8;
+    uval >>= exponent;
+    return uval;
+}
+} // namespace dsp
+
+struct ScspDsp;
+// A recompiled DSP program (tools/m2dsprecomp's dsp_gen.cpp sets scsp_dsp_native at
+// start-up): ScspDsp::Step runs `step` instead of the interpreter while MPRO's first
+// steps x 4 words are `mpro` and LastStep is `steps`. Null: the interpreter only.
+struct ScspDspNative {
+    const uint16_t *mpro;
+    int steps;
+    void (*step)(ScspDsp &);
+};
+extern const ScspDspNative *scsp_dsp_native;
+
 // MAME SCSPDSP.
 struct ScspDsp {
     uint8_t *ram = nullptr; // the sound RAM (big-endian 16-bit words), 0x80000 bytes
@@ -50,15 +102,24 @@ struct ScspDsp {
 
     bool Stopped;
     int LastStep;
+    // The recompiled program in use (scsp_dsp_native), once checked against MPRO.
+    bool native_checked;
+    void (*native)(ScspDsp &);
 
     void Init();
     void SetSample(int32_t sample, int32_t SEL, int32_t MXL);
     void Step();
     void Start();
 
-private:
-    uint16_t read_word(uint32_t a) const;
-    void write_word(uint32_t a, uint16_t v);
+    // The sound RAM, as the DSP sees it (big-endian words; the recompiled programs too).
+    uint16_t read_word(uint32_t a) const { a &= ~1u; return a < 0x80000 ? uint16_t(ram[a] << 8 | ram[a + 1]) : 0; }
+    void write_word(uint32_t a, uint16_t v) {
+        a &= ~1u;
+        if (a < 0x80000) {
+            ram[a] = uint8_t(v >> 8);
+            ram[a + 1] = uint8_t(v);
+        }
+    }
 };
 
 class Scsp {

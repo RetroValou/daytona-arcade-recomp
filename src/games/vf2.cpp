@@ -105,6 +105,11 @@ extern const Game vf2_game = {
     // m2run --volumes), unlike Daytona's engine.
     .defaults = {.effects_volume = 100},
     .controls = ControlScheme::Fighting, // one player: the joystick and Punch/Kick/Guard
+    // Its SCSP DSP program (the reverb): in the sound program ROM at 0x4a48,
+    // 82 steps; the driver copies it into MPRO at boot (the same words, logged
+    // at ScspDsp::Start in m2run, attract and fight: the only program it loads).
+    // The DSP was ~75 % of the SCSP's render time (408 of 549 ns a sample, PC).
+    .dsp = {0x4a48, 82, 0x9CDF098Eu},
 };
 
 } // namespace rt

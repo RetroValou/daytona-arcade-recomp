@@ -120,13 +120,14 @@ def main():
          "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF"),
          "-DM2_INLINE_BUS=" + ("ON" if args.inline_bus else "OFF")] +
         (["-DCMAKE_BUILD_TYPE=" + args.config] if fresh else []))
-    if not all(os.path.exists(os.path.join(cache, f)) for f in ("tgp_program.bin", "sound_program.bin", "pcm1.bin", "samples.bin")):
+    if not all(os.path.exists(os.path.join(cache, f))
+               for f in ("tgp_program.bin", "dsp_program.bin", "sound_program.bin", "pcm1.bin", "samples.bin")):
         if not roms:
             sys.exit(f"recompile: put your ROM set at roms/{args.set}.zip (or .7z) first")
         run(build_cmd + ["--target", "m2import"])
         if subprocess.run([tool(build, args.config, "m2import"), roms[0], cache], cwd=ROOT).returncode:
             sys.exit(ROM_REJECTED_EXIT)  # m2import printed which file is missing or wrong
-    run(build_cmd + ["--target", "m2recomp", "m2tgprecomp", "m2sndrecomp"])
+    run(build_cmd + ["--target", "m2recomp", "m2tgprecomp", "m2sndrecomp", "m2dsprecomp"])
 
     gen = os.path.join(gen_root, args.set)
     if os.path.isdir(gen):
@@ -157,6 +158,11 @@ def main():
     run([tool(build, args.config, "m2sndrecomp"), os.path.join(cache, "sound_program.bin"),
          os.path.join(snd, "snd_gen.cpp")] + SETS[args.set]["sndrecomp"] +
         (["--seeds", snd_seeds] if os.path.exists(os.path.join(ROOT, snd_seeds)) else []))
+
+    # The SCSP DSP program (Game::dsp; an empty file: none, the interpreter runs).
+    dsp = os.path.join(gen_root, args.set + "_dsp")
+    os.makedirs(dsp, exist_ok=True)
+    run([tool(build, args.config, "m2dsprecomp"), os.path.join(cache, "dsp_program.bin"), os.path.join(dsp, "dsp_gen.cpp")])
 
     if args.recomp_only:
         print(f"recompile: recompiled into {games.gen_root(args.set)}/ (--recomp-only: the desktop game is not built)")

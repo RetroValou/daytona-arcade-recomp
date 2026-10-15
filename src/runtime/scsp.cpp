@@ -26,7 +26,7 @@ constexpr int LFO_SHIFT = 8;
 uint32_t FIX(float v) { return uint32_t(float(1 << SHIFT) * v); }
 constexpr int EG_SHIFT = 16;
 
-int32_t sext(int32_t v, int bits) { return int32_t(uint32_t(v) << (32 - bits)) >> (32 - bits); }
+using dsp::sext; // scsp.h (shared with the recompiled DSP programs)
 
 // Envelope times in ms
 const double ARTimes[64] = {100000 /*infinity*/, 100000 /*infinity*/, 8100.0, 6900.0, 6000.0, 4800.0, 4000.0, 3400.0, 3000.0, 2400.0, 2000.0, 1700.0, 1500.0,
@@ -639,6 +639,7 @@ void Scsp::w16(uint32_t addr, uint16_t val) {
             m_DSP.MADRS[(addr - 0x7c0) / 2] = val;
         else if (addr < 0xC00) {
             m_DSP.MPRO[(addr - 0x800) / 2] = val;
+            m_DSP.native_checked = false; // the recompiled program may no longer apply
             if (addr == 0xBF0) m_DSP.Start();
         }
     }
@@ -963,54 +964,10 @@ void Scsp::LFO_ComputeStep(SCSP_LFO_t *LFO, uint32_t LFOF, uint32_t LFOWS, uint3
 
 // --- DSP (MAME scspdsp.cpp) --------------------------------------------------
 
-namespace {
+using dsp::PACK;
+using dsp::UNPACK;
 
-uint16_t PACK(int32_t val) {
-    int const sign = (val >> 23) & 1;
-    uint32_t temp = uint32_t(val ^ (val << 1)) & 0xFFFFFF;
-    int exponent = 0;
-    for (int k = 0; k < 12; k++) {
-        if (temp & 0x800000) break;
-        temp <<= 1;
-        exponent += 1;
-    }
-    if (exponent < 12) val = (val << exponent) & 0x3FFFFF;
-    else val <<= 11;
-    val >>= 11;
-    val &= 0x7FF;
-    val |= sign << 15;
-    val |= exponent << 11;
-    return uint16_t(val);
-}
-
-int32_t UNPACK(uint16_t val) {
-    int const sign = (val >> 15) & 1;
-    int exponent = (val >> 11) & 0xF;
-    int const mantissa = val & 0x7FF;
-    int32_t uval = mantissa << 11;
-    if (exponent > 11) {
-        exponent = 11;
-        uval |= sign << 22;
-    } else {
-        uval |= (sign ^ 1) << 22;
-    }
-    uval |= sign << 23;
-    uval <<= 8;
-    uval >>= 8;
-    uval >>= exponent;
-    return uval;
-}
-
-} // namespace
-
-uint16_t ScspDsp::read_word(uint32_t a) const { a &= ~1u; return a < 0x80000 ? uint16_t(ram[a] << 8 | ram[a + 1]) : 0; }
-void ScspDsp::write_word(uint32_t a, uint16_t v) {
-    a &= ~1u;
-    if (a < 0x80000) {
-        ram[a] = uint8_t(v >> 8);
-        ram[a + 1] = uint8_t(v);
-    }
-}
+const ScspDspNative *scsp_dsp_native = nullptr;
 
 void ScspDsp::Init() {
     uint8_t *const keep = ram;
@@ -1022,6 +979,18 @@ void ScspDsp::Init() {
 
 void ScspDsp::Step() {
     if (Stopped) return;
+
+    // The recompiled program (tools/m2dsprecomp), while MPRO and LastStep are its own
+    // (checked again after every MPRO write or Start); otherwise MAME's interpreter.
+    if (!native_checked) {
+        const ScspDspNative *n = scsp_dsp_native;
+        native = n && LastStep == n->steps && std::equal(n->mpro, n->mpro + size_t(n->steps) * 4, MPRO) ? n->step : nullptr;
+        native_checked = true;
+    }
+    if (native) {
+        native(*this);
+        return;
+    }
 
     std::fill(std::begin(EFREG), std::end(EFREG), int16_t(0));
 
@@ -1155,6 +1124,7 @@ void ScspDsp::SetSample(int32_t sample, int32_t SEL, int32_t) { MIXS[SEL] += sam
 
 void ScspDsp::Start() {
     Stopped = false;
+    native_checked = false;
     int i;
     for (i = 127; i >= 0; --i) {
         uint16_t const *const IPtr = MPRO + (i * 4);

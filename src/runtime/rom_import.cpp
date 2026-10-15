@@ -92,6 +92,17 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
 
 const char *rom_set_name() { return game().set; }
 
+std::vector<uint8_t> dsp_program(const M2Board::Images &img) {
+    const ScspDspProgram &dsp = img.game->dsp;
+    if (!dsp.steps) return {};
+    const size_t bytes = size_t(dsp.steps) * 8;
+    if (img.sound_program.size() < size_t(dsp.offset) + bytes ||
+        crc32(img.sound_program.data() + dsp.offset, bytes) != dsp.crc)
+        throw ZipError("SCSP DSP program not where expected");
+    const uint8_t *p = img.sound_program.data() + dsp.offset;
+    return {p, p + bytes};
+}
+
 std::vector<uint8_t> tgp_program(const M2Board::Images &img) {
     const TgpProgram &tgp = game().tgp;
     const std::vector<uint8_t> &src = tgp.in_program ? img.program : img.main_data;

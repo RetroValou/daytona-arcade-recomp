@@ -140,6 +140,8 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     sync(i960_out, out / game)
     sync(tmp / "tgp", out / f"{game}_tgp")
     sync(gen / f"{game}_snd", out / f"{game}_snd")
+    if (gen / f"{game}_dsp").is_dir():  # the recompiled SCSP DSP program (optional)
+        sync(gen / f"{game}_dsp", out / f"{game}_dsp")
     shutil.rmtree(tmp, ignore_errors=True)
     for old in ("gen_fast", "gen_ram"):  # earlier versions of this script
         shutil.rmtree(build / old, ignore_errors=True)

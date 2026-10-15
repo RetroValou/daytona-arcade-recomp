@@ -45,8 +45,10 @@ int main(int argc, char **argv) {
         write(out + "/samples.bin", img.samples.data(), img.samples.size());
         const std::vector<uint8_t> tgp = rt::tgp_program(img); // the TGP program the i960 uploads at boot
         write(out + "/tgp_program.bin", tgp.data(), tgp.size());
-        std::printf("m2import: wrote program, main_data, copro_data, copro_tables, polygons, textures, sound_program, pcm1, pcm2, samples, tgp_program to %s\n",
-                    out.c_str());
+        const std::vector<uint8_t> dsp = rt::dsp_program(img); // the SCSP DSP program (empty: none)
+        write(out + "/dsp_program.bin", dsp.data(), dsp.size());
+        std::printf("m2import: wrote program, main_data, copro_data, copro_tables, polygons, textures, sound_program, pcm1, pcm2, samples, "
+                    "tgp_program, dsp_program (%zu steps) to %s\n", dsp.size() / 8, out.c_str());
         return 0;
     } catch (const std::exception &e) {
         std::fprintf(stderr, "m2import: %s\n", e.what());

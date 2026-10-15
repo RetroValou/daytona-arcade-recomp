@@ -32,5 +32,8 @@ const char *rom_set_name();
 
 // The TGP program the i960 uploads at boot, cut from main_data (CRC-checked).
 std::vector<uint8_t> tgp_program(const M2Board::Images &img);
+// The SCSP DSP program the sound driver loads (Game::dsp), cut from the sound
+// program (CRC-checked; big-endian words): empty for a game without one.
+std::vector<uint8_t> dsp_program(const M2Board::Images &img);
 
 } // namespace rt

@@ -1,5 +1,51 @@
 # Handoff
 
+## SCSP DSP program recompiled (m2dsprecomp), for Virtua Fighter 2 (2026-10-15)
+
+Why: on the Vita, VF2 ran at 35-40 fps with core 2 (sound + 2D worker) at
+~100 %: sound board 88-93 % of it, 17-26 ms a frame against the 17.4 ms
+budget, the main core waiting 7-18 ms a frame on it ("sound sync /
+dispatch"); the 2D worker 1-6 % (extern/result_perf_vita/vf2/perf_base.log,
+not committed). PC probes (rdtsc in ScspBoard::run_to/render_to and
+Scsp::render, temporary, not committed), 6,000 frames: VF2 fight 68000
+3,059 ms, SCSP render 2,526 ms of which DSP 1,876 (408 ns a sample, an
+82-step program on 99.7 % of samples), slots 508 (11.5 active); Sega Rally
+race 68000 1,341, render 750, DSP 39 (its program is empty: 0 steps), slots
+601 (14.2 active). The DSP is VF2's difference.
+
+The program: the sound driver copies it from its program ROM into MPRO at
+boot (sound_program.bin 0x4a48, 82 steps, CRC-32 0x9CDF098E; logged at
+ScspDsp::Start in m2run: loaded twice, the same words, in attract and in a
+fight; Sega Rally loads an empty one). Game::dsp {offset, steps, crc};
+m2import writes dsp_program.bin (rt::dsp_program, CRC-checked; empty for a
+game without one). tools/m2dsprecomp writes <set>_dsp/dsp_gen.cpp: one block
+per step, the fields resolved, the interpreter's operations in its order
+(memory only on odd steps, the early return on an input index past 0x31);
+COEF, MADRS, TEMP, MEMS and the RAM stay run-time state. The generated file
+registers the program (snd::scsp_dsp_native, a static initializer): no
+symbol the runtime needs, so builds without the file (other games, the
+Dreamcast and mobile builds, the tools) keep the interpreter.
+ScspDsp::Step runs it while MPRO's first steps x 4 words and LastStep are
+the program's, checked again after every MPRO write and Start (a reload in
+progress, or another program, runs on the interpreter: never a wrong sound).
+The interpreter's helpers (sext, PACK, UNPACK) and read_word/write_word
+moved to scsp.h, unchanged, shared with the generated code. recompile.py
+runs it (a cache without dsp_program.bin is imported again); build_vita.py
+copies <set>_dsp; CMake and the Vita CMake add dsp_gen.cpp when present.
+
+Checks: tests scsp_dsp_random and scsp_dsp_random-return (ctest; no ROM):
+m2dsprecomp --random / --random-return 128-step programs against the
+interpreter, 20,000 samples with new inputs and coefficient changes, the
+whole DSP state and the 512 KB sound RAM identical after every sample.
+VF2, 8,000 frames of attract: WAV identical byte for byte to the
+interpreter's, 16/16 frames and every count the same. DSP time (rdtsc,
+temporary probe, 4,000-frame fight, twice): interpreter 980-1,025 cycles a
+sample, recompiled 236-238 (x4.2). Daytona and Sega Rally parity unchanged.
+On the Vita (user): the sound is right with the recompiled DSP. Left on
+the sound core: the 68000 (VF2's driver costs twice Sega Rally's on the PC)
+and the slots. Sega Rally rebuilt through the new chain (dsp_program.bin
+empty, dsp_gen.cpp registers nothing): race_basic parity 13/13, VPK built.
+
 ## Vita vitaGL: textures kept from rewritten texture RAM (2026-10-15)
 
 Reported on the Vita (vitaGL), Virtua Fighter 2: once a game starts, every

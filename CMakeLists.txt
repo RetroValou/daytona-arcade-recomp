@@ -278,8 +278,14 @@ endif()
 set(GEN_DIR ${M2_GEN_ROOT}/${M2_ROMSET})
 set(TGP_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_tgp/tgp_gen.cpp)
 set(SND_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_snd/snd_gen.cpp)
+# The SCSP DSP program, recompiled (m2dsprecomp; optional: without it, or for a set
+# with no program, the DSP interpreter runs).
+set(DSP_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_dsp/dsp_gen.cpp)
 if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
     file(GLOB GEN_SOURCES ${GEN_DIR}/*.cpp)
+    if(EXISTS ${DSP_GEN})
+        list(APPEND GEN_SOURCES ${DSP_GEN})
+    endif()
     add_executable(m2native tools/m2native/main.cpp ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
     target_link_libraries(m2native PRIVATE runtime)
     # The game on its own: native board runtime, no trace.
@@ -332,6 +338,9 @@ endif()
 add_executable(m2import tools/m2import/main.cpp)
 target_link_libraries(m2import PRIVATE runtime)
 
+# The SCSP DSP program recompiler (Game::dsp, m2import's dsp_program.bin).
+add_executable(m2dsprecomp tools/m2dsprecomp/main.cpp)
+
 add_executable(m2tgprecomp tools/m2tgprecomp/main.cpp)
 target_include_directories(m2tgprecomp PRIVATE src)
 if(EXISTS ${TGP_GEN})
@@ -367,6 +376,18 @@ add_executable(traceinfo tools/traceinfo/main.cpp)
 target_link_libraries(traceinfo PRIVATE trace)
 
 enable_testing()
+
+# The DSP recompiler against MAME's interpreter, on synthetic 128-step programs
+# (m2dsprecomp --random, no ROM): every field, every sample's whole state; and one
+# that stops half way (an input index past 0x31: the interpreter's early return).
+foreach(kind random random-return)
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp
+                       COMMAND m2dsprecomp --${kind} 20261015 128 ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp
+                       DEPENDS m2dsprecomp VERBATIM)
+    add_executable(test_scsp_dsp_${kind} tests/test_scsp_dsp.cpp ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp)
+    target_link_libraries(test_scsp_dsp_${kind} PRIVATE runtime)
+    add_test(NAME scsp_dsp_${kind} COMMAND test_scsp_dsp_${kind})
+endforeach()
 
 # Geometrizer clipping and display-list streaming (shared runtime code).
 add_executable(test_geo_clip tests/test_geo_clip.cpp)
