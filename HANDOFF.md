@@ -1,5 +1,31 @@
 # Handoff
 
+## Vita probes: texture builds and the System 24 tile cache (2026-10-15)
+
+Diagnostics only, to choose how to make texture builds cheaper (VF2: up
+to 14 ms in one frame at transitions, under the existing budget of 32
+builds / 128 K texels a frame). perf.log, under CORE 0:
+- 2D video update: "of which tile cache (palette incl.)" and "of which
+  palette" (VideoProfile::palette, new; timed only with a profile clock);
+  a line "tile cache: N tiles and M characters rebuilt per frame".
+- polygon recording / texture builds: "texture decode" (texel_index loop
+  + transparent fill), "texture upload (glTexImage2D)", "identical
+  rebuilds" (whole builds that remade a texture dropped for a texture RAM
+  write, with the same texels: a 64-bit hash of the decoded texels, kept
+  per dropped key; computed after the timings, diagnostics builds only);
+  a line "textures: built, texels each, us per 1000 texels decode and
+  upload, frames with builds, most in a frame, identical, dropped,
+  deferred, cache resets".
+New csv columns: tex_decode, tex_upload, tex_identical, palette_2d,
+tile_cache_2d (before geo_parse). Release builds: two clock reads more
+per texture build, nothing else. Checked: Vita host tests 17/17, PC
+ctest 21/21 (vf2_fight output unchanged), VF2 diagnostics VPK built, GXM
+compile check. Next: the user's perf.log in a fight, then pick among
+word-wise decoding (8 texels a 32-bit word), decoding straight into the
+texture's memory (texture_memory, no scratch copy, no glTexImage2D copy),
+keeping a dropped texture whose texels did not change, the transparent
+fill merged into the decode.
+
 ## VF2: the fight crash (missing script stubs) and a seed clean-up (2026-10-15)
 
 On the Vita a fight went back to the menu: "no recompiled code at 00034e28"

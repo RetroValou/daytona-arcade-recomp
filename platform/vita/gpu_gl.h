@@ -81,6 +81,14 @@ public:
     uint64_t last_sort_us() const { return last_sort_us_; } // priority sort feeding the depth ranks
     uint64_t last_texture_us() const { return last_texture_us_; } // index texture builds (inside polygons)
     uint64_t last_vertex_us() const { return last_vertex_us_; }   // vertex writing (inside polygons)
+    // Index texture builds since the last take (diagnostics: what a build costs, and how
+    // many rebuild a texture dropped for a texture RAM write with the same texels).
+    struct TextureProbe {
+        uint64_t decode_us = 0, upload_us = 0; // texel decode (+ transparent fill), make_texture
+        uint64_t identical_us = 0;             // whole builds of identical rebuilds
+        uint32_t builds = 0, texels = 0, identical = 0, dropped = 0;
+    };
+    TextureProbe take_texture_probe() { const TextureProbe p = texture_probe_; texture_probe_ = {}; return p; }
     uint64_t last_polygon_us() const { return last_polygon_us_; }
     uint64_t last_tile_us() const { return last_tile_us_; }
     uint64_t last_upload_us() const { return last_upload_us_; }  // main core waiting for the 2D worker
@@ -138,6 +146,7 @@ private:
         uint64_t generation = 0;
         uint8_t sheet = 0;
         uint64_t pages[rt::VideoMem::kTexPages / 64] = {};
+        uint64_t hash = 0; // its texels (diagnostics builds only: TextureProbe::identical)
     };
     // Drops the sources whose texture RAM pages were written since they were built
     // (Virtua Fighter 2 loads each fight's characters there). Once per frame.
@@ -224,6 +233,8 @@ private:
              system24_quads_ = 0, system24_uploaded_tiles_ = 0, clip_changes_ = 0, textured_polys_ = 0,
              solid_polys_ = 0, checker_polys_ = 0, textured_checker_polys_ = 0;
     std::size_t submitted_vertices_ = 0;
+    TextureProbe texture_probe_;
+    std::unordered_map<uint32_t, uint64_t> dropped_hashes_; // diagnostics: key32 -> texels hash of a dropped source
 };
 
 } // namespace vita

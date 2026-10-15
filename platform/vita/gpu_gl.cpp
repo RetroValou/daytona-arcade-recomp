@@ -1138,6 +1138,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint32_t by = 32u * ((poly.texheader[2] >> 6) & 0x1f);
     const uint32_t *sheet = (poly.texheader[2] & 0x1000) ? mem.tex1 : mem.tex0;
     std::vector<uint8_t> &la = index_scratch_; // L, A pairs
+    const uint64_t decode_begin = now_us();
     la.resize(size_t(w) * h * 2u);
     const uint8_t transparent_alpha = s.transparent ? 0 : 255; // alpha of index 15
     for (uint32_t y = 0; y < h; ++y) {
@@ -1161,6 +1162,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
                     if (la[j + 1]) { la[i] = la[j]; break; }
             }
     }
+    const uint64_t decode_end = now_us();
     // The texture RAM pages it was decoded from (texel_index's addressing: each row pair
     // of texels is one run of words; the x >= 1024 half is folded), for drop_rewritten_sources.
     s.generation = mem.tex_generation;
@@ -1176,6 +1178,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
         }
     }
     // Mirror flags map to GL mirrored repeat, otherwise plain repeat (road textures repeat).
+    const uint64_t upload_begin = now_us();
     s.texture = make_texture(w, h, true, ((poly.texheader[0] >> 8) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT,
                              ((poly.texheader[0] >> 9) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT, GL_LUMINANCE_ALPHA,
                              la.data());
@@ -1184,8 +1187,32 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     cached_bytes_ += s.bytes;
     ++g.stats.new_sources;
     g.stats.new_texels += w * h;
-    g.timing.rec_textures += now_us() - build_begin;
-    last_texture_us_ += now_us() - build_begin;
+    const uint64_t build_end = now_us();
+    g.timing.rec_textures += build_end - build_begin;
+    last_texture_us_ += build_end - build_begin;
+    texture_probe_.decode_us += decode_end - decode_begin;
+    texture_probe_.upload_us += build_end - upload_begin;
+    ++texture_probe_.builds;
+    texture_probe_.texels += w * h;
+    if constexpr (kGlLog) { // after the timings: the hash is not part of a build's cost
+        uint64_t hash = 0xcbf29ce484222325ull ^ (uint64_t(w) << 32 | h);
+        const uint8_t *p = la.data();
+        size_t n = la.size(), i = 0;
+        for (; i + 8 <= n; i += 8) {
+            uint64_t v;
+            std::memcpy(&v, p + i, 8);
+            hash = (hash ^ v) * 0x100000001b3ull;
+        }
+        for (; i < n; ++i) hash = (hash ^ p[i]) * 0x100000001b3ull;
+        s.hash = hash;
+        if (auto it = dropped_hashes_.find(key32); it != dropped_hashes_.end()) {
+            if (it->second == hash) {
+                ++texture_probe_.identical;
+                texture_probe_.identical_us += build_end - build_begin;
+            }
+            dropped_hashes_.erase(it);
+        }
+    }
     const Source *built = &sources_.emplace(key, s).first->second;
     source_cache_.insert(key32, built);
     return built;
@@ -1232,6 +1259,8 @@ void GpuGlRenderer::drop_rewritten_sources(const rt::VideoMem &mem) {
         if (!stale) { ++it; continue; }
         GLuint t = s.texture;
         if (t) glDeleteTextures(1, &t);
+        ++texture_probe_.dropped;
+        if constexpr (kGlLog) dropped_hashes_[uint32_t(it->first.h0) | uint32_t(it->first.h2) << 16] = s.hash;
         cached_bytes_ -= std::min(cached_bytes_, s.bytes);
         it = sources_.erase(it);
         dropped = true;

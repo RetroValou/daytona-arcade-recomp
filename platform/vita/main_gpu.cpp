@@ -1233,6 +1233,11 @@ int main(int, char **) {
                         core_profile.add(P::GeoMain, fp.geometry);
                         core_profile.add(P::Irq, irq);
                         core_profile.add(P::Video2D, fp.video);
+                        {
+                            const auto &vp = game->board().video().last_profile();
+                            core_profile.add(P::TileCache2D, vp.tile_cache);
+                            core_profile.add(P::Palette2D, vp.palette);
+                        }
                         core_profile.add(P::BoardOther, wall > known ? wall - known : 0);
                         core_profile.add(P::GeoWaitBoard, geo_frame.wait_ticks);
                         core_profile.add(P::Snapshot, geo_frame.snapshot_ticks);
@@ -1241,6 +1246,12 @@ int main(int, char **) {
                         c.i960_instructions += game->instructions() - i960_before;
                         c.tgp_instructions += game->board().tgp().tgp_instructions() - tgp_before;
                         c.geo_count_reads += geo_frame.count_reads;
+                        {
+                            const auto &vp = game->board().video().last_profile();
+                            c.tiles_rebuilt += vp.tiles_rebuilt;
+                            c.characters_changed += vp.characters_changed;
+                            c.tile_frames += (vp.tiles_rebuilt || vp.characters_changed) ? 1 : 0;
+                        }
                     }
                     perf_core_us += fp.core(); perf_geo_us += fp.geometry;
                     perf_video_us += fp.video;
@@ -1341,6 +1352,24 @@ int main(int, char **) {
                     core_profile.add(P::Polygons, draw_total > parts ? draw_total - parts : 0);
 #if DAYTONA_VITA_GPU_GL
                     core_profile.add(P::TexBuild, gpu.last_texture_us());
+                    {
+                        const auto tp = gpu.take_texture_probe();
+                        core_profile.add(P::TexDecode, tp.decode_us);
+                        core_profile.add(P::TexUpload, tp.upload_us);
+                        core_profile.add(P::TexIdentical, tp.identical_us);
+                        auto &c = core_profile.counters;
+                        c.tex_builds += tp.builds;
+                        c.tex_texels += tp.texels;
+                        c.tex_identical += tp.identical;
+                        c.tex_dropped += tp.dropped;
+                        c.tex_frames_with_builds += tp.builds ? 1 : 0;
+                        c.tex_builds_max = std::max<uint64_t>(c.tex_builds_max, tp.builds);
+                        static unsigned defers_seen = 0, resets_seen = 0;
+                        c.tex_defers += gpu.material_defers() - defers_seen;
+                        c.tex_resets += gpu.cache_resets() - resets_seen;
+                        defers_seen = gpu.material_defers();
+                        resets_seen = gpu.cache_resets();
+                    }
                     core_profile.add(P::VertexWrite, gpu.last_vertex_us());
                     core_profile.add(P::Worker2D, gpu.last_2d_worker_us()); // core 2, in parallel
 #endif

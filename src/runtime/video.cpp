@@ -685,6 +685,7 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
     if (palette_dirty_) {
         for (uint32_t i = 0; i < 0x1000; i++) palette_w(i, mem.palram, mem.colorxlat);
         palette_dirty_ = false;
+        profile_.palette = ticks() - before;
     }
 #ifdef M2_VITA_RENDER_OPT
     update_tile_cache();
