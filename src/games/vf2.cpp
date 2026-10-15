@@ -81,6 +81,15 @@ uint8_t port(unsigned p, const Inputs &in) {
 // title's first 500 frames, 3-11 % of key-ons once fights start, demo or
 // played). Found by logging the driver's registers at key-on (15 Oct 2026).
 constexpr ScspVoices kVoices = {0x2800, 0x10, 5};
+// One player (MAME INPUT_PORTS(vf2) IN0 and IN1): the joystick, Punch, Kick, Guard,
+// start, coin; player 2 stays released.
+constexpr ControlDef kControls[] = {
+    {Control::Up, "UP", PadButton::Up},           {Control::Down, "DOWN", PadButton::Down},
+    {Control::Left, "LEFT", PadButton::Left},     {Control::Right, "RIGHT", PadButton::Right},
+    {Control::Punch, "PUNCH", PadButton::Cross},  {Control::Kick, "KICK", PadButton::Circle},
+    {Control::Guard, "GUARD", PadButton::Square}, {Control::Start, "START", PadButton::Start},
+    {Control::Coin, "COIN", PadButton::Select},
+};
 // The TGP program the i960 uploads at boot: in the program ROM at 0x3e90,
 // 3,802 words, equal to MAME's copro_tgp_program after boot (dumped with a
 // Lua script, 15 Oct 2026).
@@ -104,7 +113,7 @@ extern const Game vf2_game = {
     // The arcade's mix: its hits are already 13 dB below its music (a fight,
     // m2run --volumes), unlike Daytona's engine.
     .defaults = {.effects_volume = 100},
-    .controls = ControlScheme::Fighting, // one player: the joystick and Punch/Kick/Guard
+    .control_list = kControls, // one player: the joystick and Punch/Kick/Guard
     // Its SCSP DSP program (the reverb): in the sound program ROM at 0x4a48,
     // 82 steps; the driver copies it into MPRO at boot (the same words, logged
     // at ScspDsp::Start in m2run, attract and fight: the only program it loads).

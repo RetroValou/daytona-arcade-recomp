@@ -9,6 +9,8 @@
 // that set's record. Adding a game: docs/adding-a-game.md.
 #pragma once
 
+#include "runtime/cabinet_controls.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -83,13 +85,6 @@ struct ScspVoices {
     uint32_t table, entry, owner;
 };
 
-// How the player's controls reach the game's wiring (Game::io and the frontends):
-// the driving cabinet's (wheel, pedals, gearbox, view buttons), or one player's
-// joystick and buttons, which the frontends hand over in the same rt::Inputs
-// (left/right as the wheel at its ends, up/down as the accelerator/brake fully
-// pressed, the buttons as view buttons 1-3: src/games/vf2.cpp).
-enum class ControlScheme : uint8_t { Driving, Fighting };
-
 // A frontend's default settings for the game (the Vita's: platform/vita
 // VitaSettings; RESET DEFAULTS goes back to them). Volumes in percent.
 struct FrontendDefaults {
@@ -146,7 +141,10 @@ struct Game {
     float output_gain = 1.0f;
     // The frontends' default settings for it.
     FrontendDefaults defaults{};
-    ControlScheme controls = ControlScheme::Driving;
+    // Its cabinet's controls (runtime/cabinet_controls.h), as the frontends list and
+    // bind them; each game's own (Daytona's four view buttons, Sega Rally's one and
+    // its hand brake, Virtua Fighter 2's joystick and three buttons).
+    std::span<const ControlDef> control_list;
     // SCSP board: its DSP program, recompiled (tools/m2dsprecomp), or none.
     ScspDspProgram dsp{};
 };

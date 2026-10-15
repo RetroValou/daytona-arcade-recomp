@@ -87,6 +87,17 @@ constexpr SoundLayout kDaytonaSound = {0x2bc6, 0x505a + 0x48, 0x523a + 0x48, 0x5
 // texture upload at 0x1388. The same in both sets.
 } // namespace
 
+// The cabinet (MAME INPUT_PORTS(daytona)): wheel, pedals, the 4-speed gearbox,
+// four view buttons (VR1-4), start, coin.
+constexpr ControlDef kControls[] = {
+    {Control::Accelerate, "ACCELERATE", PadButton::R},   {Control::Brake, "BRAKE", PadButton::L},
+    {Control::SteerLeft, "STEER LEFT", PadButton::Left}, {Control::SteerRight, "STEER RIGHT", PadButton::Right},
+    {Control::ShiftUp, "SHIFT UP", PadButton::Up},       {Control::ShiftDown, "SHIFT DOWN", PadButton::Down},
+    {Control::Start, "START", PadButton::Start},         {Control::Coin, "COIN", PadButton::Select},
+    {Control::View1, "VIEW 1 (RED)", PadButton::Cross},  {Control::View2, "VIEW 2 (BLUE)", PadButton::Circle},
+    {Control::View3, "VIEW 3 (YELLOW)", PadButton::Square}, {Control::View4, "VIEW 4 (GREEN)", PadButton::Triangle},
+};
+
 extern const Game daytona93_game = {
     .set = "daytona93", .title = "Daytona USA", .label = "Deluxe '93", .companion = "daytona",
     .board = BoardType::Model2o,
@@ -94,6 +105,7 @@ extern const Game daytona93_game = {
     .idle = {{0x12b0, 0x12bb}, {0x12f0, 0x12ff}},
     .sound = SoundBoardType::Model1, .native_sound = &kDaytona93Sound,
     .io = {}, .link = false, .draw_distance = true, // hook_draw_list
+    .control_list = kControls,
 };
 extern const Game daytona_game = {
     .set = "daytona", .title = "Daytona USA", .label = "Revision A, 1994", .companion = "daytona93",
@@ -103,6 +115,7 @@ extern const Game daytona_game = {
     .sound = SoundBoardType::Model1, .native_sound = &kDaytonaSound,
     .io = {}, .link = true, // the communication board (837-10537)
     .draw_distance = true,  // hook_draw_list
+    .control_list = kControls,
 };
 
 

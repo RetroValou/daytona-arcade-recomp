@@ -194,8 +194,12 @@ rt::Inputs map_input(const vita::Input &in) {
     rt::Inputs out;
     out.steer = in.steer; out.accel = in.accel; out.brake = in.brake;
     out.in0 = in.in0; out.in1 = in.in1; out.in2 = in.in2;
+    out.handbrake = in.handbrake;
     return out;
 }
+
+// The game's controls (rt::Game::control_list): what the Controls page lists and binds.
+vita::Layout game_layout() { return {rt::game().control_list.data(), int(rt::game().control_list.size())}; }
 
 // Microseconds. SDL2's Vita performance counter is this same call at 1 MHz; calling it
 // directly skips SDL and a 64-bit division per read (measured 1.39 us per read through SDL,
@@ -227,10 +231,12 @@ uint64_t diagnostic_ticks_us() {
 #endif
 constexpr int kDefaultCpuClock = DAYTONA_VITA_DEFAULT_CPU_MHZ;
 constexpr int kDefaultGpuClock = DAYTONA_VITA_DEFAULT_GPU_MHZ;
-// vita.cfg keys of the rebindable actions (vita::Action order); value = button bit.
-constexpr const char *kBindKeys[vita::ActionCount] = {"bind_accelerate", "bind_brake",
+// vita.cfg keys of the controls (rt::Control order); value = button bit. The first
+// twelve are the keys every earlier version saved.
+constexpr const char *kBindKeys[vita::ControlCount] = {"bind_accelerate", "bind_brake",
     "bind_steer_left", "bind_steer_right", "bind_shift_up", "bind_shift_down", "bind_start",
-    "bind_coin", "bind_view1", "bind_view2", "bind_view3", "bind_view4"};
+    "bind_coin", "bind_view1", "bind_view2", "bind_view3", "bind_view4", "bind_handbrake",
+    "bind_up", "bind_down", "bind_left", "bind_right", "bind_punch", "bind_kick", "bind_guard"};
 
 struct VitaSettings {
     bool use_companion = false; // the ROM option: the game's companion set (not saved)
@@ -263,7 +269,7 @@ struct VitaSettings {
     bool mute = false;
     bool native_audio = false; // explicitly selected while native fidelity is validated
     bool steer_invert = false;
-    vita::Bindings bindings; // Controls page of the launcher
+    vita::Bindings bindings = vita::Bindings::defaults(game_layout()); // Controls page of the launcher
 
     void defaults() { *this = VitaSettings{}; }
     void sanitize() {
@@ -289,7 +295,7 @@ struct VitaSettings {
         aspect = std::clamp(aspect, 0, 3);
         steer_curve = std::clamp(steer_curve, 0, 2);
         draw_distance = std::clamp(draw_distance, -2, 2);
-        bindings.sanitize();
+        bindings.sanitize(game_layout());
     }
     void load() {
         FILE *f = std::fopen(kConfig, "r");
@@ -322,7 +328,7 @@ struct VitaSettings {
             else if (!std::strcmp(key, "native_audio")) native_audio = value != 0;
             else if (!std::strcmp(key, "deadzone")) deadzone = value;
             else if (!std::strcmp(key, "steer_invert")) steer_invert = value != 0;
-            else for (int a = 0; a < vita::ActionCount; ++a)
+            else for (int a = 0; a < vita::ControlCount; ++a)
                 if (!std::strcmp(key, kBindKeys[a])) bindings.button[a] = uint32_t(value);
         }
         std::fclose(f); sanitize();
@@ -341,7 +347,8 @@ struct VitaSettings {
         for (int i = 0; i < 4; ++i) std::fprintf(f, "next_ip%d=%d\n", i, next_ip[i]);
         std::fprintf(f, "steer_curve=%d\n", steer_curve);
         std::fprintf(f, "aspect=%d\ndraw_distance=%d\nhud_edges=%d\n", aspect, draw_distance, int(hud_edges));
-        for (int a = 0; a < vita::ActionCount; ++a) std::fprintf(f, "%s=%u\n", kBindKeys[a], unsigned(bindings.button[a]));
+        for (int a = 0; a < vita::ControlCount; ++a)
+            if (bindings.button[a]) std::fprintf(f, "%s=%u\n", kBindKeys[a], unsigned(bindings.button[a]));
         bool ok = std::fflush(f) == 0;
         if (std::fclose(f) != 0) ok = false;
         if (!ok) { std::remove(kConfigTemp); return false; }
@@ -381,18 +388,20 @@ int cycle_value(int value, const int *choices, int count, int direction) {
 
 uint32_t ui_buttons = 0;
 rt::TestHold test_hold;
-// The game's control scheme (rt::Game::controls): a fighting game's joystick and
-// buttons, else the driving cabinet's.
-bool fighting() { return rt::game().controls == rt::ControlScheme::Fighting; }
-// Rows of the Controls page: the actions the game uses, then reset (-1) and back (-2).
-constexpr int kMaxBindRows = vita::ActionCount + 2;
+// Rows of the Controls page: the game's controls in its own order (rt::Game::
+// control_list), then reset (-1) and back (-2).
+constexpr int kMaxBindRows = vita::ControlCount + 2;
 int bind_rows(int (&rows)[kMaxBindRows]) {
+    const vita::Layout layout = game_layout();
     int n = 0;
-    for (int a = 0; a < vita::ActionCount; ++a)
-        if (vita::action_used(a, fighting())) rows[n++] = a;
+    for (int i = 0; i < layout.count && n < vita::ControlCount; ++i) rows[n++] = int(layout.defs[i].control);
     rows[n++] = -1;
     rows[n++] = -2;
     return n;
+}
+bool has_steering() {
+    const vita::Layout layout = game_layout();
+    return layout.has(rt::Control::SteerLeft) || layout.has(rt::Control::SteerRight);
 }
 
 // The Options page's rows, in display order.
@@ -428,6 +437,7 @@ bool option_available(Option o, const VitaSettings &s) {
     case OptLink: return rt::game().link;
     case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
         return rt::game().link && s.link_enabled;
+    case OptInvert: case OptSteerCurve: return has_steering(); // a wheel to invert or shape
     default: return true;
     }
 }
@@ -465,7 +475,7 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
                 const int a = actions[i];
                 const char *label = a == -1 ? "RESET CONTROLS TO DEFAULTS" : "BACK";
                 if (a >= 0) {
-                    std::snprintf(rows[i], sizeof rows[i], "%s: %s", vita::action_name(a, fighting()),
+                    std::snprintf(rows[i], sizeof rows[i], "%s: %s", game_layout().name(a),
                                   capture == a ? "PRESS A BUTTON..." : vita::button_name(settings.bindings.button[a]));
                     label = rows[i];
                 }
@@ -768,8 +778,8 @@ int main(int, char **) {
         controls.set_deadzone(float(settings.deadzone) / 100.0f);
         controls.set_steer_invert(settings.steer_invert);
         controls.set_steer_curve(settings.steer_curve);
+        controls.set_layout(game_layout());
         controls.set_bindings(settings.bindings);
-        controls.set_fighting(fighting());
         rt::GameLoop::set_draw_distance(settings.draw_distance);
         if (game) {
             static constexpr double aspects[] = {0, 16.0/10, 16.0/9, 21.0/9};
@@ -928,12 +938,20 @@ int main(int, char **) {
             apply_geometry();
             controls = vita::Controls{};
             apply_preferences();
-            const auto &bound = settings.bindings.button;
-            status = fighting()
-                ? std::string("START+SELECT MENU. PUNCH ") + vita::button_name(bound[vita::View1]) + ", KICK " +
-                      vita::button_name(bound[vita::View2]) + ", GUARD " + vita::button_name(bound[vita::View3]) + "."
-                : std::string("START+SELECT MENU. ") + vita::button_name(bound[vita::ShiftUp]) + "/" +
-                      vita::button_name(bound[vita::ShiftDown]) + " SHIFT UP/DOWN.";
+            // The menu chord, then the game's controls that are not its usual ones
+            // (the shift, hand brake, view and fighting buttons), with their buttons.
+            status = "START+SELECT MENU.";
+            {
+                const vita::Layout layout = game_layout();
+                for (int i = 0; i < layout.count; ++i) {
+                    const rt::Control c = layout.defs[i].control;
+                    if (c == rt::Control::Accelerate || c == rt::Control::Brake || c == rt::Control::Start ||
+                        c == rt::Control::Coin || c == rt::Control::SteerLeft || c == rt::Control::SteerRight ||
+                        c == rt::Control::Up || c == rt::Control::Down || c == rt::Control::Left || c == rt::Control::Right)
+                        continue;
+                    status += std::string(" ") + layout.defs[i].name + " " + vita::button_name(settings.bindings.button[int(c)]) + ".";
+                }
+            }
             wait_release = true;
             return true;
         } catch (const std::exception &e) {
@@ -976,7 +994,7 @@ int main(int, char **) {
                     const uint32_t button = pad_pressed & (~pad_pressed + 1);
                     settings.bindings.bind(capture, button);
                     commit_settings(false);
-                    status = std::string(vita::action_name(capture, fighting())) + ": " + vita::button_name(button) +
+                    status = std::string(game_layout().name(capture)) + ": " + vita::button_name(button) +
                         ". START+SELECT MENU AND SELECT+TRIANGLE/SQUARE TEST/SERVICE STAY FIXED.";
                     capture = -1; wait_release = true;
                 }
@@ -991,13 +1009,13 @@ int main(int, char **) {
                 if (pressed & vita::Circle) { binds = false; selection = 3; wait_release = true; }
                 else if (action >= 0 && (pressed & vita::Cross)) {
                     capture = action; wait_release = true;
-                    status = std::string("PRESS THE NEW BUTTON FOR ") + vita::action_name(action, fighting()) +
+                    status = std::string("PRESS THE NEW BUTTON FOR ") + game_layout().name(action) +
                         " (ITS CURRENT BUTTON KEEPS IT).";
                 } else if (action >= 0 && direction) {
                     settings.bindings.cycle(action, direction);
                     commit_settings(false);
                 } else if (action == -1 && (pressed & vita::Cross)) {
-                    settings.bindings = vita::Bindings{};
+                    settings.bindings = vita::Bindings::defaults(game_layout());
                     commit_settings(false);
                     status = "CONTROLS RESET TO DEFAULTS. " + status;
                 } else if (action == -2 && (pressed & vita::Cross)) {

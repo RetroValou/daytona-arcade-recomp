@@ -1,5 +1,38 @@
 # Handoff
 
+## Vita controls per game (2026-10-15)
+
+The Vita had two fixed schemes (driving, fighting: rt::ControlScheme). Now
+each game's record lists its own controls (Game::control_list:
+rt::ControlDef {control, name, default button}, src/runtime/cabinet_controls.h,
+no dependencies so the Vita host test includes it alone), from the cabinet's
+inputs in MAME's ports:
+- Daytona: accelerate, brake, steer, shift up/down, views 1-4 (Cross,
+  Circle, Square, Triangle), start, coin: as before.
+- Sega Rally: the same less views 2-4, plus HAND BRAKE (Cross: rt::Inputs
+  handbrake 0xff, the analog port srallyc reads at IN2 case 3) and one VIEW
+  (Triangle, in0 0x20: srallyc has a single VR button).
+- VF2: joystick (D-pad or left stick: steer/accel/brake ends, as the fight
+  wiring reads them), PUNCH / KICK / GUARD (Cross / Circle / Square, in0
+  0x20/0x40/0x80), start, coin.
+platform/vita/controls.h: vita::Layout over the list; Bindings hold a button
+for every rt::Control, 0 for the ones the game lacks; sanitize(layout) clears
+those and resets to the game's defaults on an invalid, missing or duplicated
+binding (so an older vita.cfg of Sega Rally or VF2 comes back as the new
+defaults once; Daytona's keys are unchanged). Controls::set_layout picks the
+wheel, pedals or joystick handling. main_gpu.cpp: the Controls page lists the
+game's controls in its order with their names; steering curve and invert
+hidden for a game without a wheel; vita.cfg keys bind_handbrake, bind_up..
+bind_guard added. The desktop app (src/app) keeps its own bindings: not
+changed.
+
+Checks: test_vita_controls rewritten (Daytona, Sega Rally and VF2 layouts:
+hand brake, unused buttons doing nothing, joystick, cross-layout sanitize;
+g++ -fsanitize=address,undefined: passes). PC builds of the three games
+rebuilt, ctest 21/21 each. Vita VPKs of the three (vitaGL, --fast-inaccuracy)
+built, and the GXM path (--gpu-fast --compile-check) compiles; not yet tried
+on the console.
+
 ## SCSP DSP program recompiled (m2dsprecomp), for Virtua Fighter 2 (2026-10-15)
 
 Why: on the Vita, VF2 ran at 35-40 fps with core 2 (sound + 2D worker) at

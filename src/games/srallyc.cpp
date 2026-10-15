@@ -74,6 +74,15 @@ uint8_t analog(unsigned ch, const Inputs &in) {
 // for the sound effects' (only in a race; one in the attract, at the coin's
 // effect). Found by logging the driver's A1 at every key-on (15 Oct 2026).
 constexpr ScspVoices kVoices = {0x2800, 0x10, 5};
+// The cabinet (MAME INPUT_PORTS(srallyc)): wheel, pedals, the 4-speed gearbox, one
+// view button (VR), the hand brake (IN2), start, coin.
+constexpr ControlDef kControls[] = {
+    {Control::Accelerate, "ACCELERATE", PadButton::R},   {Control::Brake, "BRAKE", PadButton::L},
+    {Control::SteerLeft, "STEER LEFT", PadButton::Left}, {Control::SteerRight, "STEER RIGHT", PadButton::Right},
+    {Control::ShiftUp, "SHIFT UP", PadButton::Up},       {Control::ShiftDown, "SHIFT DOWN", PadButton::Down},
+    {Control::HandBrake, "HAND BRAKE", PadButton::Cross}, {Control::View1, "VIEW", PadButton::Triangle},
+    {Control::Start, "START", PadButton::Start},         {Control::Coin, "COIN", PadButton::Select},
+};
 // MAME's copro_tgp_program after boot; the game uploads it from its RAM copy
 // (0x5f9e94), with the count at 0x5fb898 (ROM 0x5c898).
 // The wait for the next frame: 0x5a379c (in its RAM copy of the program ROM,
@@ -94,6 +103,7 @@ extern const Game srallyc_game = {
     .output_gain = 10.0f,
     // Its effects (engine, gravel, co-driver) need more than Daytona's 20 %.
     .defaults = {.effects_volume = 85},
+    .control_list = kControls,
 };
 
 

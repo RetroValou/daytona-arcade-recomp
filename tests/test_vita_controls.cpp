@@ -2,10 +2,46 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #define CHECK(expr) do { if (!(expr)) { std::fprintf(stderr, "line %d: %s\n", __LINE__, #expr); std::exit(1); } } while (0)
+using rt::Control;
+using rt::PadButton;
+// The games' layouts as their records list them (src/games/: daytona.cpp, srallyc.cpp, vf2.cpp).
+constexpr rt::ControlDef kDaytona[] = {
+    {Control::Accelerate, "ACCELERATE", PadButton::R},   {Control::Brake, "BRAKE", PadButton::L},
+    {Control::SteerLeft, "STEER LEFT", PadButton::Left}, {Control::SteerRight, "STEER RIGHT", PadButton::Right},
+    {Control::ShiftUp, "SHIFT UP", PadButton::Up},       {Control::ShiftDown, "SHIFT DOWN", PadButton::Down},
+    {Control::Start, "START", PadButton::Start},         {Control::Coin, "COIN", PadButton::Select},
+    {Control::View1, "VIEW 1", PadButton::Cross},        {Control::View2, "VIEW 2", PadButton::Circle},
+    {Control::View3, "VIEW 3", PadButton::Square},       {Control::View4, "VIEW 4", PadButton::Triangle},
+};
+constexpr rt::ControlDef kRally[] = {
+    {Control::Accelerate, "ACCELERATE", PadButton::R},   {Control::Brake, "BRAKE", PadButton::L},
+    {Control::SteerLeft, "STEER LEFT", PadButton::Left}, {Control::SteerRight, "STEER RIGHT", PadButton::Right},
+    {Control::ShiftUp, "SHIFT UP", PadButton::Up},       {Control::ShiftDown, "SHIFT DOWN", PadButton::Down},
+    {Control::HandBrake, "HAND BRAKE", PadButton::Cross}, {Control::View1, "VIEW", PadButton::Triangle},
+    {Control::Start, "START", PadButton::Start},         {Control::Coin, "COIN", PadButton::Select},
+};
+constexpr rt::ControlDef kFighter[] = {
+    {Control::Up, "UP", PadButton::Up},           {Control::Down, "DOWN", PadButton::Down},
+    {Control::Left, "LEFT", PadButton::Left},     {Control::Right, "RIGHT", PadButton::Right},
+    {Control::Punch, "PUNCH", PadButton::Cross},  {Control::Kick, "KICK", PadButton::Circle},
+    {Control::Guard, "GUARD", PadButton::Square}, {Control::Start, "START", PadButton::Start},
+    {Control::Coin, "COIN", PadButton::Select},
+};
+constexpr vita::Layout kDaytonaLayout{kDaytona, int(std::size(kDaytona))};
+constexpr vita::Layout kRallyLayout{kRally, int(std::size(kRally))};
+constexpr vita::Layout kFighterLayout{kFighter, int(std::size(kFighter))};
+constexpr int ix(Control c) { return int(c); }
+vita::Controls driving() {
+    vita::Controls c;
+    c.set_layout(kDaytonaLayout);
+    c.set_bindings(vita::Bindings::defaults(kDaytonaLayout));
+    return c;
+}
 int main() {
-    vita::Controls controls;
+    vita::Controls controls = driving();
     auto in = controls.sample({});
     CHECK(in.steer == 0x80 && in.accel == 0x20 && in.brake == 0x20);
     CHECK(in.in0 == 0xff && in.in1 == 0xaf && in.in2 == 0xff);
@@ -60,7 +96,7 @@ int main() {
         if (vita::menu_chord(buttons)) CHECK(in.in0 == 0xff);
     }
     for (int curve = -1; curve <= 3; ++curve) {
-        vita::Controls curved;
+        vita::Controls curved = driving();
         curved.set_steer_curve(curve);
         int previous = 0;
         for (int v = 0; v < 256; ++v) {
@@ -78,17 +114,19 @@ int main() {
         curved.set_steer_invert(true);
         CHECK(curved.sample({0, 192, 128}).steer == 256 - right);
     }
-    // Rebinding: one button per action; taking a used button swaps the two.
+    // Rebinding: one button per control; taking a used button swaps the two.
     {
-        vita::Bindings b;
-        b.bind(vita::Accelerate, vita::Cross);
-        CHECK(b.button[vita::Accelerate] == vita::Cross && b.button[vita::View1] == vita::R);
-        b.bind(vita::ShiftUp, vita::Triangle);
-        CHECK(b.button[vita::ShiftUp] == vita::Triangle && b.button[vita::View4] == vita::Up);
-        b.bind(vita::Brake, vita::Cross | vita::Circle); // not a single button: ignored
-        b.bind(vita::ActionCount, vita::Cross);
-        CHECK(b.button[vita::Brake] == vita::L);
-        vita::Controls remapped;
+        const vita::Bindings defaults = vita::Bindings::defaults(kDaytonaLayout);
+        vita::Bindings b = defaults;
+        b.bind(ix(Control::Accelerate), vita::Cross);
+        CHECK(b.button[ix(Control::Accelerate)] == vita::Cross && b.button[ix(Control::View1)] == vita::R);
+        b.bind(ix(Control::ShiftUp), vita::Triangle);
+        CHECK(b.button[ix(Control::ShiftUp)] == vita::Triangle && b.button[ix(Control::View4)] == vita::Up);
+        b.bind(ix(Control::Brake), vita::Cross | vita::Circle); // not a single button: ignored
+        b.bind(vita::ControlCount, vita::Cross);
+        b.bind(ix(Control::HandBrake), vita::Cross); // a control Daytona does not have: ignored
+        CHECK(b.button[ix(Control::Brake)] == vita::L && b.button[ix(Control::HandBrake)] == 0);
+        vita::Controls remapped = driving();
         remapped.set_bindings(b);
         CHECK(remapped.sample({vita::Cross}).accel == 0xe0);
         CHECK(remapped.sample({vita::R}).accel == 0x20);
@@ -101,9 +139,9 @@ int main() {
         in = remapped.sample({vita::Up});
         CHECK((in.in1 & 1) == 0);
         // Coin on another button still fires on release; Select chords stay fixed.
-        b = vita::Bindings{};
-        b.bind(vita::Coin, vita::L);
-        CHECK(b.button[vita::Brake] == vita::Select);
+        b = defaults;
+        b.bind(ix(Control::Coin), vita::L);
+        CHECK(b.button[ix(Control::Brake)] == vita::Select);
         remapped.set_bindings(b);
         remapped.sample({});
         CHECK(remapped.sample({vita::L}).in0 == 0xff);
@@ -111,26 +149,51 @@ int main() {
         CHECK(remapped.sample({vita::Select | vita::Triangle}).in0 == 0xfb);
         CHECK(remapped.sample({vita::Start | vita::Select}).in0 == 0xff);
         // Cycling visits all twelve buttons and keeps every binding unique.
-        b = vita::Bindings{};
+        b = defaults;
         for (int i = 0; i < 12; ++i) {
-            b.cycle(vita::Coin, 1);
+            b.cycle(ix(Control::Coin), 1);
             uint32_t seen = 0;
-            for (uint32_t v : b.button) { CHECK(vita::single_button(v) && !(seen & v)); seen |= v; }
+            for (uint32_t v : b.button) {
+                if (!v) continue;
+                CHECK(vita::single_button(v) && !(seen & v));
+                seen |= v;
+            }
         }
-        CHECK(b.button[vita::Coin] == vita::Select);
-        b = vita::Bindings{};
-        b.cycle(vita::Coin, -1);
-        CHECK(b.button[vita::Coin] == vita::Start && b.button[vita::StartButton] == vita::Select);
+        CHECK(b.button[ix(Control::Coin)] == vita::Select);
+        b = defaults;
+        b.cycle(ix(Control::Coin), -1);
+        CHECK(b.button[ix(Control::Coin)] == vita::Start && b.button[ix(Control::Start)] == vita::Select);
         // Hand-edited duplicates reset the whole set.
-        b.button[vita::View1] = b.button[vita::View2];
-        b.sanitize();
-        CHECK(b.button[vita::View1] == vita::Cross && b.button[vita::Coin] == vita::Select);
+        b.button[ix(Control::View1)] = b.button[ix(Control::View2)];
+        b.sanitize(kDaytonaLayout);
+        CHECK(b.button[ix(Control::View1)] == vita::Cross && b.button[ix(Control::Coin)] == vita::Select);
+        // A file saved for another layout: Daytona's views have no hand brake: the
+        // rally's defaults; its own extra entries are cleared.
+        b = defaults;
+        b.sanitize(kRallyLayout);
+        CHECK(b.button[ix(Control::HandBrake)] == vita::Cross && b.button[ix(Control::View1)] == vita::Triangle);
+        CHECK(b.button[ix(Control::View2)] == 0 && b.button[ix(Control::View4)] == 0);
         CHECK(!std::strcmp(vita::button_name(vita::Select), "SELECT"));
         CHECK(!std::strcmp(vita::button_name(0), "NONE"));
+        CHECK(!std::strcmp(kRallyLayout.name(ix(Control::HandBrake)), "HAND BRAKE"));
     }
-    { // fighting games (vf2): the same bindings as a joystick and three buttons
+    { // Sega Rally: the hand brake, one view button, no View 2-4
+        vita::Controls r;
+        r.set_layout(kRallyLayout);
+        r.set_bindings(vita::Bindings::defaults(kRallyLayout));
+        CHECK(r.sample({}).handbrake == 0);
+        CHECK(r.sample({vita::Cross}).handbrake == 0xff);
+        in = r.sample({vita::Triangle});
+        CHECK((in.in0 & 0x20) == 0 && (in.in0 & 0xc0) == 0xc0);
+        in = r.sample({vita::Circle | vita::Square});             // nothing bound there
+        CHECK(in.in0 == 0xff && (in.in1 & 1) && in.handbrake == 0);
+        CHECK(r.sample({0, 0, 128}).steer == 0x20);              // the wheel on the left stick
+        r.sample({}); r.sample({vita::Up}); CHECK(r.gear() == 2); // the gearbox
+    }
+    { // Virtua Fighter 2: a joystick and three buttons
         vita::Controls f;
-        f.set_fighting(true);
+        f.set_layout(kFighterLayout);
+        f.set_bindings(vita::Bindings::defaults(kFighterLayout));
         auto i = f.sample({});
         CHECK(i.steer == 0x80 && i.accel == 0x20 && i.brake == 0x20 && i.in0 == 0xff);
         CHECK(f.sample({vita::Left}).steer == 0x20 && f.sample({vita::Right}).steer == 0xe0);
@@ -142,10 +205,10 @@ int main() {
         CHECK(f.sample({0, 128, 0, 128}).accel == 0x20);          // not the right stick
         i = f.sample({vita::Cross | vita::Circle | vita::Square});
         CHECK((i.in0 & 0xe0) == 0);                               // punch, kick, guard
+        CHECK((f.sample({vita::R | vita::L | vita::Triangle}).in0) == 0xff); // nothing bound there
         f.sample({vita::Select}); CHECK((f.sample({}).in0 & 0x01) == 0); // coin on release
         CHECK((f.sample({vita::Start}).in0 & 0x10) == 0);
-        CHECK(!std::strcmp(vita::action_name(vita::View1, true), "PUNCH"));
-        CHECK(!vita::action_used(vita::Accelerate, true) && vita::action_used(vita::Accelerate, false));
+        CHECK(!std::strcmp(kFighterLayout.name(ix(Control::Punch)), "PUNCH"));
     }
     vita::FrameClock clock(16000000.0 / (656.0 * 424.0));
     int frames = 0;

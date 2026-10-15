@@ -262,24 +262,34 @@ SDK to avoid solid-archive decoding memory spikes. A host `.7z` source can
 still be used for recompilation; repack the complete set as `.zip` with
 unchanged ROM filenames before copying it to the Vita.
 
-| Action | Vita control |
+Each game has its own controls, listed in its record (`Game::control_list`,
+`src/games/*.cpp`, from the cabinet's: MAME's input ports): the Controls page
+shows only those, with the game's default buttons.
+
+| Daytona USA | Sega Rally | Virtua Fighter 2 | Vita control |
+| --- | --- | --- | --- |
+| Steering | Steering | Joystick | Left stick, or D-pad left/right (VF2: D-pad or left stick, all four directions) |
+| Accelerate / brake | Accelerate / brake | - | R / L (analogue: right stick up / down) |
+| Shift up / down | Shift up / down | - | D-pad up / down (one shift per press) |
+| View 1 / 2 / 3 / 4 | View (one button) | - | Cross / Circle / Square / Triangle (Sega Rally: Triangle) |
+| - | Hand brake | - | Cross |
+| - | - | Punch / Kick / Guard | Cross / Circle / Square |
+| Coin / start | Coin / start | Coin / start | Select / Start |
+
+| Everywhere | Vita control |
 | --- | --- |
-| Steering | Left stick, or D-pad left/right |
-| Accelerate / brake | R / L |
-| Analogue accelerate / brake | Right stick up / down |
-| Shift up / down | D-pad up / down (one shift per press) |
-| View 1 / 2 / 3 / 4 | Cross / Circle / Square / Triangle |
-| Coin / start | Select / Start |
 | Pause menu | Start + Select together |
 | Navigate / select / resume | D-pad / Cross / Circle |
 | Test switch / service coin | Pause-menu entries |
 
-These are the defaults. The launcher's Controls page rebinds each action
-(accelerate, brake, steer left/right, shift up/down, start, coin, views 1-4) to one
-button: Cross then press the new button, or Left/Right to cycle; a button already
-used by another action swaps with it. The sticks and the Start+Select,
-Select+Triangle and Select+Square chords stay fixed. Saved as `bind_*` keys in
-vita.cfg (button bit); an invalid or duplicated entry resets all bindings.
+These are the defaults. The launcher's Controls page rebinds each of the game's
+controls to one button: Cross then press the new button, or Left/Right to cycle;
+a button already used by another control swaps with it. The sticks and the
+Start+Select, Select+Triangle and Select+Square chords stay fixed. The steering
+options (curve, invert) only show for a game with a wheel. Saved as `bind_*`
+keys in the game's own vita.cfg (button bit); an invalid or duplicated entry, or
+a missing one for one of the game's controls, resets all bindings to the
+game's defaults.
 
 The menu chord suppresses coin/start while both buttons are held. Pressing
 Select significantly before Start can still insert a coin before the chord
