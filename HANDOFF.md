@@ -1,5 +1,14 @@
 # Handoff
 
+## Vita texture probes: diagnostics builds only (2026-10-16)
+
+gpu_gl.cpp: the clock reads around texel decode, upload and the texture RAM
+check of a rewritten source, and the texture_probe_ counters (builds,
+texels, kept, changed, rewritten), now run under kGlLog
+(DAYTONA_VITA_DIAGNOSTICS) only; the normal and release builds no longer
+pay them. build_begin/build_end (rec_textures, last_texture_us_) are as
+before. Both VF2 VPKs (normal, diagnostics) built.
+
 ## Vita builds: vita-elf-create's "segment 1 overlaps", padded (2026-10-16)
 
 vita-elf-create appends its SCE data (4,308 bytes for VF2) after the code

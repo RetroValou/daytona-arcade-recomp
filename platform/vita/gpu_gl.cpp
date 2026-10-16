@@ -1113,18 +1113,20 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint32_t *sheet = (poly.texheader[2] & 0x1000) ? mem.tex1 : mem.tex0;
     if (known && known->check) {
         // Its texture RAM was written: the same words keep it, others rebuild it.
-        const uint64_t check_begin = now_us();
+        const uint64_t check_begin = kGlLog ? now_us() : 0;
         const bool same = vita::index_texture_hash(bx, by, known->source_w, known->source_h, sheet) == known->raw_hash;
-        const uint64_t check_us = now_us() - check_begin;
-        texture_probe_.check_us += check_us;
-        last_texture_us_ += check_us;
-        g.timing.rec_textures += check_us;
+        if constexpr (kGlLog) { // the probes: diagnostics builds only
+            const uint64_t check_us = now_us() - check_begin;
+            texture_probe_.check_us += check_us;
+            last_texture_us_ += check_us;
+            g.timing.rec_textures += check_us;
+        }
         if (same) {
             known->check = false;
             known->generation = mem.tex_generation;
-            ++texture_probe_.kept;
+            if constexpr (kGlLog) ++texture_probe_.kept;
         } else {
-            ++texture_probe_.changed;
+            if constexpr (kGlLog) ++texture_probe_.changed;
             GLuint t = known->texture;
             if (t) glDeleteTextures(1, &t);
             cached_bytes_ -= std::min(cached_bytes_, known->bytes);
@@ -1161,7 +1163,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint32_t w = (s.source_w + step_x - 1) / step_x;
     const uint32_t h = (s.source_h + step_y - 1) / step_y;
     std::vector<uint8_t> &la = index_scratch_; // L, A pairs
-    const uint64_t decode_begin = now_us();
+    const uint64_t decode_begin = kGlLog ? now_us() : 0;
     la.resize(size_t(w) * h * 2u);
     const uint8_t transparent_alpha = s.transparent ? 0 : 255; // alpha of index 15
     if (step_x == 1 && step_y == 1) {
@@ -1197,7 +1199,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
                     if (la[j + 1]) { la[i] = la[j]; break; }
             }
     }
-    const uint64_t decode_end = now_us();
+    const uint64_t decode_end = kGlLog ? now_us() : 0;
     // The texture RAM pages it was decoded from (texel_index's addressing: each row pair
     // of texels is one run of words; the x >= 1024 half is folded), for mark_rewritten_sources.
     s.generation = mem.tex_generation;
@@ -1213,7 +1215,7 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
         }
     }
     // Mirror flags map to GL mirrored repeat, otherwise plain repeat (road textures repeat).
-    const uint64_t upload_begin = now_us();
+    const uint64_t upload_begin = kGlLog ? now_us() : 0;
     s.texture = make_texture(w, h, true, ((poly.texheader[0] >> 8) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT,
                              ((poly.texheader[0] >> 9) & 1) ? GL_MIRRORED_REPEAT : GL_REPEAT, GL_LUMINANCE_ALPHA,
                              la.data());
@@ -1225,10 +1227,12 @@ const GpuGlRenderer::Source *GpuGlRenderer::source_for(const rt::GeoPoly &poly, 
     const uint64_t build_end = now_us();
     g.timing.rec_textures += build_end - build_begin;
     last_texture_us_ += build_end - build_begin;
-    texture_probe_.decode_us += decode_end - decode_begin;
-    texture_probe_.upload_us += build_end - upload_begin;
-    ++texture_probe_.builds;
-    texture_probe_.texels += w * h;
+    if constexpr (kGlLog) { // the probes: diagnostics builds only
+        texture_probe_.decode_us += decode_end - decode_begin;
+        texture_probe_.upload_us += build_end - upload_begin;
+        ++texture_probe_.builds;
+        texture_probe_.texels += w * h;
+    }
     Source *built = &sources_.emplace(key, s).first->second;
     source_cache_.insert(key32, built);
     return built;
@@ -1274,7 +1278,7 @@ void GpuGlRenderer::mark_rewritten_sources(const rt::VideoMem &mem) {
                 stale = gen[w * 64 + uint32_t(__builtin_ctzll(bits))] > s.generation;
         if (!stale) continue;
         s.check = true; // source_for compares its words before the next use
-        ++texture_probe_.rewritten;
+        if constexpr (kGlLog) ++texture_probe_.rewritten;
     }
 }
 
