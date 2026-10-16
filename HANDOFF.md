@@ -1,5 +1,23 @@
 # Handoff
 
+## Vita: the z-clip division in check_culling, tried and dropped (2026-10-16)
+
+Tried: under M2_FAST_GEO, check_culling's float divide for the master z
+clip replaced by two integer compares against the bounds of the rejected
+min_z bit patterns (found by bisection with the original expression,
+recomputed when master_z_clip changes). Host check: 106,182,000 patterns
+over the 255 clip values gave what the division gives.
+Vita (VF2, --gpu-gl --diagnostics --fast-inaccuracy, extern/result_perf_vita
+/vf2 perf_ref.log vs perf_modif.log), fight windows at >= 1,400 polygons a
+frame: core 1 display list parse 6.385 +- 0.180 us a polygon (11 windows)
+-> 6.394 +- 0.189 (10 windows); fps and core 0 unchanged; core 0 blocked
+on 0 joins in both. Expected gain was ~25-30 cycles a polygon (~0.06 us,
+~1 % of the 6.4 us), below the window-to-window noise, and core 1 is not
+the bottleneck. Reverted (geo.cpp, geo.h, test_geo_zclip not kept).
+What not to re-propose: removing the z-clip divide (or other single
+per-polygon divides) in check_culling; find where the 6.4 us a polygon
+goes first (--tgp-profile build, or probes in display list parse).
+
 ## Vita: texture builds and the System 24 tile cache made cheaper (2026-10-15)
 
 From the probes (perf_prob_text.log, VF2, Vita): 78 % of texture builds
