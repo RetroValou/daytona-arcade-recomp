@@ -19,7 +19,17 @@ expression). Checks: m2run 4,000 frames, VF2 vf2_fight and Daytona
 race_basic: 40/40 frame dumps, WAV and i960/TGP/interrupt counts identical
 to before; ctest 23/23 for VF2, Daytona and Sega Rally. PC wall time
 16.1 -> 17.4 s (VF2; x86 divides fast, not the target). Vita VPK built
-(VF2 diagnostics, with ea210b2's render_to change); not yet measured.
+(VF2 diagnostics, with ea210b2's render_to change).
+Measured on the Vita (VF2 diagnostics, perf_tick_opti.log against
+perf_last.log, both with the sampled sound probe; same play, scenes not
+window-aligned after window 3, so aggregates): 3D windows mean 53.80 ->
+56.79 fps, worst 46.59 -> 54.59, windows under 55 fps 10 of 19 -> 2 of
+17; windows with game logic over 1 ms: 3.78 -> 2.07 ms a frame for the
+same work (68,963 / 67,795 i960 instructions a frame); boot window 41.8
+-> 55.8 fps; reference audio gaps 70 -> 9. Steady fight windows (no wait
+loop): core 0 unchanged (14.66 / 14.63 ms); 68000 4.24 -> 3.58 ms a frame
+(render_to, ea210b2). Far above the 0.2-0.8 ms expected: the timer reads
+cost more than the division estimate (or are more numerous).
 Next: skip the passes of that wait loop exactly (the Dreamcast frame-wait
 skip, M2_DC_SPIN_SKIP, made general and on by default).
 
