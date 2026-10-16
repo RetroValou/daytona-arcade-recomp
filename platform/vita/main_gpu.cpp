@@ -1212,6 +1212,9 @@ int main(int, char **) {
                 // Work counters and geometrizer statistics before the frame (the
                 // shared runtime itself is not instrumented beyond FrameProfile).
                 const uint64_t i960_before = game->instructions();
+#ifdef M2_SPIN_SKIP
+                const uint64_t skipped_before = game->board().spin_skipped();
+#endif
                 const uint64_t tgp_before = game->board().tgp().tgp_instructions();
                 const rt::Geo *frame_geo = geometry_of(game.get());
                 const rt::Geo::Stats geo_before = frame_geo ? frame_geo->stats() : rt::Geo::Stats{};
@@ -1262,6 +1265,9 @@ int main(int, char **) {
                         auto &c = core_profile.counters;
                         ++c.board_frames;
                         c.i960_instructions += game->instructions() - i960_before;
+#ifdef M2_SPIN_SKIP
+                        c.i960_skipped += game->board().spin_skipped() - skipped_before;
+#endif
                         c.tgp_instructions += game->board().tgp().tgp_instructions() - tgp_before;
                         auto &note = core_profile.note();
                         ++note.board_frames;

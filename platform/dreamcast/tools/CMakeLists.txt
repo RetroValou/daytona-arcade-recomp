@@ -189,7 +189,7 @@ if(HOST_FILES)
     target_include_directories(dc_runtime_dcmem PUBLIC "${DAYTONA_ROOT}/src")
     target_include_directories(dc_runtime_dcmem SYSTEM PUBLIC "${DAYTONA_ROOT}/extern/ymfm/src"
         "${DAYTONA_ROOT}/extern/softfloat/source/include")
-    target_compile_definitions(dc_runtime_dcmem PUBLIC M2_ROMSET="${M2_ROMSET}" M2_DC_MEMORY M2_DC_SPIN_SKIP
+    target_compile_definitions(dc_runtime_dcmem PUBLIC M2_ROMSET="${M2_ROMSET}" M2_DC_MEMORY M2_SPIN_SKIP
         $<$<BOOL:${DC_SPEED}>:M2_DC_SPEED>
         $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>)
     set(HOST_OTHER_LIBS ${HOST_LIBS})

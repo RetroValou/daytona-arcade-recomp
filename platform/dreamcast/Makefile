@@ -67,11 +67,11 @@ SOFTFLOAT := $(ROOT)/extern/softfloat
 YMFM := $(ROOT)/extern/ymfm/src
 # M2_DC_MEMORY: the runtime's Dreamcast memory layout (ROM through pages,
 # texture RAM supplied, a two-level page table); everything that includes the
-# runtime's headers is built with it. M2_DC_SPIN_SKIP: the game's
+# runtime's headers is built with it. M2_SPIN_SKIP: the game's
 # wait-for-the-next-frame loop skipped by whole passes (m2_board.cpp).
 # M2_DC_SPEED: faster loops, the same output (tools/dcmemcheck's layer
 # hashes match with it on and off).
-GAME_DEFS := -DM2_ROMSET='"$(SET)"' -DM2_DC_MEMORY -DM2_DC_SPIN_SKIP -DM2_DC_SPEED -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL= \
+GAME_DEFS := -DM2_ROMSET='"$(SET)"' -DM2_DC_MEMORY -DM2_SPIN_SKIP -DM2_DC_SPEED -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL= \
              -I$(SOFTFLOAT)/source/include -isystem $(YMFM)
 # Generated code at -Os: 2.5 MB instead of 6.7 MB at -O2 (daytona93's,
 # measured), compiled 6.5x faster.

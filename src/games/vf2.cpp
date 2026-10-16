@@ -119,6 +119,13 @@ extern const Game vf2_game = {
     // at ScspDsp::Start in m2run, attract and fight: the only program it loads).
     // The DSP was ~75 % of the SCSP's render time (408 of 549 ns a sample, PC).
     .dsp = {0x4a48, 82, 0x9CDF098Eu},
+    // A timed wait, 7 instructions a pass: 0x4cb7c ldob 0x500000,r14; cmpobne
+    // 0,r14 (out); 0x4cb88 ldl 0xf00008,r14 (the timers are not a burst region:
+    // r15 reads 0xf00008 too, timer 2); lda 0xfffff,r14; and r15,r14,r15; cmpobe
+    // r15,r14 (out: expired); 0x4cba0 cmpobg r15,r13,0x4cb7c.
+    // 0 passes a frame in a steady fight, 400-1,900 in the Vita's slow windows
+    // at ~1.9 us each (perf_supra_probe.log, --i960-profile).
+    .spin = {{Game::SpinWait::ByteZeroTimer, 0x4cb7c, 0x00500000, 7, 13, 2, 2}},
 };
 
 } // namespace rt

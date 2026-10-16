@@ -142,6 +142,12 @@ option(M2_TGP_PROFILE "TGP time, work and hot blocks (m2tgprecomp --profile code
 if(M2_TGP_PROFILE)
     target_compile_definitions(runtime PUBLIC M2_TGP_PROFILE=1)
 endif()
+# The game's wait loop skipped by whole passes (Game::spin, M2Board::spin_skip): the
+# same state, fewer host instructions. On by default; OFF runs every pass.
+option(M2_SPIN_SKIP "Skip whole passes of the game's wait loop (same results)" ON)
+if(M2_SPIN_SKIP)
+    target_compile_definitions(runtime PUBLIC M2_SPIN_SKIP=1)
+endif()
 # i960 profiling (src/runtime/i960_profile.h; recompile.py --i960-profile): needs i960
 # code generated with m2recomp --profile. m2run prints the report.
 option(M2_I960_PROFILE "i960 time, work, bus calls and hot blocks (m2recomp --profile code)" OFF)

@@ -116,6 +116,11 @@ extern const Game daytona_game = {
     .io = {}, .link = true, // the communication board (837-10537)
     .draw_distance = true,  // hook_draw_list
     .control_list = kControls,
+    // The wait for the next frame, 2 instructions a pass: 0x1394 ldob 0x500000,r3;
+    // 0x139c cmpibe r3,g0,0x1394. 76 % of the i960's instructions in a race on
+    // the Dreamcast (platform/dreamcast/HANDOFF.md; dcmemcheck matched the
+    // desktop at its 100 checkpoints with the skip). daytona93 has no such loop.
+    .spin = {{Game::SpinWait::ByteIsReg, 0x1394, 0x00500000, 2, 16}},
 };
 
 

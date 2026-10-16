@@ -1,5 +1,36 @@
 # Handoff
 
+## Wait-loop skip made general (M2_SPIN_SKIP, on by default), VF2's added (2026-10-16)
+
+The Dreamcast's frame-wait skip (M2_DC_SPIN_SKIP, Daytona Rev A 0x1394) is
+now the runtime's M2_SPIN_SKIP, ON by default (CMake option M2_SPIN_SKIP,
+Vita DAYTONA_VITA_SPIN_SKIP; the Dreamcast Makefile and tools CMake renamed
+to keep them building, not built here). Each game declares its loops in its
+record: rt::Game::spin[2] (game.h SpinWait: ip of the pass's ldob, the RAM
+byte, instructions a pass, the register; kinds ByteIsReg, the old Daytona
+loop, and ByteZeroTimer, VF2's). M2Board::spin_skip, at the pass's read:
+when the pass will loop, skips whole passes up to just before the next
+lockstep event and, for ByteZeroTimer, before the first pass whose timer
+read (the dev_read expression at its instruction count; 20 bits, checked
+not to wrap over the range; binary search) would leave. The fast byte
+read path excludes the declared addresses (it excluded 0x500000 always).
+m2run prints the instructions skipped; perf.log's work line too.
+VF2: 0x4cb7c, 7 instructions a pass, threshold r13, timer 2 read 2
+instructions in. A wrong turn first: timer 3 (ldl's second word) gave
+different frames from frame 1000 and 30 more interrupts; the timer region
+is not a burst region, so both words of the ldl read 0xf00008 (timer 2).
+A wrong entry changes the game silently: check each new one against a
+build with M2_SPIN_SKIP=OFF.
+Checks (PC, VF2 with M2_SPIN_SKIP OFF vs ON): vf2_fight 4,000 frames
+40/40 dumps, WAV, i960/TGP instructions and interrupts identical, 14.9 M
+instructions skipped (7.5 %); vf2_attract 8,000 frames 80/80, identical,
+22.5 M skipped (5.2 %). Daytona race_basic 4,000 frames identical (no loop
+declared for daytona93: 0x1394 is not that loop there). ctest 23/23 for the
+three games. Daytona Rev A's entry not re-checked here (no ROM set; its
+Dreamcast check: dcmemcheck matched the desktop at 100 checkpoints).
+PC wall time no better (16.7 vs 18.7 s, within the run-to-run spread seen
+today). Vita VF2 diagnostics VPK built; not yet measured.
+
 ## M2Board::ticks() without the 64-bit division (2026-10-16)
 
 Why: the VF2 profile (extern/result_perf_vita/vf2 perf_supra_probe.log,

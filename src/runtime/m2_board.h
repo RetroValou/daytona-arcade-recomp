@@ -223,8 +223,8 @@ public:
     // nullptr: no link, the registers stay plain). Set before the game runs.
     void set_link(LinkTransport *transport, bool framesync = false);
     const CommBoard *comm_board() const { return comm_board_.get(); }
-#ifdef M2_DC_SPIN_SKIP
-    uint64_t spin_skipped() const { return spin_skipped_; } // instructions skipped in the frame wait (read_byte)
+#ifdef M2_SPIN_SKIP
+    uint64_t spin_skipped() const { return spin_skipped_; } // instructions skipped in the game's wait loop (spin_skip)
 #endif
 
 private:
@@ -326,7 +326,9 @@ private:
     bool render_mode_ = false, render_test_ = false, render_unk_ = false;
     uint8_t comm_cn_ = 0, comm_fg_ = 0;
     uint64_t frame_ = 0;
-#ifdef M2_DC_SPIN_SKIP
+#ifdef M2_SPIN_SKIP
+    void spin_skip(const Game::SpinWait &w, uint8_t value);
+    Game::SpinWait spin_[2]{};
     uint64_t spin_skipped_ = 0;
 #endif
 #ifdef M2_FAST_BUS

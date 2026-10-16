@@ -113,6 +113,7 @@ public:
     struct Counters {
         uint64_t board_frames = 0, presents = 0;
         uint64_t i960_instructions = 0, tgp_instructions = 0;
+        uint64_t i960_skipped = 0; // of i960_instructions: skipped in the game's wait loop (M2_SPIN_SKIP)
         uint64_t geo_jobs = 0, geo_polys = 0, geo_polys_max = 0, geo_blocked = 0, geo_failures = 0;
         uint64_t geo_count_reads = 0, geo_latency = 0, geo_latency_max = 0, geo_wait_max = 0;
         uint64_t geo_parse_max = 0;
@@ -311,8 +312,10 @@ public:
                   p.render_runs ? double(p.samples) / double(p.render_runs) : 0.0);
         }
 
-        w.add("work per emulated frame: i960 %.0f instr, TGP %.0f instr (both inside the i960+TGP lines), polygons %.0f\n",
-              double(counters.i960_instructions) / frames, double(counters.tgp_instructions) / frames,
+        w.add("work per emulated frame: i960 %.0f instr (%.0f of them skipped in the wait loop), TGP %.0f instr "
+              "(both inside the i960+TGP lines), polygons %.0f\n",
+              double(counters.i960_instructions) / frames, double(counters.i960_skipped) / frames,
+              double(counters.tgp_instructions) / frames,
               counters.geo_jobs ? double(counters.geo_polys) / double(counters.geo_jobs) : 0.0);
 
         // Ranking of the main-core sections: what to optimize first.

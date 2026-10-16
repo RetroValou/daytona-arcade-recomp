@@ -147,6 +147,28 @@ struct Game {
     std::span<const ControlDef> control_list;
     // SCSP board: its DSP program, recompiled (tools/m2dsprecomp), or none.
     ScspDspProgram dsp{};
+    // Wait loops of the game's whose passes the board skips (M2_SPIN_SKIP,
+    // M2Board::spin_skip): each pass starts with an ldob of a work RAM byte at
+    // `ip`. Between two lockstep events (interrupts, board callbacks) nothing
+    // changes that byte, so the passes up to just before the next event (and,
+    // with a timer, before the pass that would leave on it) are skipped by
+    // moving the instruction count on: the state is the one those passes leave.
+    // A wrong entry changes the game silently: check a new one with m2run's
+    // frame dumps, WAV and counts against a build without M2_SPIN_SKIP.
+    struct SpinWait {
+        enum Kind : uint8_t {
+            None,
+            ByteIsReg,     // loops while the byte equals register `reg`
+            ByteZeroTimer, // loops while the byte is 0 and timer `timer`'s count, masked to
+                           // 20 bits and read `timer_at` instructions into the pass, is not
+                           // 0xfffff and above register `reg`
+        } kind = None;
+        uint32_t ip = 0, addr = 0; // the pass's first instruction (the ldob) and the byte
+        uint8_t pass = 0;          // instructions in a pass
+        uint8_t reg = 0;           // Cpu::m_r index (r13: 13, g0: 16)
+        uint8_t timer = 0, timer_at = 0;
+    };
+    SpinWait spin[2]{}; // unused entries: None
 };
 
 

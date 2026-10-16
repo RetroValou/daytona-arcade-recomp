@@ -189,6 +189,12 @@ option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in p
 if(DAYTONA_VITA_I960_PROFILE)
     target_compile_definitions(vita_runtime PUBLIC M2_I960_PROFILE=1)
 endif()
+# The game's wait loop skipped by whole passes (Game::spin, M2Board::spin_skip), as
+# the desktop: the same state, fewer instructions run. ON by default.
+option(DAYTONA_VITA_SPIN_SKIP "Skip whole passes of the game's wait loop (same results)" ON)
+if(DAYTONA_VITA_SPIN_SKIP)
+    target_compile_definitions(vita_runtime PUBLIC M2_SPIN_SKIP=1)
+endif()
 # Sound board probe (src/runtime/sound_profile.h), diagnostics builds only: the
 # 68000, SCSP render and DSP times and the 68000's dispatches and register
 # accesses, in perf.log's core 2 section (~0.1 ms a frame of clock reads on core 2).

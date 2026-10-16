@@ -224,6 +224,9 @@ int main(int argc, char **argv) {
                     game.frames(), game.instructions(), game.board().tgp().tgp_instructions(), game.interrupts(),
                     game.board().sound_bytes_total(), s, double(game.frames()) / s);
         std::printf("  last screen hash %016" PRIx64 "\n", game.board().video().screen_hash());
+#ifdef M2_SPIN_SKIP
+        std::printf("  wait loop: %" PRIu64 " of the i960 instructions skipped (M2_SPIN_SKIP)\n", game.board().spin_skipped());
+#endif
 #ifdef M2_I960_PROFILE
         {
             static char report[16384];

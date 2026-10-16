@@ -13,6 +13,7 @@
 #include "runtime/i960_profile.h"
 
 #include <algorithm>
+#include <iterator>
 
 #include <cstdio>
 #include <cstdlib>
@@ -233,6 +234,9 @@ M2Board::M2Board(Images images)
     }
 #endif
     io_.wiring = img_.game->io;
+#ifdef M2_SPIN_SKIP
+    std::copy(std::begin(img_.game->spin), std::end(img_.game->spin), std::begin(spin_));
+#endif
     map(0x00500000, 0x005fffff, Ram, work_.data());
     map(0x00800000, 0x00807fff, Dev, nullptr, 0, false);
     map(0x00880000, 0x00887fff, Dev, nullptr, 0, false);
@@ -731,45 +735,82 @@ void M2Board::prof_bus(uint32_t addr, bool write) {
 }
 #endif
 
+#ifdef M2_SPIN_SKIP
+// A wait loop of the game's (Game::SpinWait), at its pass's first read: `value` is
+// what it reads. Each pass reads the same RAM byte and, while it loops, leaves
+// nothing behind its next pass does not overwrite (its registers and flags are
+// written before they are read); nothing changes the byte until the next
+// lockstep event (an interrupt, a callback: a timer's expiry among them). So
+// when this pass will loop, the passes up to just before that event are
+// skipped: the count moves on by whole passes, to the state those passes
+// would have left, and this read stands for the read of the first pass not
+// skipped. This read is under way (its boundary passed at `count`), so the
+// last skipped pass ends at a count below the event's. With a timer, a pass
+// also leaves when the timer's count read `timer_at` instructions into it
+// allows: that count is the dev_read expression at that instruction count,
+// falling while the timer runs (its expiry is an event), so the skip stops
+// before the first pass that would leave.
+void M2Board::spin_skip(const Game::SpinWait &w, uint8_t value) {
+    if (w.kind == Game::SpinWait::ByteIsReg ? value != uint8_t(cpu_->m_r[w.reg]) : value != 0) return;
+    const uint64_t limit = std::min(ls_->next_count, ls_->end_count), count = io_now();
+    if (limit <= count + w.pass) return;
+    uint64_t passes = (limit - 1 - count) / w.pass;
+    if (w.kind == Game::SpinWait::ByteZeroTimer) {
+        const Timer &t = timers_[w.timer];
+        const uint32_t threshold = cpu_->m_r[w.reg];
+        auto read = [&](uint64_t pass) { // the timer as pass `pass` reads it (dev_read's timers_r)
+            if (!t.run) return timervals_[w.timer];
+            const uint64_t at = count + pass * w.pass + w.timer_at;
+            return t.orig - uint32_t(at * kTicksPerFrame / kInstrPerFrame + tick_skip_ - t.start);
+        };
+        auto loops = [&](uint64_t pass) {
+            const uint32_t m = read(pass) & 0xfffffu;
+            return m != 0xfffffu && m > threshold;
+        };
+        // The 20 bits fall with the pass while the bits above them do not change.
+        if ((read(0) ^ read(passes - 1)) >> 20) return;
+        if (!loops(0)) return;
+        if (!loops(passes - 1)) { // the first pass that leaves: passes before it are skipped
+            uint64_t lo = 1, hi = passes - 1;
+            while (lo < hi) {
+                const uint64_t mid = lo + (hi - lo) / 2;
+                if (loops(mid)) lo = mid + 1;
+                else hi = mid;
+            }
+            passes = lo;
+        }
+    }
+    const uint64_t skip = passes * w.pass;
+    ls_->count += skip;
+    spin_skipped_ += skip;
+#ifdef M2_FAST_GEN
+    ++ls_->epoch; // the count jumped: the fast generated code checks in full next
+#endif
+}
+#endif
+
 uint8_t M2Board::read_byte(uint32_t addr) {
 #ifdef M2_I960_PROFILE
     prof_bus(addr, false);
 #endif
 #ifdef M2_FAST_BUS
-    if ((addr >> kPageBits) == fast_read_page_ && addr != 0x00500000u) return fast_read_base_[addr & 0xfff];
+#ifdef M2_SPIN_SKIP
+    if ((addr >> kPageBits) == fast_read_page_ && addr != spin_[0].addr && addr != spin_[1].addr)
+        return fast_read_base_[addr & 0xfff];
+#else
+    if ((addr >> kPageBits) == fast_read_page_) return fast_read_base_[addr & 0xfff];
+#endif
 #endif
     const Page &p = page(addr);
     const unsigned sh = (addr & 3) * 8;
-#ifdef M2_DC_SPIN_SKIP
-    // The game's wait for the next frame (0x1394: ldob 0x500000,r3; 0x139c:
-    // cmpibe r3,g0,0x1394), about 3/4 of its instructions in a race: every
-    // frame runs to the instruction cap (in_idle_loop does not list it, and
-    // that timing is the game's). Each pass reads the same RAM byte, compares
-    // equal and branches back, and nothing changes the byte until the next
-    // lockstep event (an interrupt, a callback). So when this read will
-    // compare equal, the passes up to just before that event are skipped:
-    // the count moves on by whole passes, to the same state the passes would
-    // have left. This read is under way (its boundary passed at `count`), so
-    // the last skipped pass ends at a count below the event's.
-    if (addr == 0x00500000u && cpu_->m_IP == 0x1394u && p.kind == Ram) {
-        const uint8_t v = p.base[addr & 0xfff];
-        if (v == cpu_->m_r[16]) {
-#ifdef M2_FAST_GEN
-            const uint64_t limit = std::min(ls_->next_count, ls_->end_count), count = ls_->now();
-#else
-            const uint64_t limit = std::min(ls_->next_count, ls_->end_count), count = ls_->count;
-#endif
-            if (limit > count + 2) {
-                const uint64_t skip = (limit - 1 - count) / 2 * 2;
-                ls_->count += skip;
-                spin_skipped_ += skip;
-#ifdef M2_FAST_GEN
-                ++ls_->epoch; // the count jumped: the fast generated code checks in full next
-#endif
+#ifdef M2_SPIN_SKIP
+    if (p.kind == Ram)
+        for (const Game::SpinWait &w : spin_)
+            if (w.kind != Game::SpinWait::None && addr == w.addr && cpu_->m_IP == w.ip) {
+                const uint8_t v = p.base[addr & 0xfff];
+                spin_skip(w, v);
+                return v;
             }
-        }
-        return v;
-    }
 #endif
 #ifdef M2_DC_MEMORY
     if (p.kind == Rom) return rom_page(p)[addr & 0xfff];
