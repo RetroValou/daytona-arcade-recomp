@@ -1,5 +1,19 @@
 # Handoff
 
+## Vita builds: vita-elf-create's "segment 1 overlaps", padded (2026-10-16)
+
+vita-elf-create appends its SCE data (4,308 bytes for VF2) after the code
+segment, in the gap before the data segment (64 KB aligned). A VF2 build
+whose code ended 2,120 bytes before it failed ("Cannot allocate 4308 bytes
+for SCE data at end of segment 0; segment 1 overlaps", then a segfault);
+other builds had ~22 KB by chance. build_vita.py now configures with
+DAYTONA_VITA_TEXT_PAD=0 and, when the build fails with less than 8 KB in
+that gap (readelf of the linked daytona_vita), reconfigures with
+gap + 8 KB of read-only padding (platform/vita/CMakeLists.txt writes
+text_pad.cpp, kept by --undefined) and builds again: the data segment
+moves one 64 KB step. Checked: VF2 diagnostics builds relinked with 10,312
+and 9,792 bytes and ran on the console; the normal VF2 build needed none.
+
 ## SCSP DSP: PACK's exponent with one CLZ (2026-10-16)
 
 src/runtime/scsp.h dsp::PACK counted temp's leading zeros (24 bits, at

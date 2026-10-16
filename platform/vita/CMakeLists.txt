@@ -317,6 +317,18 @@ else()
         target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} SceCtrl_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub pthread m)
     endif()
     target_link_options(daytona_vita PRIVATE -Wl,--gc-sections)
+    # vita-elf-create appends its SCE data (~4.3 KB) after the code segment, inside the
+    # gap before the data segment (64 KB aligned): when the code ends less than that
+    # before it, it fails ("segment 1 overlaps"). build_vita.py then relinks with this
+    # read-only padding, sized to move the data segment one alignment step further.
+    set(DAYTONA_VITA_TEXT_PAD 0 CACHE STRING "Bytes of read-only padding in the code segment (build_vita.py sets it)")
+    if(DAYTONA_VITA_TEXT_PAD GREATER 0)
+        file(WRITE "${CMAKE_BINARY_DIR}/text_pad.cpp"
+             "extern const unsigned char daytona_vita_text_pad[${DAYTONA_VITA_TEXT_PAD}];\n"
+             "const unsigned char daytona_vita_text_pad[${DAYTONA_VITA_TEXT_PAD}] = {1};\n")
+        target_sources(daytona_vita PRIVATE "${CMAKE_BINARY_DIR}/text_pad.cpp")
+        target_link_options(daytona_vita PRIVATE -Wl,--undefined=daytona_vita_text_pad)
+    endif()
     set_source_files_properties(${GEN_SOURCES} PROPERTIES COMPILE_OPTIONS "-Wno-unused-label")
     vita_create_self(eboot.bin daytona_vita UNSAFE)
     set(VITA_OTHER_GAME)

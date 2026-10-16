@@ -39,6 +39,17 @@ def run(command, env):
     subprocess.run(list(map(str, command)), cwd=ROOT, env=env, check=True)
 
 
+SCE_DATA_ROOM = 8192  # bytes vita-elf-create needs after the code segment (it asked 4,308 for VF2)
+
+
+def code_segment_gap(sdk, elf):
+    """Bytes between the end of the ELF's code segment and the start of its data segment."""
+    out = subprocess.run([str(sdk / "bin/arm-vita-eabi-readelf"), "-lW", str(elf)],
+                         capture_output=True, text=True, check=True).stdout
+    loads = [line.split() for line in out.splitlines() if line.strip().startswith("LOAD")]
+    return int(loads[1][2], 16) - (int(loads[0][2], 16) + int(loads[0][5], 16))
+
+
 def host_tool(host, name):
     """A tool of the host build: in the build directory, or build/Release/ (Visual Studio)."""
     exe = name + (".exe" if os.name == "nt" else "")
@@ -325,8 +336,22 @@ def main(argv=None):
          f"-DDAYTONA_VITA_GPU_GL={'ON' if args.gpu_gl else 'OFF'}",
          f"-DDAYTONA_VITA_FREE_CORES={'ON' if args.free_core else 'OFF'}",
          f"-DDAYTONA_VITA_COMPILE_CHECK={'ON' if args.compile_check else 'OFF'}",
+         "-DDAYTONA_VITA_TEXT_PAD=0",
          *([f"-DDAYTONA_VITAGL_DIR={vitagl_dir}"] if args.gpu_gl else [])], env)
-    run(["cmake", "--build", build, "--parallel", args.jobs], env)
+    try:
+        run(["cmake", "--build", build, "--parallel", args.jobs], env)
+    except subprocess.CalledProcessError:
+        # vita-elf-create fails when the code segment ends too close to the data segment:
+        # pad the code so the data segment moves to the next 64 KB step, and relink.
+        elf = build / "daytona_vita"
+        gap = code_segment_gap(sdk, elf) if not args.compile_check and elf.is_file() else SCE_DATA_ROOM
+        if gap >= SCE_DATA_ROOM:
+            raise
+        pad = gap + SCE_DATA_ROOM
+        print(f"build_vita: {gap} bytes left after the code segment for vita-elf-create; relinking with {pad} bytes "
+              "of padding (DAYTONA_VITA_TEXT_PAD)", flush=True)
+        run(["cmake", "-S", ROOT / "platform/vita", "-B", build, f"-DDAYTONA_VITA_TEXT_PAD={pad}"], env)
+        run(["cmake", "--build", build, "--parallel", args.jobs], env)
     if args.compile_check:
         print("Compile check complete. No linked game or VPK was built." + (f"\nvitaGL: {vitagl}" if args.gpu_gl else ""))
     else:
