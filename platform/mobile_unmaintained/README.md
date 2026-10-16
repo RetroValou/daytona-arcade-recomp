@@ -1,4 +1,9 @@
-# Android / iOS port
+# Android / iOS port (unmaintained)
+
+> **Unmaintained.** This port is not built, tested or updated with the rest of
+> the project (its work goes to the PS Vita, with the PC as the test bench). It
+> was left as it was on 2026-10-16; shared runtime changes only keep its sources
+> compiling where that was unavoidable, untested here. Expect it to be broken.
 
 This port keeps the desktop runtime and SDL3/SDL_GPU renderer, and packages the
 same recompiled game for Android and iOS.
@@ -40,7 +45,7 @@ Gradle compatible with Android Gradle Plugin 9.4.1.
 
 ```sh
 python3 scripts/setup.py --no-build
-cd platform/mobile/android
+cd platform/mobile_unmaintained/android
 gradle :app:assembleDebug
 ```
 
@@ -57,7 +62,7 @@ Requirements: macOS, Xcode, CMake, and an Apple signing identity for installatio
 physical device.
 
 ```sh
-platform/mobile/ios/build.sh
+platform/mobile_unmaintained/ios/build.sh
 ```
 
 That generates an Xcode iOS project and builds `daytona.app`. Open the generated
@@ -74,7 +79,7 @@ to reach the remaining options and Start button.
 For an unsigned IPA to sign and install through AltStore:
 
 ```sh
-UNSIGNED=1 platform/mobile/ios/build.sh
+UNSIGNED=1 platform/mobile_unmaintained/ios/build.sh
 ```
 
 The output is `build_daytona/ios/Daytona-unsigned.ipa`, containing the arm64 iPhoneOS app

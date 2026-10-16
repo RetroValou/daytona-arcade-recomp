@@ -1,5 +1,5 @@
 // tracecheck: the desktop's side of a Dreamcast lockstep check. Per frame,
-// the same line the Dreamcast frontend prints (platform/dreamcast/game):
+// the same line the Dreamcast frontend prints (platform/dreamcast_unmaintained/game):
 // i960 and TGP instruction counts and a hash of the TGP's buffer RAM (where
 // the geometrizer reads its display list), from the same start (no sound
 // board, the given settings), so the first frame where the two differ can be

@@ -4,7 +4,7 @@ The frontend prints "SAMPLE address count" lines, 128-byte buckets of the
 program; this sums them by function from game.elf's symbols (sh-elf-nm) and
 prints the busiest, with their share of the samples.
 
-    python platform/dreamcast/scripts/pc_profile.py [SERIAL] [--elf ELF] [--top N] [--from FRAME]
+    python platform/dreamcast_unmaintained/scripts/pc_profile.py [SERIAL] [--elf ELF] [--top N] [--from FRAME]
 """
 import argparse
 import bisect

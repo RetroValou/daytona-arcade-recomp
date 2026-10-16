@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # Host tools for the Dreamcast port, built with the desktop compiler from the
 # main tree's runtime and the host-generated game code, unchanged. A separate
-# project, like platform/vita: configured by platform/dreamcast/build_dreamcast.py
+# project, like platform/vita: configured by platform/dreamcast_unmaintained/build_dreamcast.py
 # after the desktop build and scripts/recompile.py have run.
 #
 # DAYTONA_HOST_BUILD (the desktop build directory): link the runtime and game

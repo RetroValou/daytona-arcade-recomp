@@ -33,13 +33,13 @@ FIXDEP = sed -i 's|\([A-Za-z]\):/|/\L\1/|g' $(@:.o=.d)
 # intermediates of NAME.cdi): they are needed to debug a crash.
 .SECONDARY:
 
-# Test programs: platform/dreamcast/NAME/main.cpp, one file each.
+# Test programs: platform/dreamcast_unmaintained/NAME/main.cpp, one file each.
 TESTS := selftest videotest
 .PHONY: $(TESTS) $(TESTS:=.cdi)
 $(TESTS): %: $(OUT)/%.elf
 $(TESTS:=.cdi): %.cdi: $(OUT)/%.cdi
 
-$(OUT)/%/main.o: $(ROOT)/platform/dreamcast/%/main.cpp
+$(OUT)/%/main.o: $(ROOT)/platform/dreamcast_unmaintained/%/main.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(CXXFLAGS) -c $< -o $@ && $(FIXDEP)
 
@@ -118,7 +118,7 @@ game: $(OUT)/game.elf
 game.cdi: $(OUT)/game.cdi
 # game/inputs.h (the recorded input script, or none) is written by
 # build_dreamcast.py into $(OUT)/game.
-$(OUT)/game/main.o: $(ROOT)/platform/dreamcast/game/main.cpp
+$(OUT)/game/main.o: $(ROOT)/platform/dreamcast_unmaintained/game/main.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(O3FLAGS) $(GAME_DEFS) -I$(OUT)/game -c $< -o $@ && $(FIXDEP)
 $(OUT)/game.elf: $(OUT)/game/main.o $(GAME_LIBS)
@@ -184,7 +184,7 @@ $(OUT)/game/ymfm/%.o: $(YMFM)/%.cpp
 $(OUT)/game/softfloat/%.o: $(SOFTFLOAT)/source/%.c
 	@mkdir -p $(dir $@)
 	kos-cc -O2 -std=c11 -w $(INT32) $(GAME_DEFS) -DSOFTFLOAT_ROUND_ODD -DINLINE_LEVEL=5 -DSOFTFLOAT_FAST_DIV32TO16 \
-	    -DSOFTFLOAT_FAST_DIV64TO32 -I$(ROOT)/platform/dreamcast/softfloat -I$(SOFTFLOAT)/source/8086-SSE -c $< -o $@
+	    -DSOFTFLOAT_FAST_DIV64TO32 -I$(ROOT)/platform/dreamcast_unmaintained/softfloat -I$(SOFTFLOAT)/source/8086-SSE -c $< -o $@
 $(OUT)/game/gen/%.o: $(GEN_I960)/%.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(GEN_FLAGS) -c $< -o $@ && $(FIXDEP)

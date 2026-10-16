@@ -235,7 +235,7 @@ anyway, with the reason. For one run only:
 
 A Dreamcast build of the game, from the `daytona` (Revision A) set only. It
 runs in the Flycast emulator, with sound; it is not yet tested on a
-console. Details: [platform/dreamcast/README.md](../platform/dreamcast/README.md).
+console. Details: [platform/dreamcast_unmaintained/README.md](../platform/dreamcast_unmaintained/README.md).
 
 You need, besides the above: [DreamSDK](https://dreamsdk.org/) (R4, at
 `C:/DreamSDK`) on Windows, or a KallistiOS toolchain elsewhere, and
@@ -250,7 +250,7 @@ You need, besides the above: [DreamSDK](https://dreamsdk.org/) (R4, at
    mode, and quit: the Dreamcast build starts from those saved settings.
 3. Build the Dreamcast disc image and run it in Flycast:
 
-       python platform/dreamcast/build_dreamcast.py game
+       python platform/dreamcast_unmaintained/build_dreamcast.py game
 
    The first time it also sets up KallistiOS. The disc image is
    `build_daytona/dreamcast/game.cdi` (`--no-run` builds it without

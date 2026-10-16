@@ -43,7 +43,7 @@ recorded yet.
 Final Android assembleDebug and iOS device Release builds pass. APK/IPA ZIP
 integrity checks pass; iOS is unsigned arm64 and its copied SHA-256 matches
 the Mac artifact. IPA: build/ios/Daytona-touch-unsigned.ipa. APK:
-platform/mobile/android/app/build/outputs/apk/debug/app-debug.apk.
+platform/mobile_unmaintained/android/app/build/outputs/apk/debug/app-debug.apk.
 
 ## 2026-10-06: iPhone launcher repair
 

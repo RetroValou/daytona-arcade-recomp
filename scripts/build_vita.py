@@ -31,7 +31,7 @@ from games import SETS  # noqa: E402
 REQUIRED = ("{set}/gen_table.cpp", "{set}_tgp/tgp_gen.cpp", "{set}_snd/snd_gen.cpp")
 # The Dreamcast's pass over the generated i960 code, used unchanged by the Vita build
 # (its runtime support is M2_FAST_GEN, platform/vita/CMakeLists.txt).
-FAST_GEN = Path("platform/dreamcast/scripts/fast_gen.py")
+FAST_GEN = Path("scripts/fast_gen.py")
 
 
 def run(command, env):
@@ -230,7 +230,7 @@ def main(argv=None):
                       help="Vita game code made here (BUILD_DIR/gen_vita): i960 m2recomp --fast_inaccuracy with direct "
                            "work-RAM accesses (fast_gen.py's), TGP fast mode")
     code.add_argument("--fast-gen", dest="code", action="store_const", const="fast_gen",
-                      help="i960 default output rewritten by platform/dreamcast/scripts/fast_gen.py (exact, slower on the Vita), "
+                      help="i960 default output rewritten by scripts/fast_gen.py (exact, slower on the Vita), "
                            "TGP fast mode. Without either: the host-generated code as it is")
     args = ap.parse_args(argv)
     try:

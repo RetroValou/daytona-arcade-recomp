@@ -30,7 +30,7 @@ From the repository root, on branch `mobile`:
 
 ```sh
 git pull --ff-only origin mobile
-cd platform/mobile/android
+cd platform/mobile_unmaintained/android
 gradle :app:assembleDebug
 adb -s DEVICE_SERIAL install -r app/build/outputs/apk/debug/app-debug.apk
 ```

@@ -1,5 +1,20 @@
 # Handoff
 
+## Dreamcast and mobile ports marked unmaintained (2026-10-16)
+
+platform/dreamcast -> platform/dreamcast_unmaintained, platform/mobile ->
+platform/mobile_unmaintained (same depth: their ../.. paths and the
+Android gradle paths still hold). Their READMEs open with an
+"Unmaintained" notice; README_fork.md's port table says so. They are not
+built or tested; shared changes only keep them compiling where
+unavoidable. platform/dreamcast/scripts/fast_gen.py, which the Vita build
+runs (--fast-inaccuracy's direct work-RAM pass, --fast-gen), moved to
+scripts/fast_gen.py; build_vita.py, tests/test_build_vita.py and
+build_dreamcast.py point there. Paths updated in the root CMakeLists (iOS
+sources), .gitignore, docs, comments; the older HANDOFF entries below keep
+the old paths. Checks: Python tests (44), PC configure, VF2 Vita
+diagnostics VPK built through the moved script.
+
 ## Wait-loop skip made general (M2_SPIN_SKIP, on by default), VF2's added (2026-10-16)
 
 The Dreamcast's frame-wait skip (M2_DC_SPIN_SKIP, Daytona Rev A 0x1394) is

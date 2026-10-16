@@ -25,7 +25,7 @@ videotest: the display path, a 496x384 frame through the PVR each frame,
          likewise; prints the conversion and upload cost per frame.
 compile: compiles the runtime and the generated game code for the SH-4 (no
          link yet) and reports their size.
-tools:   builds the host measuring tools (platform/dreamcast/tools).
+tools:   builds the host measuring tools (platform/dreamcast_unmaintained/tools).
 measure: runs romuse over input scripts (default: every scripts/inputs/*.txt
          except the test-mode ones) and summarises each with
          scripts/rom_usage.py; --sound also logs the sound commands.
@@ -153,7 +153,7 @@ def setup_kos(args):
 
 
 def kos_make(args, target):
-    """make in platform/dreamcast, with extern/kos-dc's KOS."""
+    """make in platform/dreamcast_unmaintained, with extern/kos-dc's KOS."""
     setup_kos(args)
     out = out_dir(args, "dreamcast")
     out.mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ def gen_dir(args):
 # Long course's own come from reva_long).
 SOUND_SCRIPTS = ["scripts/inputs/race_basic.txt", "scripts/inputs/attract_long.txt",
                  "scripts/inputs/race_to_end.txt", "scripts/inputs/time_attack.txt",
-                 "scripts/inputs/test_mode.txt", "platform/dreamcast/scripts/inputs/reva_long.txt",
+                 "scripts/inputs/test_mode.txt", "platform/dreamcast_unmaintained/scripts/inputs/reva_long.txt",
                  "scripts/inputs/course_advanced.txt", "scripts/inputs/course_expert.txt"]
 
 
@@ -231,8 +231,8 @@ def run_test(args, name, markers, timeout, start):
         # whose output changes).
         fast = dc / "gen_fast" / args.set
         fast_tgp = dc / "gen_fast" / f"{args.set}_tgp"
-        run([sys.executable, HERE / "scripts" / "fast_gen.py", gen / args.set, fast])
-        run([sys.executable, HERE / "scripts" / "fast_gen.py", gen / f"{args.set}_tgp", fast_tgp])
+        run([sys.executable, ROOT / "scripts" / "fast_gen.py", gen / args.set, fast])
+        run([sys.executable, ROOT / "scripts" / "fast_gen.py", gen / f"{args.set}_tgp", fast_tgp])
         pack = sound_pack(args, nvram)
         game = (f"-j{args.jobs} GEN={msys_path(gen)} GEN_I960={msys_path(fast)} GEN_TGP={msys_path(fast_tgp)} "
                 f"ROMS={msys_path(rom_images(args))} NVRAM={msys_path(nvram)} "

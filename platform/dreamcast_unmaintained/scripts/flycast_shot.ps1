@@ -2,7 +2,7 @@
 # picture check while the game runs in Flycast; no input is sent). The
 # emulator's window is found among the top-level windows of those processes
 # (not its "Flycast Serial Output" console).
-#   powershell -File platform/dreamcast/scripts/flycast_shot.ps1 OUT.png
+#   powershell -File platform/dreamcast_unmaintained/scripts/flycast_shot.ps1 OUT.png
 param([Parameter(Mandatory = $true)][string]$Out)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

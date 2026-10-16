@@ -161,7 +161,7 @@ target_compile_options(vita_runtime PRIVATE -fno-math-errno)
 target_include_directories(vita_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" "${DAYTONA_ROOT}/src")
 target_link_libraries(vita_runtime PUBLIC vita_trace vita_i960 vita_ymfm)
 target_compile_definitions(vita_runtime PUBLIC M2_ROMSET="${DAYTONA_VITA_ROMSET}")
-# Runtime support of the i960 code rewritten by platform/dreamcast/scripts/fast_gen.py
+# Runtime support of the i960 code rewritten by scripts/fast_gen.py
 # (scripts/build_vita.py --fast-gen: the whole pass; --fast-inaccuracy: its direct
 # work-RAM accesses only, gen::wram_* and Cpu::work_ram). It also runs the code that is
 # not rewritten (default or --fast_inaccuracy output) unchanged. PUBLIC: the generated

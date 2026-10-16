@@ -1,4 +1,4 @@
-// platform/dreamcast/game/controls.h on the PC: every stick value, the
+// platform/dreamcast_unmaintained/game/controls.h on the PC: every stick value, the
 // triggers, the D-pad, gears on presses only, each button's bit.
 #include "../game/controls.h"
 

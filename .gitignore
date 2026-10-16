@@ -7,8 +7,8 @@ CLAUDE.md
 extern/
 third_party/
 vendor/
-platform/mobile/android/.gradle/
-platform/mobile/android/app/.cxx/
+platform/mobile_unmaintained/android/.gradle/
+platform/mobile_unmaintained/android/app/.cxx/
 
 # ---- ROMs and anything derived from them — LEGAL, not tidiness ----
 # The user supplies their own daytona.zip. No ROM bytes, no de-interleaved

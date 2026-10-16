@@ -15,10 +15,10 @@ MAME-format `.zip` or `.7z`): `daytona93` (Daytona USA Deluxe '93) or
 | Platform | Status | Details |
 | --- | --- | --- |
 | Windows, macOS, Linux | The main build; setup below | [docs/getting-started.md](docs/getting-started.md) |
-| Android | Works (arm64), with on-screen touch controls or a Bluetooth or USB controller; tested on a device | [platform/mobile](platform/mobile/README.md) |
-| iOS | Works on iPhone, installed through Xcode or AltStore, with touch controls or a controller; tested on a device | [platform/mobile](platform/mobile/README.md) |
+| Android (unmaintained) | Worked (arm64), not maintained since 2026-10-16; with on-screen touch controls or a Bluetooth or USB controller; tested on a device | [platform/mobile_unmaintained](platform/mobile_unmaintained/README.md) |
+| iOS (unmaintained) | Worked on iPhone, not maintained since 2026-10-16; installed through Xcode or AltStore, with touch controls or a controller; tested on a device | [platform/mobile_unmaintained](platform/mobile_unmaintained/README.md) |
 | PS Vita | Works: a native Vita app (SDL2); with vitaGL about 57.3 frames/s (the arcade runs 57.52) at CPU 444 / GPU 166 MHz, no overclocking plugin; tested on a Vita | [platform/vita](platform/vita/README.md), release build: [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md) |
-| Dreamcast | Runs in the Flycast emulator with sound and the controller, about 32 frames/s (the arcade runs 57.52); not yet on a console; in progress | [platform/dreamcast](platform/dreamcast/README.md) |
+| Dreamcast (unmaintained) | Not maintained since 2026-10-16; ran in the Flycast emulator with sound and the controller, about 32 frames/s (the arcade runs 57.52); not yet on a console; in progress | [platform/dreamcast_unmaintained](platform/dreamcast_unmaintained/README.md) |
 
 Every port starts from the desktop setup: the game code is generated on a
 desktop computer from your ROM set, then built for the other platform.

@@ -5,7 +5,7 @@ the game playing (its "rom bank sample" lines) are converted to the AICA's
 4-bit ADPCM (KallistiOS's wav2adpcm encoder, ported) and packed with a table
 the frontend (game/audio.h) loads them into sound RAM from, as needed.
 
-    python platform/dreamcast/scripts/sound_pack.py IMAGES_DIR USAGE.txt OUT.pak
+    python platform/dreamcast_unmaintained/scripts/sound_pack.py IMAGES_DIR USAGE.txt OUT.pak
 
 Layout (little-endian): "DSP1", u32 count, then per sample u8 rom, u8 bank,
 u16 sample, u32 frames, u32 loop_start, u32 offset, u32 bytes; then the data

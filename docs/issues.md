@@ -423,9 +423,9 @@ on top of the devices already there.
 
 ## #6: Android version
 
-Done in `platform/mobile` (PR #14, from boucymatt): Android (arm64) and iOS
+Done in `platform/mobile_unmaintained` (PR #14, from boucymatt): Android (arm64) and iOS
 builds of the desktop runtime and renderer, with on-screen touch controls
 (analogue steering, gas and brake, gears, views, coin and start) that work
 alongside Bluetooth or USB controllers. Tested on devices (2026-10-06):
 Android and iOS work with no issues reported (the PS Vita port too). See
-`platform/mobile/README.md` and its HANDOFF. The issue can be closed.
+`platform/mobile_unmaintained/README.md` and its HANDOFF. The issue can be closed.

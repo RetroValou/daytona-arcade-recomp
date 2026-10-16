@@ -213,7 +213,7 @@ class BuildVitaTests(unittest.TestCase):
 
 
 FAST_GEN_SPEC = importlib.util.spec_from_file_location(
-    "fast_gen", Path(__file__).resolve().parents[1] / "platform/dreamcast/scripts/fast_gen.py")
+    "fast_gen", Path(__file__).resolve().parents[1] / "scripts/fast_gen.py")
 FAST_GEN = importlib.util.module_from_spec(FAST_GEN_SPEC)
 FAST_GEN_SPEC.loader.exec_module(FAST_GEN)
 

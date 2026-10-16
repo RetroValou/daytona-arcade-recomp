@@ -1,4 +1,9 @@
-# Sega Dreamcast port (in progress)
+# Sega Dreamcast port (unmaintained)
+
+> **Unmaintained.** This port is not built, tested or updated with the rest of
+> the project (its work goes to the PS Vita, with the PC as the test bench). It
+> was left as it was on 2026-10-16; shared runtime changes only keep its sources
+> compiling where that was unavoidable, untested here. Expect it to be broken.
 
 The recompiled game on a Dreamcast (SH-4 at 200 MHz, 16 MB main RAM, 8 MB
 video RAM, 2 MB sound RAM), built with KallistiOS. Like `platform/vita`, this
@@ -26,7 +31,7 @@ every checkpoint. About 32 game frames/s in Flycast (the arcade runs
 
 ## Commands
 
-All through `platform/dreamcast/build_dreamcast.py`; output goes under the
+All through `platform/dreamcast_unmaintained/build_dreamcast.py`; output goes under the
 game's folder (`build_daytona/dreamcast*`, git-ignored); the generated code and ROM
 images are read from `build_daytona/recomp/daytona/`.
 

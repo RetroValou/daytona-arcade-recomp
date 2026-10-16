@@ -31,7 +31,7 @@ dispatch switch, `left` one more for the instruction's decrement): the slow
 path is not repeated at every instruction, so the code stays the size of the
 desktop's.
 
-    python platform/dreamcast/scripts/fast_gen.py GEN_SET_DIR OUT_DIR
+    python scripts/fast_gen.py GEN_SET_DIR OUT_DIR
 
 Files other than chunk_*.cpp are copied unchanged. A file is rewritten only
 when its output changes (make rebuilds only those). Fails on anything it

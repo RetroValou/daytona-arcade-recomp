@@ -270,9 +270,9 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/extern/sdl3/CMakeLists.txt)
         target_link_libraries(daytona_app PUBLIC ws2_32) # link play's sockets
     endif()
     if(IOS)
-        target_sources(daytona_app PRIVATE platform/mobile/ios/rom_picker.mm)
-        set_source_files_properties(platform/mobile/ios/rom_picker.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
-        target_include_directories(daytona_app PRIVATE platform/mobile/ios)
+        target_sources(daytona_app PRIVATE platform/mobile_unmaintained/ios/rom_picker.mm)
+        set_source_files_properties(platform/mobile_unmaintained/ios/rom_picker.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+        target_include_directories(daytona_app PRIVATE platform/mobile_unmaintained/ios)
     endif()
     if(M2_MOBILE)
         target_compile_definitions(daytona_app PRIVATE M2_MOBILE=1)
@@ -311,7 +311,7 @@ if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
             add_executable(daytona MACOSX_BUNDLE $<TARGET_OBJECTS:daytona_app> ${GEN_SOURCES} ${TGP_GEN} ${SND_GEN})
             set_target_properties(daytona PROPERTIES
                 MACOSX_BUNDLE_BUNDLE_NAME "Daytona USA"
-                MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/platform/mobile/ios/Info.plist.in"
+                MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/platform/mobile_unmaintained/ios/Info.plist.in"
                 MACOSX_BUNDLE_GUI_IDENTIFIER "com.boucydesigns.daytona"
                 MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1"
                 MACOSX_BUNDLE_BUNDLE_VERSION "1"

@@ -18,7 +18,7 @@
 // game's sound commands are written instead, a line per frame that sent
 // any: "FRAME HEX-BYTES". Game logic runs the same either way.
 //
-// Output, for platform/dreamcast/scripts/rom_usage.py:
+// Output, for platform/dreamcast_unmaintained/scripts/rom_usage.py:
 //   frames F block B blocks N
 //   region NAME BYTES
 //   page REGION PAGE HEX     (blocks read, bit k = block k, lowest first)

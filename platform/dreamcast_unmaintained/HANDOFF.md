@@ -2,7 +2,7 @@
 
 ## Rules for this port
 
-- Dreamcast frontend, build and tools are in `platform/dreamcast/`.
+- Dreamcast frontend, build and tools are in `platform/dreamcast_unmaintained/`.
 - Changes the port needs in the shared runtime (`src/runtime`) go there,
   like the Vita's `M2_VITA_RENDER_OPT`, behind compile-time defines
   (`M2_DC_*`) that only the Dreamcast build sets. Windows, macOS and Linux

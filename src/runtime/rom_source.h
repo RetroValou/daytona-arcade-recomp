@@ -1,4 +1,4 @@
-// M2_DC_MEMORY builds only (platform/dreamcast): the ROM regions read through
+// M2_DC_MEMORY builds only (platform/dreamcast_unmaintained): the ROM regions read through
 // pages the frontend supplies from a small cache, instead of whole images
 // held in memory (16 MB of RAM, 44 MB of ROM). The board, geometrizer and TGP
 // board ask for a 4 KB page at a time. Desktop builds do not define

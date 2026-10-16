@@ -72,7 +72,7 @@ LTO, per-core `perf.log`) is merged onto this tree, mostly as additions:
   `M2_FAST_GEN` (defined by `M2_DC_SPEED` too, so the Dreamcast preprocesses
   identically; the desktop too). Lockstep callback slots are reused under
   `M2_FAST_GEN` as under `M2_DC_MEMORY`. The Vita copy of `fast_gen.py` is
-  gone: `build_vita.py` runs `platform/dreamcast/scripts/fast_gen.py`.
+  gone: `build_vita.py` runs `scripts/fast_gen.py`.
 * Host tests added for the branch's helpers: `test_vita_audio_rate` (audio
   pacing), `test_vita_flat_index`, `test_vita_texel_index`,
   `test_vita_imgui_gl`, and the vitaGL index tiles in
