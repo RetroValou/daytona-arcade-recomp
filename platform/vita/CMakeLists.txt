@@ -189,6 +189,13 @@ option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in p
 if(DAYTONA_VITA_I960_PROFILE)
     target_compile_definitions(vita_runtime PUBLIC M2_I960_PROFILE=1)
 endif()
+# Sound board probe (src/runtime/sound_profile.h), diagnostics builds only: the
+# 68000, SCSP render and DSP times and the 68000's dispatches and register
+# accesses, in perf.log's core 2 section (~0.1 ms a frame of clock reads on core 2).
+# The 68000 code's M2_SND_DISPATCH() counts only with it.
+if(DAYTONA_VITA_DIAGNOSTICS)
+    target_compile_definitions(vita_runtime PUBLIC M2_SOUND_PROFILE=1)
+endif()
 # The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem): with
 # build_vita.py --inline-bus, its fast modes' i960 code is generated with m2recomp --board
 # (the set's board, scripts/games.py). The host's own code (the default mode) runs on it

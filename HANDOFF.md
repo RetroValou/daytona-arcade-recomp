@@ -1,5 +1,53 @@
 # Handoff
 
+## Vita perf.log: slow loops, sound board probe; PACK and VF2 measured (2026-10-16)
+
+PACK with CLZ (cbd7cbb), measured on the Vita (VF2 diagnostics, attract,
+extern/result_perf_vita/vf2 perf_pack.log against perf_ref and perf_modif,
+same scenes in windows 0-7): sound board 13.1-14.1 -> 12.2-13.2 ms a frame
+in 3D windows (-0.89 ms, -6.5 %), -0.44 ms without 3D; the two baselines
+(same sound code) differ by 0.03 ms. fps, gaps, core 0 unchanged. Larger
+than the 0.1-0.25 ms expected: ~130 cycles a call saved.
+
+New in perf.log (diagnostics builds; no cost elsewhere):
+- core_profile.h: "SLOW loops", the 8 longest loops of each window, each
+  with its time into the window, its sections of 0.3 ms or more (largest
+  first) and a LoopNote (board frames, i960/TGP instructions, textures
+  built, texels, changed, deferred; set in main_gpu.cpp).
+- runtime/sound_profile.h (M2_SOUND_PROFILE, defined by the Vita CMake with
+  DAYTONA_VITA_DIAGNOSTICS): per sound frame, ScspBoard::advance time, one
+  render_to in 16 timed (scaled by samples), one DSP step in 16 timed
+  (scsp.cpp), 68000 instructions, dispatches (m2sndrecomp emits
+  M2_SND_DISPATCH() after dispatch:, nothing without the define: the host
+  code must be regenerated), SCSP register reads/writes, render_to calls.
+  The clock read (0.70 us on the Vita) is measured at game start and
+  removed. main_gpu.cpp folds and clears it after each sound worker join.
+
+VF2 on the Vita (perf_probe.log, 30 windows, a probe that timed every
+render: ~0.9 ms a frame of clock reads on core 2; the sampled one now
+costs ~0.1 ms, not yet run on the console), per sound frame in a fight:
+board 12.6-17.5 ms = 68000 3-4 ms (14,357 instructions: ~250 ns each) +
+SCSP render 9-12.6 ms, of which DSP ~2.6 ms (3.4 us a sample) and
+slots/mix 6.5-10 ms (1.3 ms in attract, few voices). 68000: 180
+dispatches a frame (DIV-OPT point 10, the switch table: drop), ~950 SCSP
+register accesses, ~1,200 render_to calls (640 rendering 1.2 samples
+each), each a 64-bit division (point 5: worth doing).
+Windows 22-28: core 2 at 95 % (16.8-17.5 ms against 17.4), core 0 waiting
+for it ("sound sync") 2-9 ms on single frames, 54 fps.
+The end-of-fight lag (the character talking, windows 23-24): textures
+are not it (56 built 64x64 in 49 frames, 0.21 ms a frame, worst 1.4 ms;
+483 of 539 rewritten kept); the slow frames (31-33 ms) are i960 game
+logic 17-20 ms (120,000-150,000 instructions) plus the sound board at
+16-18 ms, the main core waiting 4.4 ms a frame on it.
+Transitions (2D screens): single frames of 45-75 ms with the 2D worker
+at ~30 ms on core 2 (main waiting on it, "upload"), the tile cache 10-18
+ms and the sound board up to 64 ms behind it.
+Diagnostics-only artefact: one "log" frame every 5 s, 18-35 ms, growing
+during the run (14-18 ms already in perf_ref); not in normal builds.
+Next: render_to's 64-bit division (point 5), then the SCSP slots
+(Scsp::render, UpdateSlot: 6.5-10 ms), the heavy i960 logic frames
+(--i960-profile).
+
 ## Vita texture probes: diagnostics builds only (2026-10-16)
 
 gpu_gl.cpp: the clock reads around texel decode, upload and the texture RAM

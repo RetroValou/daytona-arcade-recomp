@@ -11,6 +11,7 @@
 // generator is a fixed LCG; save states, logging and popmessages removed.
 // The sound computation is MAME's.
 #include "runtime/scsp.h"
+#include "runtime/sound_profile.h"
 
 #include <algorithm>
 #include <cmath>
@@ -156,7 +157,21 @@ void Scsp::render(float *stereo, int n) {
             m_BUFPTR &= 63;
         }
 
+#ifdef M2_SOUND_PROFILE
+        // One sample's DSP step in kDspEvery timed (sound_profile.h).
+        if (snd::SoundProfile &p = snd::sound_profile(); p.clock && ++p.dsp_phase == p.kDspEvery) {
+            p.dsp_phase = 0;
+            const uint64_t t0 = p.clock();
+            m_DSP.Step();
+            p.dsp_ticks += p.clock() - t0;
+            ++p.dsp_timed;
+            p.dsp_in_timed_render += p.timing_render ? 1 : 0;
+        } else {
+            m_DSP.Step();
+        }
+#else
         m_DSP.Step();
+#endif
 
         for (int i = 0; i < 16; ++i) {
             SCSP_SLOT *slot = m_Slots + i;

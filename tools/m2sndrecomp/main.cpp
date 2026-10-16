@@ -473,7 +473,7 @@ int main(int argc, char **argv) {
          << "#include \"runtime/snd_gen_support.h\"\n\n#include <algorithm>\n#include <iterator>\n\nnamespace sndgen {\n\n"
          << "void run(Env &e) {\n    snd::Cpu68k &c = e.c;\n    snd::Sched &s = e.s;\n"
          << "    uint32_t *const D = c.d;\n    uint32_t *const A = c.a;\n"
-         << "dispatch:\n    if (s.finished()) return;\n    switch (c.pc) {\n";
+         << "dispatch:\n    M2_SND_DISPATCH();\n    if (s.finished()) return;\n    switch (c.pc) {\n";
     for (uint32_t a : addrs) em.o << "    case " << hex(a) << ": goto " << lbl(a) << ";\n";
     em.o << "    default: return;\n    }\n";
     for (auto it = r.insns.begin(); it != r.insns.end(); ++it) {

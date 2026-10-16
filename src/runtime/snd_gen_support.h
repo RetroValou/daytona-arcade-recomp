@@ -9,6 +9,15 @@
 
 #include <cstdint>
 
+// Every entry into the dispatch switch, counted with M2_SOUND_PROFILE
+// (runtime/sound_profile.h); nothing otherwise.
+#ifdef M2_SOUND_PROFILE
+#include "runtime/sound_profile.h"
+#define M2_SND_DISPATCH() (++snd::sound_profile().dispatches)
+#else
+#define M2_SND_DISPATCH() ((void)0)
+#endif
+
 namespace sndgen {
 
 struct Env {

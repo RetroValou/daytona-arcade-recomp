@@ -660,6 +660,7 @@ int main(int, char **) {
 
     // Per-core profiling (perf.log, diagnostics builds). Reports cover gameplay only.
     vita::CoreProfiler core_profile;
+    double sound_clock_us = 0.0; // one ticks_us read (sound probe, M2_SOUND_PROFILE)
 #ifdef M2_TGP_PROFILE
     // TGP profiling (build_vita.py --tgp-profile): a TGP section in each perf.log report.
     rt::TgpBench tgp_bench;
@@ -746,6 +747,11 @@ int main(int, char **) {
             return false;
         }
         perf_sound_wait_us += diagnostic_ticks_us() - begin;
+#ifdef M2_SOUND_PROFILE
+        // The sound frame is joined: its counters are read and cleared before the next one.
+        if constexpr (kPerfLog) core_profile.counters.add_sound(snd::sound_profile());
+        snd::sound_profile().clear();
+#endif
         perf_sound_us += sound_worker.last_sound_ticks();
         perf_audio_queue_us += sound_worker.last_audio_ticks();
         ++perf_sound_frames;
@@ -925,6 +931,18 @@ int main(int, char **) {
             rt::i960_profile.clock = ticks_us;
             rt::i960_profile.ticks_per_second = 1000000u;
             i960_report.start(game->instructions(), uint64_t(game->interrupts()));
+#endif
+#ifdef M2_SOUND_PROFILE
+            {
+                snd::SoundProfile &sp = snd::sound_profile();
+                sp.clock = ticks_us;
+                sp.clear();
+                // One clock read, removed from the probe's times.
+                constexpr int kReads = 20000;
+                const uint64_t t0 = ticks_us();
+                for (int i = 0; i < kReads; ++i) (void)ticks_us();
+                sound_clock_us = double(ticks_us() - t0) / kReads;
+            }
 #endif
             load_nv("ioboard_eeprom.bin", game->board().io().eeprom);
             if (settings.save_backup) load_nv("backup_ram.bin", game->board().backup_ram());
@@ -1245,6 +1263,10 @@ int main(int, char **) {
                         ++c.board_frames;
                         c.i960_instructions += game->instructions() - i960_before;
                         c.tgp_instructions += game->board().tgp().tgp_instructions() - tgp_before;
+                        auto &note = core_profile.note();
+                        ++note.board_frames;
+                        note.i960_instructions += uint32_t(game->instructions() - i960_before);
+                        note.tgp_instructions += uint32_t(game->board().tgp().tgp_instructions() - tgp_before);
                         c.geo_count_reads += geo_frame.count_reads;
                         {
                             const auto &vp = game->board().video().last_profile();
@@ -1368,6 +1390,11 @@ int main(int, char **) {
                         // material_defers counts this frame (reset by draw_polygons); cache_resets
                         // since the start.
                         c.tex_defers += gpu.material_defers();
+                        auto &note = core_profile.note();
+                        note.tex_builds += tp.builds;
+                        note.tex_texels += uint32_t(tp.texels);
+                        note.tex_changed += tp.changed;
+                        note.tex_defers += gpu.material_defers();
                         static unsigned resets_seen = 0;
                         if (gpu.cache_resets() >= resets_seen) c.tex_resets += gpu.cache_resets() - resets_seen;
                         resets_seen = gpu.cache_resets();
@@ -1490,6 +1517,7 @@ int main(int, char **) {
                     audio_gaps_seen = pacing.underruns;
                     c.audio_speed = pacing.ratio;
                     c.audio_queue_ms = pacing.queued_ms;
+                    c.sound_clock_us = sound_clock_us;
                     vita::CoreProfiler::Header h;
                     h.index = ++perf_index;
                     const rt::Geo *geo = geometry_of(game.get());

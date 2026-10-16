@@ -2,6 +2,7 @@
 
 #include "runtime/game.h"
 #include "runtime/sound_board.h"
+#include "runtime/sound_profile.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -43,7 +44,16 @@ void ScspBoard::advance(double seconds) {
     const double want = seconds * double(kIps) + carry_;
     const uint64_t n = uint64_t(want);
     carry_ = want - double(n);
+#ifdef M2_SOUND_PROFILE
+    SoundProfile &p = sound_profile();
+    const uint64_t t0 = p.clock ? p.clock() : 0, count0 = sched_.count;
     run_to(sched_.count + n);
+    ++p.frames;
+    p.m68k_instructions += sched_.count - count0;
+    if (p.clock) p.advance_ticks += p.clock() - t0;
+#else
+    run_to(sched_.count + n);
+#endif
 }
 
 void ScspBoard::run_to(uint64_t count) {
@@ -61,15 +71,38 @@ void ScspBoard::run_to(uint64_t count) {
 
 void ScspBoard::render_to(uint64_t count) {
     const uint64_t due = count * Scsp::kRate / kIps;
+#ifdef M2_SOUND_PROFILE
+    SoundProfile &p = sound_profile();
+    ++p.render_calls;
+#endif
     if (due <= done_) return;
     const size_t at = out_.size(), n = size_t(due - done_);
+#ifdef M2_SOUND_PROFILE
+    // One render in kRenderEvery timed (sound_profile.h).
+    p.timing_render = p.clock && ++p.render_phase == p.kRenderEvery;
+    if (p.timing_render) p.render_phase = 0;
+    const uint64_t t0 = p.timing_render ? p.clock() : 0;
+#endif
     out_.resize(at + 2 * n);
     scsp_.render(out_.data() + at, int(n));
     done_ = due;
+#ifdef M2_SOUND_PROFILE
+    ++p.render_runs;
+    p.samples += n;
+    if (p.timing_render) {
+        p.render_ticks += p.clock() - t0;
+        ++p.render_timed;
+        p.render_timed_samples += n;
+        p.timing_render = false;
+    }
+#endif
 }
 
 uint16_t ScspBoard::read16(uint32_t addr) {
     if (addr >= 0x100000 && addr <= 0x100fff) {
+#ifdef M2_SOUND_PROFILE
+        ++sound_profile().scsp_reads;
+#endif
         render_to(sched_.count); // MAME: m_stream->update()
         return scsp_.read((addr - 0x100000) >> 1);
     }
@@ -82,6 +115,9 @@ uint16_t ScspBoard::read16(uint32_t addr) {
 
 void ScspBoard::write16(uint32_t addr, uint16_t data, uint16_t mask) {
     if (addr >= 0x100000 && addr <= 0x100fff) {
+#ifdef M2_SOUND_PROFILE
+        ++sound_profile().scsp_writes;
+#endif
         render_to(sched_.count);
         scsp_.write((addr - 0x100000) >> 1, data, mask);
     }

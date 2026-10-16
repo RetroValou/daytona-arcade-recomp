@@ -32,6 +32,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "runtime/sound_profile.h"
+
 namespace vita {
 
 class CoreProfiler {
@@ -124,12 +126,38 @@ public:
         uint64_t tex_builds = 0, tex_texels = 0, tex_rewritten = 0, tex_kept = 0, tex_changed = 0, tex_defers = 0, tex_resets = 0;
         uint64_t tex_frames_with_builds = 0, tex_builds_max = 0;
         uint64_t tiles_rebuilt = 0, characters_changed = 0, tile_frames = 0;
+        // Sound board probe (diagnostics builds, runtime/sound_profile.h): summed
+        // over the window's sound frames; sound_clock_us is one clock read (removed).
+        bool sound_probe = false;
+        snd::SoundProfile sound{};
+        double sound_clock_us = 0.0;
+        void add_sound(const snd::SoundProfile &p) {
+            sound_probe = true;
+            sound.frames += p.frames; sound.advance_ticks += p.advance_ticks;
+            sound.m68k_instructions += p.m68k_instructions; sound.dispatches += p.dispatches;
+            sound.scsp_reads += p.scsp_reads; sound.scsp_writes += p.scsp_writes;
+            sound.render_calls += p.render_calls; sound.render_runs += p.render_runs; sound.samples += p.samples;
+            sound.render_timed += p.render_timed; sound.render_timed_samples += p.render_timed_samples;
+            sound.render_ticks += p.render_ticks;
+            sound.dsp_timed += p.dsp_timed; sound.dsp_ticks += p.dsp_ticks;
+            sound.dsp_in_timed_render += p.dsp_in_timed_render;
+        }
     };
+
+    // What one loop iteration did besides its section times, for the slow-frame list
+    // (set by the caller between begin_loop and end_loop).
+    struct LoopNote {
+        uint32_t tex_builds = 0, tex_texels = 0, tex_defers = 0, tex_changed = 0;
+        uint32_t i960_instructions = 0, tgp_instructions = 0, board_frames = 0;
+    };
+    LoopNote &note() { return note_; }
+    static constexpr int kSlowKept = 8; // the slowest loops of a window, listed in the report
 
     void reset(uint64_t now) {
         totals_ = {}; maxima_ = {}; hits_ = {}; current_ = {};
         counters = {};
         loops_ = 0; loop_max_ = 0;
+        slow_count_ = 0;
         window_start_ = now; window_end_ = now;
         started_ = true;
     }
@@ -137,6 +165,7 @@ public:
     void begin_loop(uint64_t now) {
         if (!started_) reset(now);
         current_ = {};
+        note_ = {};
         loop_start_ = now;
     }
     void add(Section s, uint64_t ticks) { current_[s] += ticks; }
@@ -149,7 +178,9 @@ public:
             maxima_[size_t(i)] = std::max(maxima_[size_t(i)], v);
             ++hits_[size_t(i)];
         }
-        loop_max_ = std::max(loop_max_, now >= loop_start_ ? now - loop_start_ : 0);
+        const uint64_t loop = now >= loop_start_ ? now - loop_start_ : 0;
+        loop_max_ = std::max(loop_max_, loop);
+        keep_if_slow(loop);
         ++loops_;
         window_end_ = now;
     }
@@ -255,6 +286,31 @@ public:
             w.add("  reference audio: %llu gaps, playback speed %.2f%%, queue %.1f ms (target 64)\n",
                   ull(counters.audio_gaps), counters.audio_speed * 100.0, counters.audio_queue_ms);
 
+        if (counters.sound_probe && counters.sound.frames) {
+            const snd::SoundProfile &p = counters.sound;
+            const double sf = double(p.frames), c = counters.sound_clock_us / 1000.0; // ms per clock read
+            // A timed render holds one read of its own and two per DSP step timed inside it;
+            // advance holds one of its own and two per timed render and DSP step. Renders are
+            // timed one in kRenderEvery: scaled by the samples rendered.
+            const double reads = double(1 + 2 * p.render_timed + 2 * p.dsp_timed); // inside advance, per window
+            const double render_timed = std::max(0.0, ms(p.render_ticks) - c * double(p.render_timed + 2 * p.dsp_in_timed_render));
+            const double render = p.render_timed_samples
+                                      ? render_timed * double(p.samples) / double(p.render_timed_samples) : 0.0;
+            const double advance = std::max(0.0, ms(p.advance_ticks) - c * reads);
+            const double dsp_sample = p.dsp_timed ? std::max(0.0, ms(p.dsp_ticks) / double(p.dsp_timed) - c) : 0.0;
+            const double dsp = dsp_sample * double(p.samples);
+            w.add("  sound probe, per sound frame (%llu frames): board %.2f ms = 68000 %.2f ms + SCSP render ~%.2f ms "
+                  "(of which DSP ~%.2f ms, %.2f us a sample from %llu timed, slots/mix ~%.2f ms) | probe clock %.3f us a read, "
+                  "~%.2f ms a frame of reads removed\n",
+                  ull(p.frames), advance / sf, std::max(0.0, advance - render) / sf, render / sf, dsp / sf, dsp_sample * 1000.0,
+                  ull(p.dsp_timed), std::max(0.0, render - dsp) / sf, counters.sound_clock_us, c * reads / sf);
+            w.add("  68000 per sound frame: %.0f instructions, %.0f dispatches (switch entries), SCSP registers %.0f reads + "
+                  "%.0f writes | render_to %.0f calls, %.0f rendering, %.1f samples each\n",
+                  double(p.m68k_instructions) / sf, double(p.dispatches) / sf, double(p.scsp_reads) / sf,
+                  double(p.scsp_writes) / sf, double(p.render_calls) / sf, double(p.render_runs) / sf,
+                  p.render_runs ? double(p.samples) / double(p.render_runs) : 0.0);
+        }
+
         w.add("work per emulated frame: i960 %.0f instr, TGP %.0f instr (both inside the i960+TGP lines), polygons %.0f\n",
               double(counters.i960_instructions) / frames, double(counters.tgp_instructions) / frames,
               counters.geo_jobs ? double(counters.geo_polys) / double(counters.geo_jobs) : 0.0);
@@ -271,6 +327,26 @@ public:
                   ms(totals_[size_t(s)]) / loops);
         }
         w.add("\n");
+
+        // The slowest loops of the window, each with what it spent (sections of 0.3 ms
+        // or more, largest first): where a visible hitch comes from.
+        if (slow_count_) {
+            w.add("SLOW loops (the %d longest of the window; t = seconds into it):\n", slow_count_);
+            for (int k = 0; k < slow_count_; ++k) {
+                const Slow &f = slow_[size_t(k)];
+                w.add("  t=%5.2f s %6.2f ms |", ms(f.at) / 1000.0, ms(f.total));
+                std::array<int, kSections> by{};
+                for (int i = 0; i < kSections; ++i) by[size_t(i)] = i;
+                std::sort(by.begin(), by.end(), [&](int a, int b) { return f.s[size_t(a)] > f.s[size_t(b)]; });
+                for (int i : by) {
+                    if (ms(f.s[size_t(i)]) < 0.3) break;
+                    w.add(" %s %.2f,", csv_name(Section(i)), ms(f.s[size_t(i)]));
+                }
+                w.add(" | %u board frames, i960 %u, TGP %u instr | textures %u built (%u texels), %u changed, %u deferred\n",
+                      f.note.board_frames, f.note.i960_instructions, f.note.tgp_instructions, f.note.tex_builds,
+                      f.note.tex_texels, f.note.tex_changed, f.note.tex_defers);
+            }
+        }
 
         // One machine-readable line: averages in ms per shown frame.
         w.add("csv,%u,%.3f,%s,%.2f,%.2f", h.index, window_s, h.geo_mode,
@@ -324,7 +400,27 @@ private:
         w.add("%-40s %7.1f %9.2f %9.2f %6llu\n", label, pct(total), ms(total) / loops, ms(maxima_[s]), ull(hits_[s]));
     }
 
+    struct Slow {
+        uint64_t at = 0, total = 0; // start in the window, duration
+        std::array<uint64_t, kSections> s{};
+        LoopNote note;
+    };
+    // Kept sorted, slowest first.
+    void keep_if_slow(uint64_t loop) {
+        if (slow_count_ == kSlowKept && loop <= slow_[kSlowKept - 1].total) return;
+        int k = slow_count_ < kSlowKept ? slow_count_++ : kSlowKept - 1;
+        while (k > 0 && slow_[size_t(k - 1)].total < loop) { slow_[size_t(k)] = slow_[size_t(k - 1)]; --k; }
+        Slow &f = slow_[size_t(k)];
+        f.at = loop_start_ >= window_start_ ? loop_start_ - window_start_ : 0;
+        f.total = loop;
+        f.s = current_;
+        f.note = note_;
+    }
+
     std::array<uint64_t, kSections> totals_{}, maxima_{}, hits_{}, current_{};
+    std::array<Slow, kSlowKept> slow_{};
+    int slow_count_ = 0;
+    LoopNote note_{};
     uint64_t loops_ = 0, loop_max_ = 0, loop_start_ = 0, window_start_ = 0, window_end_ = 0;
     bool started_ = false;
 };
