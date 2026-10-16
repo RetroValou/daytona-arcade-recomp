@@ -1,8 +1,7 @@
 #pragma once
 
-// vitaGL backend for the Vita GPU path (build option DAYTONA_VITA_GPU_GL).
-// Alternative to gpu_fast.cpp (libvita2d); both initialise sceGxm, so only one can be linked.
-// GpuGlRenderer mirrors GpuFastRenderer's public interface so main_gpu.cpp needs few #ifdefs.
+// The Vita's renderer: vitaGL (the only one; the libvita2d/GXM renderer and the CPU
+// frontend were removed on 2026-10-16).
 
 #include "runtime/video.h"
 #include "flat_index.h"
@@ -20,14 +19,14 @@
 #include <psp2/kernel/processmgr.h>
 #include <vitaGL.h>
 
-// Same packing as libvita2d's RGBA8: bytes in memory are r, g, b, a.
+// RGBA8 packing (libvita2d's macro): bytes in memory are r, g, b, a.
 #ifndef RGBA8
 #define RGBA8(r, g, b, a) ((((a) & 0xFF) << 24) | (((b) & 0xFF) << 16) | (((g) & 0xFF) << 8) | (((r) & 0xFF) << 0))
 #endif
 
 namespace vita {
 
-// ---- Frame level API (replaces the vita2d_* calls in main_gpu.cpp) ----------
+// ---- Frame level API (main_gpu.cpp) ----------------------------------------
 bool gl_init();              // init vitaGL + shaders; false on failure (see gl_error())
 const char *gl_error();      // last init error, empty when none
 void gl_begin_frame();       // clear the screen and the recorded draw list
@@ -76,7 +75,7 @@ public:
     void shutdown();
     void draw(rt::Video &video);       // System 24 layers + Model 2 polygons (the only Vita GPU case)
 
-    // ---- Diagnostics read by main_gpu.cpp (same names as GpuFastRenderer) ----
+    // ---- Diagnostics read by main_gpu.cpp ----
     double last_gpu_ms() const { return last_gpu_ms_; }
     uint64_t last_sort_us() const { return last_sort_us_; } // priority sort feeding the depth ranks
     uint64_t last_texture_us() const { return last_texture_us_; } // index texture builds (inside polygons)

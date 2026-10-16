@@ -98,6 +98,6 @@ second lists every address the 68000 executed. Check the result with
 - Lockstep against MAME: record a stream header once, then
   `SET=<set> scripts/m2_check.sh <scenario>` with an input
   script from `scripts/inputs/`.
-- Vita: `python3 scripts/build_vita.py --game <game> --gpu-gl` gives
+- Vita: `python3 scripts/build_vita.py --game <game>` gives
   `build_<game>/vita/<game>.vpk`. For testing on the console, never pass
   `--release` (LTO is much slower to build).

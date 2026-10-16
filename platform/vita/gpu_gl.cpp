@@ -34,7 +34,7 @@
 //
 // GPU memory written in place: gl_begin_frame() waits for the GPU (cheap: the previous
 // frame finished long ago while the CPU emulated). After that, the frame's vertices and the
-// changed texture pixels are written STRAIGHT into GPU-visible memory, like gpu_fast. glTexSubImage2D is avoided on purpose: on a texture
+// changed texture pixels are written STRAIGHT into GPU-visible memory. glTexSubImage2D is avoided on purpose: on a texture
 // used in the last frames, vitaGL first allocates a new copy and copies the old pixels
 // back from GPU memory, which the CPU reads very slowly (~30 ms/frame for the System 24
 // layers in the race).
@@ -1500,8 +1500,8 @@ void GpuGlRenderer::s24_prepare(S24Slot &slot, const rt::Video &video) {
     }
     slot.backdrop = argb_to_rgba(video.system24_pen(0));
 
-    // Layer rectangles, the same for the background and foreground passes. Same
-    // layer/window/split logic as GpuFastRenderer::draw_system24.
+    // Layer rectangles, the same for the background and foreground passes (the
+    // layer/window/split logic of the removed GpuFastRenderer::draw_system24).
     using Rect = S24Rect;
     auto &rects = slot.rects;
     auto &runs = slot.runs;

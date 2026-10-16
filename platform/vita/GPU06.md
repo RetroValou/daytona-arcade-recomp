@@ -1,3 +1,6 @@
+> **Historical.** The vita2d/GXM renderer (`--gpu-fast`) these notes describe was
+> removed on 2026-10-16; vitaGL is the Vita's only renderer.
+
 # GPU06 Vita GPU lifetime fix
 
 GPU06 fixes a second GPU FAST crash found after the GPU05 stride correction. The device log reached 331 cached materials and the exact 24 MiB cache limit before the kernel reported a render GPU crash. GPU05 evicted an LRU material by calling `vita2d_free_texture()` immediately while GXM commands could still reference that texture asynchronously. GPU06 retires evicted textures during a scene and physically frees them only after `vita2d_wait_rendering_done()` confirms submitted GPU work is finished.

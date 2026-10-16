@@ -10,7 +10,7 @@ bus 222 MHz.
 ## Sources
 
 Three `perf.log` files from the same PS Vita, Daytona USA (daytona93),
-`build_vita.py --gpu-gl --fast-inaccuracy --diagnostics`, cores pinned (main
+`build_vita.py --fast-inaccuracy --diagnostics`, cores pinned (main
 0, geometry 1, sound 2), 5 s windows. "Race windows" are the windows with
 more than 800 polygons a frame; the averages below are over those.
 
@@ -179,7 +179,7 @@ read 0.0 ns).
 ## Reproducing
 
 ```sh
-python3 scripts/build_vita.py --set daytona93 --gpu-gl --fast-inaccuracy --tgp-profile --i960-profile
+python3 scripts/build_vita.py --set daytona93 --fast-inaccuracy --tgp-profile --i960-profile
 ```
 
 The package is `build/vita-diag/daytona_vita.vpk` (title ID DAYT90093,

@@ -20,7 +20,7 @@ own folder, `build_<game>/`:
 export VITASDK=/usr/local/vitasdk
 python3 scripts/setup_vitagl.py                     # once: builds vitaGL in extern/vitagl
 python3 scripts/recompile.py --game GAME            # the recompilation and the PC build
-python3 scripts/build_vita.py --game GAME --gpu-gl --fast-inaccuracy --release
+python3 scripts/build_vita.py --game GAME --fast-inaccuracy --release
 ```
 
 | Game | `GAME` | Package | Title ID | ROM on the Vita |

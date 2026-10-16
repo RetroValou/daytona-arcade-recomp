@@ -1,3 +1,6 @@
+> **Historical.** The vita2d/GXM renderer (`--gpu-fast`) these notes describe was
+> removed on 2026-10-16; vitaGL is the Vita's only renderer.
+
 # GPU04 experimental Vita 3D path
 
 GPU04 moves the expensive Model 2 polygon raster stage out of the ARM CPU

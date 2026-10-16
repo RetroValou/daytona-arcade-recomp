@@ -83,7 +83,7 @@ From a console perf.log with fine-grained probes (not kept in the sources):
 
 ## vitaGL: 2D one frame late, prepared on core 2
 
-(The vita2d build keeps one set and the current frame's 2D: with colour tiles,
+(The removed vita2d build kept one set and the current frame's 2D: with colour tiles,
 two sets meant every tile and palette change uploaded twice, slower on the
 console.)
 
@@ -121,7 +121,7 @@ From the optimisation-candidate measurements (attract and menus: worst frames
   up to 9 times in 5 s). Tiles are rewritten only when their pixels or
   categories change, as before. Cost: one dependent texture read per Layer
   pixel (~1.5 Mpixel/frame), on a GPU that measured 10-14 ms per frame.
-  The vita2d path keeps the colour form.
+  The removed vita2d path kept the colour form.
 * **Model 2 texture builds by texels.** At most 128 Ki texels decoded per
   frame (`kSourceTexelBudget`; the first build of a frame always runs) as well
   as at most 32 textures: 29 builds in one frame took 88 ms. The decoder reads

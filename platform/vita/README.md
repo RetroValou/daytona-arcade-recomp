@@ -14,7 +14,7 @@ scrollbar. Start+Select still opens the menu during play. The existing clocks,
 ROM selector, link configuration, steering curves and display/audio options
 retain their saved vita.cfg values. Both ROM executables use the new UI.
 
-ImGui draws through the existing vita2d/GXM context only while the menu is
+ImGui draws through vitaGL (the frame's draw list) only while the menu is
 visible. No SDL3 renderer, extra display-buffer mode or game-renderer switch
 was introduced. Wide GPU tiles remain disabled following the earlier hardware
 slowdown. Host contract tests do not establish appearance or speed on a Vita.
@@ -31,9 +31,11 @@ onto the Vita GPU. Tested on a real Vita (2026-10-06): it plays with no
 issues reported. Performance, memory headroom and full-race parity figures
 are not recorded yet.
 
-## Multicore GPU builds (`--gpu-fast` and `--gpu-gl`)
+## Multicore flow
 
-Both GPU builds share `main_gpu.cpp` and one multicore flow. The Vita has three
+The renderer is vitaGL (`main_gpu.cpp` + `gpu_gl.cpp`), the only one: the vita2d/GXM
+renderer (`--gpu-fast`) and the CPU frontend (`main.cpp`) were removed on 2026-10-16,
+and `--gpu-gl` with them (no flag needed). One multicore flow. The Vita has three
 application cores (0-2) and a fourth, system core (3) that a core-unlock plugin can open.
 
 | core (default) | thread | work |
@@ -56,15 +58,14 @@ How one emulated frame N overlaps (each worker is joined before its data is touc
   frame N's sound packet: one packet in flight at most;
 * core 0 then records the picture: the polygons of frame N-1 with, in vitaGL, the 2D
   of frame N-1 (the 2D worker prepares frame N's into the other texture set in
-  parallel and is joined at the end of `draw()`); in vita2d, the 2D of frame N.
+  parallel and is joined at the end of `draw()`).
 
 Load, verified with `--diagnostics` (`perf.log`, one report per 5 s of gameplay, per core:
 busy %, ms per frame, worst frame; `core_profile.h`, details in
 [GEO_ASYNC.md](GEO_ASYNC.md)). Core 0 is the limit: about 16 ms of the 17.4 ms frame
 in a race with vitaGL (estimates in [PERFORMANCE.md](PERFORMANCE.md)). Core 2 comes next
 with vitaGL (sound board + 2D worker, about 15 ms); the geometry parse leaves core 1 the
-most room. `--free-core` lets the scheduler, and the fourth core, use that room. The CPU
-build (`main.cpp`, no `--gpu-*`) keeps everything on one game thread.
+most room. `--free-core` lets the scheduler, and the fourth core, use that room.
 
 * **3D one frame late.** The geometrizer parses frame N while the game runs frame N+1,
   so the polygons shown are the previous frame's. This is fixed, not an option; there is
@@ -73,10 +74,6 @@ build (`main.cpp`, no `--gpu-*`) keeps everything on one game thread.
   * vitaGL shows the previous frame's 2D layers with them (two sets of layer textures,
     `GpuGlRenderer::S24Slot`, prepared by the 2D worker): the exact picture, one frame
     late.
-  * vita2d shows the current frame's 2D (one set of layer textures): the 2D is one frame
-    ahead of the 3D. In phase would need two sets there too, and its tiles hold colours,
-    not pen numbers: every tile and palette change would be uploaded twice (a palette
-    change is a full 8 MB rewrite), measurably slower.
 * **Cores.** By default each thread above is pinned to its core. `build_vita.py
   --free-core` (CMake `DAYTONA_VITA_FREE_CORES`) leaves them all unpinned, as the
   earlier GXM build did: they then follow the **4TH CORE** option (`core_policy.h`), so
@@ -101,8 +98,8 @@ build (`main.cpp`, no `--gpu-*`) keeps everything on one game thread.
   `core_profile.h`) and, with vitaGL, `gl.log`.
 
 ```sh
-python3 scripts/build_vita.py --gpu-gl --release --fast-inaccuracy        # pinned cores
-python3 scripts/build_vita.py --gpu-fast --release --fast-inaccuracy --free-core
+python3 scripts/build_vita.py --release --fast-inaccuracy                 # pinned cores
+python3 scripts/build_vita.py --release --fast-inaccuracy --free-core
 ```
 
 The home-screen name is the game's (`vita_name` in `scripts/games.py`) for every
@@ -118,8 +115,7 @@ default; the build summary lists them. They are not committed.
 
 The GXM frontend options offer CPU 500 MHz and fourth-core scheduling.
 Both require compatible firmware/plugin support; no plugins are installed
-by the game. Defaults: CPU 444 MHz / GPU 166 MHz in the vitaGL build (`--gpu-gl`),
-CPU 333 MHz / GPU 111 MHz in the vita2d build (`--gpu-fast`), fourth core off (a saved choice wins; RESET DEFAULTS
+by the game. Defaults: CPU 444 MHz / GPU 166 MHz, fourth core off (a saved choice wins; RESET DEFAULTS
 in the options goes back to them).
 The CPU option shows actual frequency, and unsuccessful 500 MHz requests
 fall back to requesting 444 MHz. Check your overclock plugin's per-game
@@ -143,8 +139,7 @@ vdpm install sdl2
 
 Follow the SDK's installation documentation at https://vitasdk.org/ for a
 new SDK install. No proprietary SDK or runtime module is required by this
-frontend; it uses SDL2's normal Vita renderer, not PVR/PIB. The vitaGL build
-(`--gpu-gl`) also needs `python3 scripts/setup_vitagl.py` once: it builds a pinned
+frontend. The vitaGL renderer also needs `python3 scripts/setup_vitagl.py` once: it builds a pinned
 vitaGL inside the project (see "vitaGL: pinned build and flags" below).
 
 From the repository root, prepare the host build using your own complete
@@ -155,7 +150,7 @@ python3 scripts/setup.py
 # After changing the seeds/recompilers, regenerate with the HOST compiler:
 python3 scripts/recompile.py --game GAME
 # Build a separate ARM executable and installable package:
-python3 scripts/build_vita.py --game GAME --gpu-gl
+python3 scripts/build_vita.py --game GAME
 ```
 
 `GAME` is the game's name in `scripts/games.py` (`daytona`, the default, or
@@ -224,8 +219,8 @@ Recompile each set separately (`scripts/recompile.py --game daytona` for
 daytona93, `--set daytona` for Revision A; both in `build_daytona/`). Then:
 
 ```sh
-python3 scripts/build_vita.py --set daytona --gpu-fast --build-dir build_daytona/vita_revision_a
-python3 scripts/build_vita.py --game daytona --gpu-fast --revision-a-self build_daytona/vita_revision_a/eboot.bin
+python3 scripts/build_vita.py --set daytona --build-dir build_daytona/vita_revision_a
+python3 scripts/build_vita.py --game daytona --revision-a-self build_daytona/vita_revision_a/eboot.bin
 ```
 
 The second VPK contains both executables. Actual Vita-to-Vita/Vita-to-desktop
@@ -243,7 +238,7 @@ Daytona-only:
 
 ```sh
 python3 scripts/recompile.py --game segarally
-python3 scripts/build_vita.py --game segarally --gpu-gl --fast-inaccuracy --release   # build_segarally/vita/segarally.vpk
+python3 scripts/build_vita.py --game segarally --fast-inaccuracy --release   # build_segarally/vita/segarally.vpk
 ```
 
 The ROM goes to `ux0:data/srallyc/srallyc.zip` (MAME's merged
@@ -475,12 +470,11 @@ same reciprocal-depth interpolation used by main. The existing eight-way cap
 and pool limits remain; this is not per-pixel perspective-shader parity and
 can increase geometry work. Hardware appearance/performance needs testing.
 
-## vitaGL renderer (`--gpu-gl`, experimental)
+## vitaGL renderer
 
-`scripts/build_vita.py --gpu-gl` builds `main_gpu.cpp` + `gpu_gl.cpp` against vitaGL
-instead of libvita2d (`--gpu-fast`). The two flags are mutually exclusive because both
-initialise sceGxm. Without either flag the CPU-exact build is produced as before.
-Same launcher, options, dual-ROM switching and link play as the GXM build (the ImGui
+`scripts/build_vita.py` builds `main_gpu.cpp` + `gpu_gl.cpp` against vitaGL, the only
+renderer (the libvita2d one, `--gpu-fast`, and the CPU-exact `main.cpp` were removed on
+2026-10-16). Same launcher, options, dual-ROM switching and link play as the GXM build (the ImGui
 menu is drawn through vitaGL, `imgui_vita.h`); widescreen stays a GXM feature for now
 (see "Multicore GPU builds" above).
 
@@ -502,7 +496,7 @@ menu is drawn through vitaGL, `imgui_vita.h`); widescreen stays a GXM feature fo
 ### Performance on a Vita (vitaGL build)
 
 Measured on a PS Vita at CPU 444 MHz / GPU 166 MHz (bus 222 MHz), default pinned
-cores, `--gpu-gl --fast-inaccuracy`, with the per-core profiler (`perf.log`, written by
+cores, `--fast-inaccuracy` (vitaGL), with the per-core profiler (`perf.log`, written by
 `--diagnostics` builds): 41 windows of 5 s, about 3.5 minutes of racing.
 
 | | Result |
@@ -528,7 +522,7 @@ you! This renderer would not exist without them.
 ```sh
 export VITASDK=/usr/local/vitasdk
 python3 scripts/setup_vitagl.py              # once; again after a pin or flag change
-python3 scripts/build_vita.py --gpu-gl --release
+python3 scripts/build_vita.py --release
 ```
 
 `setup_vitagl.py` clones vitaGL and the libraries it is linked with at fixed commits
@@ -590,7 +584,7 @@ rm -f include/vitaGL.h include/vitashark.h include/math_neon.h include/shacccg_e
 git clone <this repository> /tmp/daytona-clean && cd /tmp/daytona-clean
 VITASDK=/tmp/vitasdk-nogl python3 scripts/setup_vitagl.py
 VITASDK=/tmp/vitasdk-nogl python3 scripts/setup.py --no-build
-VITASDK=/tmp/vitasdk-nogl python3 scripts/build_vita.py --gpu-gl --compile-check
+VITASDK=/tmp/vitasdk-nogl python3 scripts/build_vita.py --compile-check
 rm -rf /tmp/vitasdk-nogl /tmp/daytona-clean      # the real SDK is untouched
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch and build vitaGL for the Vita --gpu-gl build: pinned, inside the project.
+"""Fetch and build vitaGL for the Vita build (its only renderer): pinned, inside the project.
 
   python3 scripts/setup_vitagl.py [--profile release|debug] [--flags "NAME=1 ..."]
                                   [--vitasdk DIR] [--dest DIR] [--jobs N] [--force]
@@ -337,7 +337,7 @@ def main(argv=None):
     say("Done")
     print(f"vitaGL {PINS['vitaGL'][1]} ({args.profile}): {' '.join(make_args(flags)) or 'default flags'}\n"
           f"Installed in {prefix}\n"
-          "Next: python3 scripts/build_vita.py --gpu-gl  (uses it automatically)")
+          "Next: python3 scripts/build_vita.py  (uses it automatically)")
     return 0
 
 

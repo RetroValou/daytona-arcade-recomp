@@ -9,16 +9,9 @@
 #include "async_log.h"
 #include "core_policy.h"
 #include "core_profile.h"
-// Renderer selection (CMake: DAYTONA_VITA_GPU_FAST -> libvita2d, DAYTONA_VITA_GPU_GL -> vitaGL).
-// Both initialise sceGxm, so exactly one is linked into a given build.
-#ifndef DAYTONA_VITA_GPU_GL
-#define DAYTONA_VITA_GPU_GL 0
-#endif
-#if DAYTONA_VITA_GPU_GL
+// The renderer: vitaGL (gpu_gl.cpp), the only one since 2026-10-16 (the CPU
+// frontend main.cpp and the vita2d/GXM gpu_fast.cpp were removed).
 #include "gpu_gl.h"
-#else
-#include "gpu_fast.h"
-#endif
 #include "gpu_text.h"
 #include "imgui_vita.h"
 #include "runtime/game_loop.h"
@@ -37,9 +30,6 @@
 #include <psp2/kernel/cpu.h>
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/power.h>
-#if !DAYTONA_VITA_GPU_GL
-#include <vita2d.h>
-#endif
 
 #include <algorithm>
 #include <array>
@@ -56,15 +46,14 @@
 #ifndef DAYTONA_VITA_DIAGNOSTICS
 #define DAYTONA_VITA_DIAGNOSTICS 0
 #endif
-// The multicore flow, the same in every GPU build (vita2d or vitaGL):
+// The multicore flow:
 //   main thread      i960 + TGP, 2D video, sound hand-off, GPU recording   core 0
 //   geometry thread  the geometrizer, always pipelined: the 3D of frame N-1 is drawn
 //                    with frame N (platform/vita/src/runtime/geo.h)        core 1
 //   sound worker     the reference (emulated) sound board                  core 2
 //   vitaGL 2D worker System 24 uploads + layer rectangles (gpu_gl.cpp)     core 2
 // vitaGL draws the 2D layers of frame N-1 too (two texture sets, gpu_gl.cpp): the picture
-// is the exact one, one frame late. vita2d draws frame N's 2D (one texture set, no double
-// upload: the faster choice there), one frame ahead of the 3D. -1 = unpinned: scripts/build_vita.py --free-core leaves every thread
+// is the exact one, one frame late, in phase with the 3D. -1 = unpinned: scripts/build_vita.py --free-core leaves every thread
 // free, and the optional fourth core usable by all of them (core_policy.h). If the
 // geometry thread cannot be created, Geo stays on the main core and the fault is logged.
 #ifndef DAYTONA_VITA_MAIN_CORE
@@ -81,13 +70,12 @@
 extern "C" { __attribute__((used)) unsigned int _newlib_heap_size_user = 192 * 1024 * 1024; }
 
 namespace {
-// ---- Graphics backend glue: the only place that knows vita2d from vitaGL ----
-#if DAYTONA_VITA_GPU_GL
+// ---- Graphics backend glue (vitaGL) ----
 using Renderer = vita::GpuGlRenderer;
 constexpr const char *kGfxApi = "VITAGL";
 constexpr const char *kRendererName = "VITAGL";
-// Widescreen (aspect, HUD at the edges, stretched backdrop) is drawn by the GXM renderer
-// only for now: the vitaGL build keeps the original 4:3 picture.
+// Widescreen (aspect, HUD at the edges, stretched backdrop) was drawn by the removed GXM
+// renderer only: the vitaGL renderer keeps the original 4:3 picture.
 constexpr bool kWidescreen = false;
 bool gfx_init(const char *&error) {
     if (!vita::gl_init()) { error = vita::gl_error(); return false; }
@@ -97,22 +85,6 @@ void gfx_begin() { vita::gl_begin_frame(); }   // clears colour + depth
 void gfx_end() { vita::gl_end_frame(); }       // replays the draw list and swaps
 void gfx_idle() { glFinish(); }
 void gfx_fini() { vita::gl_fini(); }
-#else
-using Renderer = vita::GpuFastRenderer;
-constexpr const char *kGfxApi = "GXM";
-constexpr const char *kRendererName = "VITA2D";
-constexpr bool kWidescreen = true;
-bool gfx_init(const char *&error) {
-    if (vita2d_init_advanced(8 * 1024 * 1024) < 0) { error = "vita2d init failed"; return false; }
-    vita2d_set_vblank_wait(1);
-    vita2d_set_clear_color(RGBA8(0,0,0,255));
-    return true;
-}
-void gfx_begin() { vita2d_start_drawing(); vita2d_clear_screen(); }
-void gfx_end() { vita2d_end_drawing(); vita2d_swap_buffers(); }
-void gfx_idle() { vita2d_wait_rendering_done(); }
-void gfx_fini() { vita2d_fini(); }
-#endif
 
 constexpr bool kDiagnostics = DAYTONA_VITA_DIAGNOSTICS != 0;
 // Every log file (vita-diag.log periodic lines, perf.log, gl.log) and the profiling
@@ -211,23 +183,15 @@ uint64_t diagnostic_ticks_us() {
     return kProfile ? ticks_us() : 0;
 }
 
-// Clocks of a first launch (no saved settings) and of "defaults": the vitaGL build starts
-// at CPU 444 / GPU 166 MHz, the vita2d build at the stock 333 / 111. The options menu
+// Clocks of a first launch (no saved settings) and of "defaults": CPU 444 / GPU 166 MHz.
+// The options menu
 // changes them, and the saved choice wins on the next launches. Override at build time
 // with -DDAYTONA_VITA_DEFAULT_CPU_MHZ=... / -DDAYTONA_VITA_DEFAULT_GPU_MHZ=...
 #ifndef DAYTONA_VITA_DEFAULT_CPU_MHZ
-#if DAYTONA_VITA_GPU_GL
 #define DAYTONA_VITA_DEFAULT_CPU_MHZ 444
-#else
-#define DAYTONA_VITA_DEFAULT_CPU_MHZ 333
-#endif
 #endif
 #ifndef DAYTONA_VITA_DEFAULT_GPU_MHZ
-#if DAYTONA_VITA_GPU_GL
 #define DAYTONA_VITA_DEFAULT_GPU_MHZ 166
-#else
-#define DAYTONA_VITA_DEFAULT_GPU_MHZ 111
-#endif
 #endif
 constexpr int kDefaultCpuClock = DAYTONA_VITA_DEFAULT_CPU_MHZ;
 constexpr int kDefaultGpuClock = DAYTONA_VITA_DEFAULT_GPU_MHZ;
@@ -630,13 +594,11 @@ int main(int, char **) {
         log.fault("GPU25: framebuffer texture allocation failed\n");
         gpu.shutdown(); ui.shutdown(); gfx_fini(); SDL_Quit(); restore_clocks(); return 1;
     }
-#if DAYTONA_VITA_GPU_GL
     if (gpu.worker_2d_threaded())
         log.log("GPU25 2D worker: thread on core %d\n", gpu.worker_2d_core());
     else
         log.fault("GPU25 2D worker: thread unavailable (result=%d), 2D prepared on the main core\n",
                   gpu.worker_2d_result());
-#endif
     log.log("GPU25 stage: GPU texture arenas ready: reserved_mb=%.2f; audio begin\n", double(gpu.reserved_bytes()) / (1024.0 * 1024.0));
     vita::Audio audio;
     vita::NativeAudio<snd::NativeSoundEngine> native_audio;
@@ -724,9 +686,7 @@ int main(int, char **) {
     bool sound_in_flight = false;
     bool native_effect_warned = false;
     double display_fps = 0.0;
-#if DAYTONA_VITA_GPU_GL
     vita::GlLoopProfile loop_profile; // this iteration, sent to gl.log at its end
-#endif
 
     // Join only after the following frame's board work, or before an operation
     // that mutates audio/lifetime state. The worker never touches GameLoop's
@@ -760,10 +720,8 @@ int main(int, char **) {
             core_profile.add(vita::CoreProfiler::SoundQueue, sound_worker.last_audio_ticks());
             ++core_profile.counters.sound_frames;
         }
-#if DAYTONA_VITA_GPU_GL
         loop_profile.sound_wait += diagnostic_ticks_us() - begin;
         loop_profile.sound_worker += sound_worker.last_sound_ticks();
-#endif
         return true;
     };
 
@@ -981,9 +939,7 @@ int main(int, char **) {
     };
 
     while (running) {
-#if DAYTONA_VITA_GPU_GL
         loop_profile = {};
-#endif
         const uint64_t now = ticks_us();
         const double elapsed = double(now - last) / 1000000.0;
         last = now;
@@ -1283,13 +1239,11 @@ int main(int, char **) {
                     }
                     perf_core_us += fp.core(); perf_geo_us += fp.geometry;
                     perf_video_us += fp.video;
-#if DAYTONA_VITA_GPU_GL
                     ++loop_profile.board_frames;
                     loop_profile.board += diagnostic_ticks_us() - begin;
                     loop_profile.board_core += fp.core();
                     loop_profile.board_geometry += fp.geometry;
                     loop_profile.board_video += fp.video;
-#endif
                     ++perf_frames;
                     const uint64_t sound_begin = diagnostic_ticks_us();
                     if (active_native_audio) {
@@ -1378,7 +1332,6 @@ int main(int, char **) {
                     core_profile.add(P::Layers, layers);
                     core_profile.add(P::Sort, sort);
                     core_profile.add(P::Polygons, draw_total > parts ? draw_total - parts : 0);
-#if DAYTONA_VITA_GPU_GL
                     core_profile.add(P::TexBuild, gpu.last_texture_us());
                     {
                         const auto tp = gpu.take_texture_probe();
@@ -1407,16 +1360,11 @@ int main(int, char **) {
                     }
                     core_profile.add(P::VertexWrite, gpu.last_vertex_us());
                     core_profile.add(P::Worker2D, gpu.last_2d_worker_us()); // core 2, in parallel
-#endif
                 } else {
                     core_profile.add(P::Upload, draw_total); // the menu
                 }
                 // The gl.log write is diagnostics, not frame end (gpu_gl.cpp).
-#if DAYTONA_VITA_GPU_GL
                 const uint64_t gl_diagnostic = std::min<uint64_t>(vita::gl_last_diagnostic_us(), gfx_ended - drawn);
-#else
-                const uint64_t gl_diagnostic = 0;
-#endif
                 core_profile.add(P::GfxEnd, gfx_ended - drawn - gl_diagnostic);
                 core_profile.add(P::Log, gl_diagnostic);
             }
@@ -1432,11 +1380,9 @@ int main(int, char **) {
         // Geometry core work joined during this loop (folded in at each join).
         const rt::Geo::Stats geo_delta = take_geo_delta();
         (void)geo_delta; // unused without perf.log
-#if DAYTONA_VITA_GPU_GL
         loop_profile.menu = menu;
         loop_profile.prepare = gpu_ready - gpu_begin;
         if constexpr (kDiagnostics) vita::gl_profile_loop(loop_profile);
-#endif
         const uint64_t after = ticks_us();
         if (simulated) perf_frame_peak_us = std::max(perf_frame_peak_us, after - now);
         if (after - perf_start >= 2000000) {

@@ -222,9 +222,10 @@ These options are not a promise of full-speed hardware performance.
 Third Frame labels select frame skipping, not physical buffer counts. That
 Vita integration was withdrawn after hardware game/audio stutter reports.
 The subsequent configurable physical ring has also been removed after a
-hardware report of 30 FPS. Vita now uses unmodified upstream libvita2d
-presentation and its standard three-surface display queue, with one vblank
-wait in the display callback. There is no buffer selector, ring switching,
+hardware report of 30 FPS. The Vita presents through vitaGL, its only
+renderer since 2026-10-16 (the libvita2d/GXM renderer and the CPU frontend
+were removed; libvita2d's unmodified presentation, a three-surface display
+queue with one vblank wait, was the last state of that path). There is no buffer selector, ring switching,
 single-surface path or software frame skipping. Old gpu_buffers settings are
 ignored. Native audio stays device-clocked and board timing stays native;
 this rollback is not evidence of 60 FPS on hardware.

@@ -1,4 +1,4 @@
-# Geometry core and per-core profiling (GPU builds: `--gpu-fast` and `--gpu-gl`)
+# Geometry core and per-core profiling
 
 ## What changed
 
@@ -100,7 +100,7 @@ are ignored.
 ## perf.log (per-core time accounting)
 
 All log files exist only in diagnostic builds: `python3 scripts/build_vita.py
---gpu-gl --diagnostics` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag
+--diagnostics` (CMake `DAYTONA_VITA_DIAGNOSTICS=ON`). That flag
 enables `perf.log`, `gl.log`, the periodic lines of `vita-diag.log` and the
 profiling clocks; a normal or `--release` build writes nothing except faults to
 `vita-diag.log`.

@@ -473,12 +473,7 @@ endif()
 # device frame rates. Off by default: not part of the desktop build.
 option(M2_VITA_TESTS "Build the PS Vita frontend's host tests" OFF)
 if(M2_VITA_TESTS)
-    add_executable(test_vita_imgui tests/test_vita_imgui.cpp
-        extern/imgui/imgui.cpp extern/imgui/imgui_draw.cpp
-        extern/imgui/imgui_tables.cpp extern/imgui/imgui_widgets.cpp)
-    target_include_directories(test_vita_imgui PRIVATE . tests/vita_gpu_shim extern/imgui)
-    add_test(NAME vita_imgui COMMAND test_vita_imgui)
-    # The same menu through the vitaGL backend (GPU_GL builds), gpu_gl.h mocked.
+    # The menu through the vitaGL backend, gpu_gl.h mocked.
     add_executable(test_vita_imgui_gl tests/test_vita_imgui_gl.cpp
         extern/imgui/imgui.cpp extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_tables.cpp extern/imgui/imgui_widgets.cpp)
@@ -493,25 +488,11 @@ if(M2_VITA_TESTS)
     add_executable(test_vita_core_policy tests/test_vita_core_policy.cpp)
     add_test(NAME vita_core_policy COMMAND test_vita_core_policy)
     add_test(NAME vita_controls COMMAND test_vita_controls)
-    add_executable(test_vita_gpu_memory tests/test_vita_gpu_memory.cpp)
-    target_include_directories(test_vita_gpu_memory PRIVATE tests/vita_gpu_shim platform/vita)
-    add_test(NAME vita_gpu_memory COMMAND test_vita_gpu_memory)
-
-    add_executable(test_vita_gpu_lifetime tests/test_vita_gpu_lifetime.cpp
-        src/runtime/video.cpp src/runtime/raster.cpp)
-    target_include_directories(test_vita_gpu_lifetime PRIVATE tests/vita_gpu_shim src)
-    target_compile_definitions(test_vita_gpu_lifetime PRIVATE M2_VITA_RENDER_OPT=1)
-    add_test(NAME vita_gpu_lifetime COMMAND test_vita_gpu_lifetime)
-
     # The tile cache's write tracking against comparing everything (video.cpp, Vita path).
     add_executable(test_vita_tile_cache tests/test_vita_tile_cache.cpp src/runtime/video.cpp src/runtime/raster.cpp)
     target_include_directories(test_vita_tile_cache PRIVATE src)
     target_compile_definitions(test_vita_tile_cache PRIVATE M2_VITA_RENDER_OPT=1)
     add_test(NAME vita_tile_cache COMMAND test_vita_tile_cache)
-
-    add_executable(test_vita_tessellation tests/test_vita_tessellation.cpp)
-    target_include_directories(test_vita_tessellation PRIVATE tests/vita_gpu_shim platform/vita)
-    add_test(NAME vita_tessellation COMMAND test_vita_tessellation)
 
     add_executable(test_vita_polygon_order tests/test_vita_polygon_order.cpp)
     target_include_directories(test_vita_polygon_order PRIVATE platform/vita src)

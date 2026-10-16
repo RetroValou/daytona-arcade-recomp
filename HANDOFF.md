@@ -1,5 +1,31 @@
 # Handoff
 
+## Vita: vitaGL only; the CPU frontend and the vita2d renderer removed (2026-10-16)
+
+The Vita builds one renderer, vitaGL (main_gpu.cpp + gpu_gl.cpp). Removed:
+the CPU-exact frontend (main.cpp, text.h, performance.h), the vita2d/GXM
+renderer (gpu_fast.cpp/.h, gpu_memory.h, perspective_vertices.h,
+pinned_vita2d.cmake), main_gpu.cpp's, imgui_vita.h's and gpu_text.h's
+DAYTONA_VITA_GPU_GL conditions (the vitaGL side kept as it was), the CMake
+options DAYTONA_VITA_GPU_FAST/GPU_GL, and build_vita.py's --gpu-gl and
+--gpu-fast (an error now: no flag needed). Host tests of the removed code
+gone: vita_imgui (vita2d menu), vita_gpu_memory, vita_gpu_lifetime (+ its
+vita_gpu_*.inc), vita_tessellation, and the unbuilt test_vita_text /
+test_vita_performance; tests/vita_gpu_shim/vita2d.h. system24_upload.h's
+colour form (the vita2d upload) stays: scripts/test_vita_renderer.py uses
+it as the index form's reference. Docs: command lines without --gpu-gl
+(HOW_TO_COMPILE_RELEASE.md, platform/vita/README.md, docs), GPU04-06.md
+marked historical, libvita2d's licence record marked removed (root and Vita
+THIRD_PARTY.md), the design doc's Vita buffering paragraph updated. Widescreen
+was drawn by the vita2d renderer only: the Vita has none now (it had none in
+the vitaGL builds already).
+Checks: tests/test_build_vita.py (26: the flags rejected, nothing GPU_* passed
+to CMake); Vita host tests 14/14 (-DM2_VITA_TESTS=ON); VF2 diagnostics VPK
+built with no renderer flag (build summary: vitaGL). Not run on the console.
+The three release VPKs built just before (same vitaGL code, with --gpu-gl):
+build_daytona/vita/daytona.vpk, build_segarally/vita/segarally.vpk,
+build_virtuafighter2/vita/virtuafighter2.vpk.
+
 ## Dreamcast and mobile ports marked unmaintained (2026-10-16)
 
 platform/dreamcast -> platform/dreamcast_unmaintained, platform/mobile ->

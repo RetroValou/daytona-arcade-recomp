@@ -95,32 +95,27 @@ class BuildVitaTests(unittest.TestCase):
             path.touch()
         with patch.object(BUILD.subprocess, "run") as run:
             with self.assertRaises(SystemExit):
-                self.call("--gpu-fast")
+                self.call()
             run.assert_not_called()
         self.assertIn("lacks the hooks draw_list", self.output.getvalue())
 
     def test_cores_pinned_by_default(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-fast")
+            self.call("--compile-check")
         self.assertIn("-DDAYTONA_VITA_FREE_CORES=OFF", run.call_args_list[0].args[0])
 
     def test_free_core(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--free-core")
+            self.call("--compile-check", "--free-core")
         configure = run.call_args_list[0].args[0]
         self.assertIn("-DDAYTONA_VITA_FREE_CORES=ON", configure)
-        self.assertIn("-DDAYTONA_VITA_GPU_GL=ON", configure)
-        self.assertIn("-DDAYTONA_VITA_GPU_FAST=OFF", configure)
+        self.assertFalse(any("GPU_GL" in str(a) or "GPU_FAST" in str(a) for a in configure))
 
-    def test_free_core_requires_gpu_build(self):
-        with patch.object(BUILD.subprocess, "run") as run:
+    def test_renderer_flags_are_gone(self):
+        # vitaGL is the only renderer: --gpu-gl and --gpu-fast no longer exist.
+        for flag in ("--gpu-gl", "--gpu-fast"):
             with self.assertRaises(SystemExit):
-                self.call("--compile-check", "--free-core")
-            run.assert_not_called()
-
-    def test_renderers_are_exclusive(self):
-        with self.assertRaises(SystemExit):
-            self.call("--compile-check", "--gpu-fast", "--gpu-gl")
+                self.call("--compile-check", flag)
 
     def test_custom_cross_directory(self):
         with patch.object(BUILD.subprocess, "run") as run:
@@ -139,19 +134,19 @@ class BuildVitaTests(unittest.TestCase):
         self.assertEqual(BUILD.livearea_summary("segarally"), "icon0.png, bg.png")
         self.assertEqual(BUILD.livearea_summary("daytona"), "none (Vita defaults)")
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--game", "segarally")
+            self.call("--compile-check", "--game", "segarally")
         self.assertIn(f"-DDAYTONA_VITA_LIVEAREA_DIR={folder}", run.call_args_list[0].args[0])
 
     def test_title_id_follows_the_game(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl")
+            self.call("--compile-check")
         configure = run.call_args_list[0].args[0]
         self.assertIn("-DDAYTONA_VITA_TITLEID=DAYT00093", configure)  # always passed: never a stale cache
         self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_daytona/recomp/daytona93/gen", configure)
         self.assertIn(f"{self.root}/build_daytona/vita", map(str, configure))
         self.assertIn("-DDAYTONA_VITA_VPK=daytona.vpk", configure)
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--game", "segarally")
+            self.call("--compile-check", "--game", "segarally")
         configure = run.call_args_list[0].args[0]
         self.assertIn("-DDAYTONA_VITA_ROMSET=srallyc", configure)
         self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_segarally/recomp/srallyc/gen", configure)
@@ -160,12 +155,12 @@ class BuildVitaTests(unittest.TestCase):
         self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00094", configure)
         self.assertIn("-DDAYTONA_VITA_GAME_NAME=Sega Rally Championship", configure)
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--set", "srallyc")  # the set alone gives its game
+            self.call("--compile-check", "--set", "srallyc")  # the set alone gives its game
         self.assertIn("-DDAYTONA_VITA_VPK=segarally.vpk", run.call_args_list[0].args[0])
 
     def test_diagnostics_package_has_its_own_folder_and_name(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--diagnostics")
+            self.call("--compile-check", "--game", "segarally", "--diagnostics")
         configure = run.call_args_list[0].args[0]
         self.assertIn(f"{self.root}/build_segarally/vita_diag", map(str, configure))
         self.assertIn("-DDAYTONA_VITA_VPK=segarally_diag.vpk", configure)
@@ -173,7 +168,7 @@ class BuildVitaTests(unittest.TestCase):
 
     def test_revision_a_uses_the_games_folder(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--set", "daytona")
+            self.call("--compile-check", "--set", "daytona")
         configure = run.call_args_list[0].args[0]
         self.assertIn(f"-DDAYTONA_GEN_ROOT={self.root}/build_daytona/recomp/daytona/gen", configure)
         self.assertIn("-DDAYTONA_VITA_VPK=daytona.vpk", configure)
@@ -181,13 +176,13 @@ class BuildVitaTests(unittest.TestCase):
     def test_set_must_be_the_games(self):
         with patch.object(BUILD.subprocess, "run") as run:
             with self.assertRaises(SystemExit):
-                self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--set", "daytona93")
+                self.call("--compile-check", "--game", "segarally", "--set", "daytona93")
             run.assert_not_called()
         self.assertIn("not a set of segarally", self.output.getvalue())
 
     def test_title_id_override_is_checked(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--game", "segarally", "--title-id", "SRAL00001")
+            self.call("--compile-check", "--game", "segarally", "--title-id", "SRAL00001")
         self.assertIn("-DDAYTONA_VITA_TITLEID=SRAL00001", run.call_args_list[0].args[0])
         with self.assertRaises(SystemExit):
             self.call("--compile-check", "--title-id", "sral1")
@@ -195,20 +190,20 @@ class BuildVitaTests(unittest.TestCase):
     def test_srallyc_has_no_fast_gen(self):
         with patch.object(BUILD.subprocess, "run") as run:
             with self.assertRaises(SystemExit):
-                self.call("--gpu-gl", "--set", "srallyc", "--fast-gen")
+                self.call("--set", "srallyc", "--fast-gen")
             run.assert_not_called()
 
     def test_srallyc_fast_inaccuracy_is_accepted(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--set", "srallyc", "--fast-inaccuracy")
+            self.call("--compile-check", "--set", "srallyc", "--fast-inaccuracy")
         run.assert_called()
 
     def test_inline_bus_is_opt_in(self):
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy")
+            self.call("--compile-check", "--fast-inaccuracy")
         self.assertIn("-DDAYTONA_VITA_INLINE_BUS=OFF", run.call_args_list[0].args[0])
         with patch.object(BUILD.subprocess, "run") as run:
-            self.call("--compile-check", "--gpu-gl", "--fast-inaccuracy", "--inline-bus")
+            self.call("--compile-check", "--fast-inaccuracy", "--inline-bus")
         self.assertIn("-DDAYTONA_VITA_INLINE_BUS=ON", run.call_args_list[0].args[0])
 
 

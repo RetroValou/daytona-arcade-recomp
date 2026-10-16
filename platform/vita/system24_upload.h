@@ -13,7 +13,8 @@
 namespace vita {
 
 // System 24 tile textures, two forms:
-//   * colour (upload_system24_layer, libvita2d path): each texel is the pen's
+//   * colour (upload_system24_layer; the removed libvita2d renderer's, kept as
+//     the reference of scripts/test_vita_renderer.py): each texel is the pen's
 //     RGBA colour. A palette change recolours every tile: all 4096 tiles of
 //     the 4 layers are rewritten (16384 tiles, 8 MB; ~67 ms on the Vita).
 //   * index (upload_system24_layer_indices, vitaGL path): each texel is the

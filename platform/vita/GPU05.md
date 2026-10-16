@@ -1,3 +1,6 @@
+> **Historical.** The vita2d/GXM renderer (`--gpu-fast`) these notes describe was
+> removed on 2026-10-16; vitaGL is the Vita's only renderer.
+
 # GPU05 Vita crash fix
 
 GPU05 fixes the GPU04 texture row-stride corruption. `vita2d_texture_get_stride()` returns bytes per row; GPU04 used that byte count as a `uint32_t` element count in both framebuffer-layer uploads and cached material uploads. For the 496x384 layer texture the correct stride is 1,984 bytes, while the bad pointer arithmetic advanced 7,936 bytes per row.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-compile a game's Vita package from its host recompilation.
 
-  build_vita.py [--game GAME] [--set SET] [--gpu-gl] [--fast-inaccuracy] [--diagnostics | --release] ...
+  build_vita.py [--game GAME] [--set SET] [--fast-inaccuracy] [--diagnostics | --release] ...
 
 First recompile the game on the host with your own ROM set (python3
 scripts/recompile.py --game GAME, once, in any mode; --recomp-only is
@@ -12,6 +12,9 @@ here from the host tools and ROM cache, whatever mode the host code was
 generated in (see vita_code). The package's images: platform/vita/logo_livearea/<game>/.
 This command never executes cross-built importers, copies ROMs, or packages
 ROM data. --compile-check builds objects without ROMs and does not make a VPK.
+The renderer is vitaGL (pinned by scripts/setup_vitagl.py, else the VitaSDK's;
+libshacccg.suprx on the Vita), the only one: --gpu-gl, --gpu-fast (vita2d) and the
+CPU frontend were removed on 2026-10-16.
 """
 import argparse
 import json
@@ -177,7 +180,7 @@ def livearea_summary(game):
 
 
 def vitagl_summary(prefix):
-    """Which vitaGL a --gpu-gl build links (platform/vita/CMakeLists.txt makes the same choice)."""
+    """Which vitaGL the build links (platform/vita/CMakeLists.txt makes the same choice)."""
     try:
         stamp = json.loads((prefix / "build.json").read_text())
     except (OSError, ValueError):
@@ -207,14 +210,10 @@ def main(argv=None):
                          "M2_INLINE_BUS; off by default: no measurable gain on the Vita), for comparison")
     ap.add_argument("--no-fast-paths", action="store_true",
                     help="build the shared runtime without its fast paths (src/runtime/fast_paths.h), for comparison")
-    gpu = ap.add_mutually_exclusive_group()
-    gpu.add_argument("--gpu-fast", action="store_true", help="build experimental vita2d/GXM 3D renderer (requires vdpm libvita2d)")
-    gpu.add_argument("--gpu-gl", action="store_true", help="build experimental vitaGL 3D renderer, Model 2 draw priority "
-                     "(vitaGL pinned by scripts/setup_vitagl.py, else the VitaSDK's; libshacccg.suprx on the Vita)")
     ap.add_argument("--vitagl-dir", type=Path, default=Path("extern/vitagl/install"),
-                    help="--gpu-gl: vitaGL built by scripts/setup_vitagl.py (default extern/vitagl/install)")
+                    help="vitaGL built by scripts/setup_vitagl.py (default extern/vitagl/install)")
     ap.add_argument("--free-core", action="store_true",
-                    help="GPU builds: leave the main, geometry, sound and 2D threads unpinned (default: one core each); "
+                    help="leave the main, geometry, sound and 2D threads unpinned (default: one core each); "
                          "the 4TH CORE option can then take any of them")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
@@ -244,11 +243,8 @@ def main(argv=None):
         args.build_dir = Path(games.vita_dir(args.game, args.diagnostics))
     if args.title_id and not re.fullmatch(r"[A-Z]{4}[0-9]{5}", args.title_id):
         ap.error("--title-id must be 4 capital letters and 5 digits")
-    gpu_build = args.gpu_fast or args.gpu_gl
-    if args.set != "daytona93" and not gpu_build:  # the old CPU frontend (main.cpp) only knows daytona93
-        ap.error(f"{args.set} requires --gpu-fast or --gpu-gl")
-    if args.revision_a_self and (args.set != games.main_set(args.game) or not game["companion"] or not gpu_build):
-        ap.error(f"--revision-a-self requires a game with a companion set, its main set and --gpu-fast or --gpu-gl")
+    if args.revision_a_self and (args.set != games.main_set(args.game) or not game["companion"]):
+        ap.error(f"--revision-a-self requires a game with a companion set and its main set")
     if args.code and args.code not in game["vita_fast"]:
         # Only the modes checked on the set (scripts/games.py vita_fast).
         flag = "--" + args.code.replace("_", "-")
@@ -260,12 +256,8 @@ def main(argv=None):
             ap.error(f"{flag} writes perf.log: it needs --diagnostics, not --release")
         if not args.code:
             ap.error(f"{flag} makes the game code here: add --fast-inaccuracy" + (" or --fast-gen" if flag == "--tgp-profile" else ""))
-        if not gpu_build:
-            ap.error(f"{flag} reports in perf.log: --gpu-fast or --gpu-gl")
     if args.i960_profile and args.code == "fast_gen":
         ap.error("--i960-profile needs --fast-inaccuracy (fast_gen.py does not know the block counters)")
-    if args.free_core and not gpu_build:
-        ap.error("--free-core applies to the GPU builds (--gpu-fast or --gpu-gl)")
     if args.jobs < 1:
         ap.error("--jobs must be positive")
     if args.vitasdk is None:
@@ -289,7 +281,7 @@ def main(argv=None):
                      " with the host compiler first.")
     # Every hook of the set's seeds/<set>_hooks.txt must be in its generated code.
     hooks = ROOT / f"seeds/{args.set}_hooks.txt"
-    if gpu_build and not args.compile_check and hooks.is_file():
+    if not args.compile_check and hooks.is_file():
         names = {line.split()[1] for line in hooks.read_text().splitlines()
                  if line.strip() and not line.lstrip().startswith("#") and len(line.split()) > 1}
         sources = [source.read_text() for source in (gen / args.set).glob("chunk_*.cpp")]
@@ -311,7 +303,7 @@ def main(argv=None):
         if args.i960_profile:
             code += ", i960 block counters (--i960-profile)"
     vitagl_dir = (ROOT / args.vitagl_dir).resolve()
-    vitagl = vitagl_summary(vitagl_dir) if args.gpu_gl else "-"
+    vitagl = vitagl_summary(vitagl_dir)
     env = os.environ.copy()
     env["VITASDK"] = str(sdk)
     env["PATH"] = str(sdk / "bin") + os.pathsep + env.get("PATH", "")
@@ -332,12 +324,10 @@ def main(argv=None):
          f"-DDAYTONA_VITA_TGP_PROFILE={'ON' if args.tgp_profile else 'OFF'}",
          f"-DDAYTONA_VITA_I960_PROFILE={'ON' if args.i960_profile else 'OFF'}",
          f"-DDAYTONA_VITA_LTO={'ON' if args.release else 'OFF'}",
-         f"-DDAYTONA_VITA_GPU_FAST={'ON' if args.gpu_fast else 'OFF'}",
-         f"-DDAYTONA_VITA_GPU_GL={'ON' if args.gpu_gl else 'OFF'}",
          f"-DDAYTONA_VITA_FREE_CORES={'ON' if args.free_core else 'OFF'}",
          f"-DDAYTONA_VITA_COMPILE_CHECK={'ON' if args.compile_check else 'OFF'}",
          "-DDAYTONA_VITA_TEXT_PAD=0",
-         *([f"-DDAYTONA_VITAGL_DIR={vitagl_dir}"] if args.gpu_gl else [])], env)
+         f"-DDAYTONA_VITAGL_DIR={vitagl_dir}"], env)
     try:
         run(["cmake", "--build", build, "--parallel", args.jobs], env)
     except subprocess.CalledProcessError:
@@ -353,13 +343,13 @@ def main(argv=None):
         run(["cmake", "-S", ROOT / "platform/vita", "-B", build, f"-DDAYTONA_VITA_TEXT_PAD={pad}"], env)
         run(["cmake", "--build", build, "--parallel", args.jobs], env)
     if args.compile_check:
-        print("Compile check complete. No linked game or VPK was built." + (f"\nvitaGL: {vitagl}" if args.gpu_gl else ""))
+        print(f"Compile check complete. No linked game or VPK was built.\nvitaGL: {vitagl}")
     else:
         package = build / package_name
         if not package.is_file():
             raise RuntimeError(f"build completed without the expected package: {package}")
-        mode = "GPU GL (vitaGL)" if args.gpu_gl else ("GPU FAST" if args.gpu_fast else "CPU EXACT")
-        cores = ("free (--free-core)" if args.free_core else "pinned: main 0, geometry 1, sound 2") if gpu_build else "-"
+        mode = "vitaGL"
+        cores = "free (--free-core)" if args.free_core else "pinned: main 0, geometry 1, sound 2"
         kind = "release (LTO, no logs)" if args.release else ("diagnostics (logs)" if args.diagnostics else "normal (no logs)")
         paths = "off (--no-fast-paths)" if args.no_fast_paths else "on (M2_FAST_BUS/TGP/CPU/GEO)"
         print(f"VPK: {package}\nRenderer build: {mode}\nvitaGL: {vitagl}\nCores: {cores}\nBuild: {kind}\nGame code: {code}\n"

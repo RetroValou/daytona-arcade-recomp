@@ -39,7 +39,10 @@ is added. The small menu glyphs and portable SoftFloat configuration are
 project-owned code. The specialization and floating-point policy are
 unchanged from the shared build.
 
-## libvita2d (GPU-fast frontend)
+## libvita2d (GPU-fast frontend; removed on 2026-10-16)
+
+The vita2d/GXM renderer was removed: nothing below is built or shipped any more.
+The record stays for the packages built before.
 
 Upstream: https://github.com/xerpi/libvita2d (MIT).
 Source pinned at a8f15ab09d5233f0a4e4ad0e8f6ade0da888cbed.
@@ -80,13 +83,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 # ImGui menu integration
 
-The GXM launcher links the same pinned Dear ImGui core recorded in the root
+The launcher links the same pinned Dear ImGui core recorded in the root
 THIRD_PARTY.md (MIT). Its unmodified core provides widgets/font atlas; the
-Vita input and vita2d draw adapter is project code. The VPK includes
-licenses/imgui.txt. No proprietary shader compiler or additional plugin is
-needed for the menu; it uses libvita2d's existing public homebrew shaders.
+Vita input and vitaGL draw adapter (imgui_vita.h) is project code. The VPK
+includes licenses/imgui.txt.
 
-# vitaGL build (`--gpu-gl`)
+# vitaGL (the renderer)
 
 The vitaGL build links libraries that `scripts/setup_vitagl.py` fetches at pinned
 commits and builds into `extern/vitagl/` (git-ignored, never committed; their licence

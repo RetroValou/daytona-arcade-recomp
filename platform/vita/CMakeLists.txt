@@ -22,11 +22,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Wextra -fno-fast-math -ffp-contract=off -ffunction-sections -fdata-sections)
 
 option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-derived code; produces no VPK" OFF)
-option(DAYTONA_VITA_GPU_FAST "Experimental vita2d/GXM 3D path" OFF)
-option(DAYTONA_VITA_GPU_GL "Experimental vitaGL (OpenGL ES style) 3D path; alternative to GPU_FAST" OFF)
-if(DAYTONA_VITA_GPU_FAST AND DAYTONA_VITA_GPU_GL)
-    message(FATAL_ERROR "DAYTONA_VITA_GPU_FAST (vita2d) and DAYTONA_VITA_GPU_GL (vitaGL) are mutually exclusive: both initialise sceGxm")
-endif()
+# The renderer is vitaGL (main_gpu.cpp + gpu_gl.cpp), the only one: the CPU frontend
+# (main.cpp) and the vita2d/GXM renderer (gpu_fast.cpp) were removed on 2026-10-16.
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
 # Link-time optimization (scripts/build_vita.py --release): the generated i960/TGP
 # code can inline the runtime's small memory and bus accessors (cpu.cpp,
@@ -45,9 +42,9 @@ if(DAYTONA_VITA_LTO)
         message(WARNING "Vita LTO: not supported by this toolchain, normal build.\n${DAYTONA_VITA_LTO_ERROR}")
     endif()
 endif()
-# GPU builds, one multicore flow for both renderers: the geometrizer always runs
-# pipelined on its own core (3D one frame late); vitaGL shows the 2D layers one frame
-# late too, in phase (vita2d shows the current 2D). Application cores (0-2) of the busy threads; -1 =
+# One multicore flow: the geometrizer always runs pipelined on its own core (3D one
+# frame late); vitaGL shows the 2D layers one frame late too, in phase. Application
+# cores (0-2) of the busy threads; -1 =
 # unpinned. DAYTONA_VITA_FREE_CORES (build_vita.py --free-core) leaves them all
 # unpinned: they then follow the fourth-core setting (core_policy.h).
 option(DAYTONA_VITA_FREE_CORES "Leave the main, geometry, sound and 2D threads unpinned (the 4th core can take them)" OFF)
@@ -82,11 +79,6 @@ endif()
 # bundled as <companion>.self, which the launcher switches to.
 set(DAYTONA_VITA_REV_A_SELF "" CACHE FILEPATH "Optional companion set's SELF to bundle (Daytona: Revision A's)")
 set(DAYTONA_VITA_COMPANION "daytona" CACHE STRING "The companion set bundled with DAYTONA_VITA_REV_A_SELF")
-# The old CPU frontend (main.cpp) only knows daytona93.
-if(NOT DAYTONA_VITA_GPU_FAST AND NOT DAYTONA_VITA_GPU_GL AND
-   (NOT DAYTONA_VITA_ROMSET STREQUAL "daytona93" OR DAYTONA_VITA_REV_A_SELF))
-    message(FATAL_ERROR "Sets other than daytona93 and two-set packages require a GPU build (DAYTONA_VITA_GPU_FAST or DAYTONA_VITA_GPU_GL)")
-endif()
 # One installed app per game, each with its own title ID (scripts/games.py),
 # so several can be installed side by side.
 set(DAYTONA_VITA_TITLEID "DAYT00093" CACHE STRING "Nine-character Vita title ID (scripts/games.py vita_title_id)")
@@ -225,82 +217,66 @@ if(TARGET SDL2::SDL2-static)
 else()
     set(VITA_SDL_TARGET SDL2::SDL2)
 endif()
-if(DAYTONA_VITA_GPU_FAST)
-    include("${CMAKE_CURRENT_SOURCE_DIR}/pinned_vita2d.cmake")
-    set(VITA_BUFFER_LICENSE FILE "${buffered_vita2d_source_SOURCE_DIR}/LICENSE" "licenses/libvita2d.txt")
-endif()
-if(DAYTONA_VITA_GPU_GL)
-    # vitaGL + runtime shader compiler (vitashark). Needs libshacccg.suprx on the console.
-    # Preferred: the pinned vitaGL that scripts/setup_vitagl.py builds into extern/vitagl
-    # (release flags in platform/vita/README.md). Plain variables, not find_*() cache
-    # entries: running the script after a first configure needs no fresh build directory.
-    set(DAYTONA_VITAGL_DIR "${DAYTONA_ROOT}/extern/vitagl/install" CACHE PATH
-        "vitaGL built by scripts/setup_vitagl.py; empty = the VitaSDK's own vitaGL")
-    set(VITAGL_LIBRARIES)
-    if(DAYTONA_VITAGL_DIR AND EXISTS "${DAYTONA_VITAGL_DIR}/lib/libvitaGL.a")
-        set(VITAGL_INCLUDE_DIR "${DAYTONA_VITAGL_DIR}/include")
-        foreach(lib vitaGL vitashark mathneon SceShaccCgExt)
-            if(NOT EXISTS "${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a")
-                message(FATAL_ERROR "GPU GL: ${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a is missing: "
-                        "run python3 scripts/setup_vitagl.py --force")
-            endif()
-            list(APPEND VITAGL_LIBRARIES "${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a")
-        endforeach()
-        list(APPEND VITAGL_LIBRARIES taihen_stub) # SceShaccCgExt (the script checks the SDK has it)
-        include("${DAYTONA_VITAGL_DIR}/vitagl.cmake" OPTIONAL)
-        message(STATUS "GPU GL: pinned vitaGL ${DAYTONA_VITAGL_COMMIT} (${DAYTONA_VITAGL_PROFILE}: "
-                "${DAYTONA_VITAGL_FLAGS}) from ${DAYTONA_VITAGL_DIR}")
-    else()
-        find_path(VITAGL_INCLUDE_DIR vitaGL.h PATHS "${VITASDK}/arm-vita-eabi/include" NO_DEFAULT_PATH)
-        find_library(VITAGL_LIB_vitaGL vitaGL PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
-        if(NOT VITAGL_LIB_vitaGL OR NOT VITAGL_INCLUDE_DIR)
-            message(FATAL_ERROR "GPU GL: no vitaGL. Run python3 scripts/setup_vitagl.py (pinned build "
-                    "into extern/vitagl), then configure again.")
+# vitaGL + runtime shader compiler (vitashark). Needs libshacccg.suprx on the console.
+# Preferred: the pinned vitaGL that scripts/setup_vitagl.py builds into extern/vitagl
+# (release flags in platform/vita/README.md). Plain variables, not find_*() cache
+# entries: running the script after a first configure needs no fresh build directory.
+set(DAYTONA_VITAGL_DIR "${DAYTONA_ROOT}/extern/vitagl/install" CACHE PATH
+    "vitaGL built by scripts/setup_vitagl.py; empty = the VitaSDK's own vitaGL")
+set(VITAGL_LIBRARIES)
+if(DAYTONA_VITAGL_DIR AND EXISTS "${DAYTONA_VITAGL_DIR}/lib/libvitaGL.a")
+    set(VITAGL_INCLUDE_DIR "${DAYTONA_VITAGL_DIR}/include")
+    foreach(lib vitaGL vitashark mathneon SceShaccCgExt)
+        if(NOT EXISTS "${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a")
+            message(FATAL_ERROR "GPU GL: ${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a is missing: "
+                    "run python3 scripts/setup_vitagl.py --force")
         endif()
-        message(WARNING "GPU GL: using the VitaSDK's vitaGL (${VITAGL_LIB_vitaGL}): not the pinned "
-                "version and unknown build flags. Run python3 scripts/setup_vitagl.py to build the pinned one.")
-        list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_vitaGL}")
-        # Helper libraries of an unknown vitaGL version: linked when installed.
-        foreach(lib vitashark mathneon SceShaccCgExt taihen_stub)
-            find_library(VITAGL_LIB_${lib} ${lib} PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
-            if(VITAGL_LIB_${lib})
-                list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_${lib}}")
-            else()
-                message(STATUS "GPU GL: optional lib${lib}.a not found (skipped)")
-            endif()
-        endforeach()
+        list(APPEND VITAGL_LIBRARIES "${DAYTONA_VITAGL_DIR}/lib/lib${lib}.a")
+    endforeach()
+    list(APPEND VITAGL_LIBRARIES taihen_stub) # SceShaccCgExt (the script checks the SDK has it)
+    include("${DAYTONA_VITAGL_DIR}/vitagl.cmake" OPTIONAL)
+    message(STATUS "GPU GL: pinned vitaGL ${DAYTONA_VITAGL_COMMIT} (${DAYTONA_VITAGL_PROFILE}: "
+            "${DAYTONA_VITAGL_FLAGS}) from ${DAYTONA_VITAGL_DIR}")
+else()
+    find_path(VITAGL_INCLUDE_DIR vitaGL.h PATHS "${VITASDK}/arm-vita-eabi/include" NO_DEFAULT_PATH)
+    find_library(VITAGL_LIB_vitaGL vitaGL PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
+    if(NOT VITAGL_LIB_vitaGL OR NOT VITAGL_INCLUDE_DIR)
+        message(FATAL_ERROR "GPU GL: no vitaGL. Run python3 scripts/setup_vitagl.py (pinned build "
+                "into extern/vitagl), then configure again.")
     endif()
-    # Link order matters for static archives: vitaGL first, its dependencies after
-    # (vitashark -> SceShaccCgExt -> taihen / SceShaccCg, as in vitaGL's samples).
-    set(VITAGL_LINK_LIBS ${VITAGL_LIBRARIES}
-        SceShaccCg_stub SceKernelDmacMgr_stub SceKernelModulemgr_stub
-        SceGxm_stub SceDisplay_stub SceSysmodule_stub SceCommonDialog_stub
-        SceCtrl_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
-        SceNet_stub SceNetCtl_stub SceTouch_stub
-        SceLibKernel_stub pthread m)
+    message(WARNING "GPU GL: using the VitaSDK's vitaGL (${VITAGL_LIB_vitaGL}): not the pinned "
+            "version and unknown build flags. Run python3 scripts/setup_vitagl.py to build the pinned one.")
+    list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_vitaGL}")
+    # Helper libraries of an unknown vitaGL version: linked when installed.
+    foreach(lib vitashark mathneon SceShaccCgExt taihen_stub)
+        find_library(VITAGL_LIB_${lib} ${lib} PATHS "${VITASDK}/arm-vita-eabi/lib" NO_DEFAULT_PATH)
+        if(VITAGL_LIB_${lib})
+            list(APPEND VITAGL_LIBRARIES "${VITAGL_LIB_${lib}}")
+        else()
+            message(STATUS "GPU GL: optional lib${lib}.a not found (skipped)")
+        endif()
+    endforeach()
 endif()
-if(DAYTONA_VITA_GPU_FAST OR DAYTONA_VITA_GPU_GL)
-    # The ImGui menu of both GPU builds (imgui_vita.h: libvita2d or vitaGL backend).
-    set(IMGUI_DIR "${DAYTONA_ROOT}/extern/imgui")
-    add_library(vita_imgui STATIC "${IMGUI_DIR}/imgui.cpp" "${IMGUI_DIR}/imgui_draw.cpp"
-        "${IMGUI_DIR}/imgui_tables.cpp" "${IMGUI_DIR}/imgui_widgets.cpp")
-    target_include_directories(vita_imgui PUBLIC "${IMGUI_DIR}")
-    target_compile_definitions(vita_imgui PRIVATE IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS)
-    target_link_libraries(vita_runtime PUBLIC vita_imgui)
-    set(VITA_IMGUI_LICENSE FILE "${DAYTONA_ROOT}/extern/imgui/LICENSE.txt" "licenses/imgui.txt")
-endif()
+# Link order matters for static archives: vitaGL first, its dependencies after
+# (vitashark -> SceShaccCgExt -> taihen / SceShaccCg, as in vitaGL's samples).
+set(VITAGL_LINK_LIBS ${VITAGL_LIBRARIES}
+    SceShaccCg_stub SceKernelDmacMgr_stub SceKernelModulemgr_stub
+    SceGxm_stub SceDisplay_stub SceSysmodule_stub SceCommonDialog_stub
+    SceCtrl_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
+    SceNet_stub SceNetCtl_stub SceTouch_stub
+    SceLibKernel_stub pthread m)
+# The ImGui menu (imgui_vita.h, through vitaGL).
+set(IMGUI_DIR "${DAYTONA_ROOT}/extern/imgui")
+add_library(vita_imgui STATIC "${IMGUI_DIR}/imgui.cpp" "${IMGUI_DIR}/imgui_draw.cpp"
+    "${IMGUI_DIR}/imgui_tables.cpp" "${IMGUI_DIR}/imgui_widgets.cpp")
+target_include_directories(vita_imgui PUBLIC "${IMGUI_DIR}")
+target_compile_definitions(vita_imgui PRIVATE IMGUI_DISABLE_DEFAULT_SHELL_FUNCTIONS)
+target_link_libraries(vita_runtime PUBLIC vita_imgui)
+set(VITA_IMGUI_LICENSE FILE "${DAYTONA_ROOT}/extern/imgui/LICENSE.txt" "licenses/imgui.txt")
 
 if(DAYTONA_VITA_COMPILE_CHECK)
-    if(DAYTONA_VITA_GPU_GL)
-        add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_gl.cpp)
-        target_include_directories(daytona_vita_frontend PRIVATE "${VITAGL_INCLUDE_DIR}")
-        target_compile_definitions(daytona_vita_frontend PRIVATE DAYTONA_VITA_GPU_GL=1)
-    elseif(DAYTONA_VITA_GPU_FAST)
-        add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_fast.cpp)
-        target_include_directories(daytona_vita_frontend PRIVATE "${VITA2D_INCLUDE_DIR}")
-    else()
-        add_library(daytona_vita_frontend OBJECT main.cpp)
-    endif()
+    add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_gl.cpp)
+    target_include_directories(daytona_vita_frontend PRIVATE "${VITAGL_INCLUDE_DIR}")
     target_link_libraries(daytona_vita_frontend PRIVATE vita_runtime ${VITA_SDL_TARGET})
     message(STATUS "ROM-free COMPILE CHECK only: no linked game or installable VPK will be produced")
 else()
@@ -310,25 +286,9 @@ else()
     if(EXISTS "${DAYTONA_GEN_ROOT}/${DAYTONA_VITA_ROMSET}_dsp/dsp_gen.cpp")
         list(APPEND GEN_SOURCES "${DAYTONA_GEN_ROOT}/${DAYTONA_VITA_ROMSET}_dsp/dsp_gen.cpp")
     endif()
-    if(DAYTONA_VITA_GPU_GL)
-        add_executable(daytona_vita main_gpu.cpp gpu_gl.cpp ${GEN_SOURCES})
-        target_include_directories(daytona_vita PRIVATE "${VITAGL_INCLUDE_DIR}")
-        target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_GL=1)
-        target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
-    elseif(DAYTONA_VITA_GPU_FAST)
-        add_executable(daytona_vita main_gpu.cpp gpu_fast.cpp ${GEN_SOURCES})
-        target_include_directories(daytona_vita PRIVATE "${VITA2D_INCLUDE_DIR}")
-        target_compile_definitions(daytona_vita PRIVATE DAYTONA_VITA_GPU_FAST=1)
-        target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITA2D_LIBRARY}
-            SceDisplay_stub SceGxm_stub SceSysmodule_stub SceCtrl_stub ScePgf_stub ScePvf_stub
-            SceCommonDialog_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
-            SceNet_stub SceNetCtl_stub
-            SceTouch_stub
-            freetype png jpeg z pthread m)
-    else()
-        add_executable(daytona_vita main.cpp ${GEN_SOURCES})
-        target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} SceCtrl_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub pthread m)
-    endif()
+    add_executable(daytona_vita main_gpu.cpp gpu_gl.cpp ${GEN_SOURCES})
+    target_include_directories(daytona_vita PRIVATE "${VITAGL_INCLUDE_DIR}")
+    target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
     target_link_options(daytona_vita PRIVATE -Wl,--gc-sections)
     # vita-elf-create appends its SCE data (~4.3 KB) after the code segment, inside the
     # gap before the data segment (64 KB aligned): when the code ends less than that
@@ -360,5 +320,5 @@ else()
         ${VITA_LIVEAREA_FILES}
         FILE "${DAYTONA_ROOT}/THIRD_PARTY.md" "licenses/THIRD_PARTY.md"
         FILE "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY.md" "licenses/VITA.md"
-        ${VITA_IMGUI_LICENSE} ${VITA_BUFFER_LICENSE} ${VITA_OTHER_GAME})
+        ${VITA_IMGUI_LICENSE} ${VITA_OTHER_GAME})
 endif()
