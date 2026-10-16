@@ -44,7 +44,14 @@ declared for daytona93: 0x1394 is not that loop there). ctest 23/23 for the
 three games. Daytona Rev A's entry not re-checked here (no ROM set; its
 Dreamcast check: dcmemcheck matched the desktop at 100 checkpoints).
 PC wall time no better (16.7 vs 18.7 s, within the run-to-run spread seen
-today). Vita VF2 diagnostics VPK built; not yet measured.
+today). Measured on the Vita (VF2 diagnostics, perf_loop.log against
+perf_tick_opti.log and perf_last.log, same play, aggregates): 3D windows
+mean 56.79 -> 57.13 fps (53.80 before ticks()), worst 54.59 -> 55.40,
+windows under 55 fps 2 of 17 -> 0 of 17, game logic in the heavy windows
+2.07 -> 1.76 ms a frame for more work (76,531 i960 instructions a frame,
+5,000-27,000 of them skipped where the loop runs), audio gaps 9 -> 4.
+Steady fight unchanged (core 0 14.6 ms: the vblank handler's i960 and TGP
+are the limit now).
 
 ## M2Board::ticks() without the 64-bit division (2026-10-16)
 
