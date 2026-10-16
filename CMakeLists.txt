@@ -389,6 +389,11 @@ foreach(kind random random-return)
     add_test(NAME scsp_dsp_${kind} COMMAND test_scsp_dsp_${kind})
 endforeach()
 
+# RateConv (the sound boards' instruction count to samples) against count * N / D.
+add_executable(test_rate_conv tests/test_rate_conv.cpp)
+target_include_directories(test_rate_conv PRIVATE src)
+add_test(NAME rate_conv COMMAND test_rate_conv)
+
 # The DSP's PACK against MAME's loop, on every 24-bit value.
 add_executable(test_scsp_pack tests/test_scsp_pack.cpp)
 target_include_directories(test_scsp_pack PRIVATE src)

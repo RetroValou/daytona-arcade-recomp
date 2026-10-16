@@ -1,5 +1,22 @@
 # Handoff
 
+## SCSP board: render_to without the 64-bit division (2026-10-16)
+
+ScspBoard::render_to ran count * Scsp::kRate / kIps (a 64-bit division,
+__aeabi_uldivmod on the Cortex-A9, ~150-250 cycles) on each of its ~1,200
+calls a frame in a VF2 fight (every SCSP register access). New
+runtime/rate_conv.h rt::RateConv<N0, D0>: the fraction reduced at compile
+time (1225/22941 here), the last count, quotient and remainder kept; a
+step forward is a multiply and a 32-bit division by the constant (umull);
+a step back or past 32 bits takes the 64-bit expression (still in the
+object, on that path only). Checks: test_rate_conv (new: 15,000,000
+counts over three fractions, growing, going back, jumping: all equal to
+count * N / D); VF2 PC: m2run 4,000 frames of vf2_fight.txt, WAV
+byte-identical (sha256 995a9904...); ctest 23/23. Vita VPK built; not yet
+measured (expected ~0.4-0.7 ms a frame on core 2). The YM3438/MultiPCM
+board (Daytona) has the same divisions in render_fm_to/render_pcm_to and
+ym_clock_at: not changed, not measured.
+
 ## Vita perf.log: slow loops, sound board probe; PACK and VF2 measured (2026-10-16)
 
 PACK with CLZ (cbd7cbb), measured on the Vita (VF2 diagnostics, attract,

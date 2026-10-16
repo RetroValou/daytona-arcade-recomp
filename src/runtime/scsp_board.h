@@ -13,6 +13,7 @@
 #pragma once
 
 #include "runtime/game.h"
+#include "runtime/rate_conv.h"
 #include "runtime/scsp.h"
 #include "runtime/snd_board.h"
 #include "runtime/snd_gen_support.h"
@@ -76,6 +77,9 @@ private:
     uint64_t line_free_ = 0; // count at which the serial line is free for the next byte
     size_t received_ = 0;
     uint64_t done_ = 0;      // samples rendered
+    // Samples due at an instruction count (count * kRate / kIps), on every SCSP
+    // register access: without the 64-bit division in the common case.
+    rt::RateConv<Scsp::kRate, kIps> samples_at_;
     std::vector<float> out_;
     std::vector<uint8_t> replies_;
 };

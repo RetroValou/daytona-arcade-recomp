@@ -70,7 +70,7 @@ void ScspBoard::run_to(uint64_t count) {
 }
 
 void ScspBoard::render_to(uint64_t count) {
-    const uint64_t due = count * Scsp::kRate / kIps;
+    const uint64_t due = samples_at_.at(count); // count * Scsp::kRate / kIps
 #ifdef M2_SOUND_PROFILE
     SoundProfile &p = sound_profile();
     ++p.render_calls;
