@@ -18,6 +18,7 @@
 #include "runtime/lockstep.h"
 #include "runtime/game.h"
 #include "runtime/m2_tgp_board.h"
+#include "runtime/rate_conv.h"
 #include "runtime/video.h"
 
 #include <array>
@@ -285,7 +286,10 @@ private:
         size_t expiry = kNoExpiry; // its Lockstep callback while scheduled (one at most)
     };
     static constexpr size_t kNoExpiry = SIZE_MAX;
-    uint64_t ticks() const { return io_now() * kTicksPerFrame / kInstrPerFrame + tick_skip_; }
+    // io_now() * kTicksPerFrame / kInstrPerFrame, without its 64-bit division in the
+    // common case (rate_conv.h): every read of a running timer calls it.
+    uint64_t ticks() const { return ticks_at_.at(io_now()) + tick_skip_; }
+    mutable RateConv<kTicksPerFrame, kInstrPerFrame> ticks_at_;
     void timer_write(unsigned n, uint32_t data, uint32_t mask);
     void timer_schedule(unsigned n);
     void timer_expire(unsigned n);

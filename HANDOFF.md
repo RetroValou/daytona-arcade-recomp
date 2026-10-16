@@ -1,5 +1,28 @@
 # Handoff
 
+## M2Board::ticks() without the 64-bit division (2026-10-16)
+
+Why: the VF2 profile (extern/result_perf_vita/vf2 perf_supra_probe.log,
+--tgp-profile --i960-profile) shows the fps drops (43-55 fps windows) are
+the game's timed wait at 0x4cb7c-0x4cba0 (ldob 0x500000 until non-zero,
+ldl 0xf00008 = timers 2 and 3, out at expiry or below a threshold): 0
+passes a frame in the 57 fps windows, 400-1,900 in the slow ones, ~1.9 us
+a pass on the Vita (3 bus calls: 0x500000 is kept off the fast read path,
+and each running-timer read calls ticks(), a 64-bit division). In a fight
+without it the i960 is ~7.2 ms (40,000 instructions, 24,600 bus calls, 333
+direct) and the TGP ~4.2 ms (63,000 instructions; its FIFO wait loop
+035-03e is 16 % of them; FP ~0.2 ms); ~1,600 device reads a frame even
+then (how many are timers: not counted).
+Change: ticks() goes through rt::RateConv<kTicksPerFrame, kInstrPerFrame>
+(mutable member; io_now() mostly grows; a step back takes the 64-bit
+expression). Checks: m2run 4,000 frames, VF2 vf2_fight and Daytona
+race_basic: 40/40 frame dumps, WAV and i960/TGP/interrupt counts identical
+to before; ctest 23/23 for VF2, Daytona and Sega Rally. PC wall time
+16.1 -> 17.4 s (VF2; x86 divides fast, not the target). Vita VPK built
+(VF2 diagnostics, with ea210b2's render_to change); not yet measured.
+Next: skip the passes of that wait loop exactly (the Dreamcast frame-wait
+skip, M2_DC_SPIN_SKIP, made general and on by default).
+
 ## SCSP board: render_to without the 64-bit division (2026-10-16)
 
 ScspBoard::render_to ran count * Scsp::kRate / kIps (a 64-bit division,
