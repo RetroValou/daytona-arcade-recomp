@@ -1,5 +1,29 @@
 # Handoff
 
+## SCSP DSP: PACK's exponent with one CLZ (2026-10-16)
+
+src/runtime/scsp.h dsp::PACK counted temp's leading zeros (24 bits, at
+most 12) bit by bit, as MAME; now std::min(12, countl_zero(temp << 8)).
+GCC for the Cortex-A9 kept the loop; now one clz (checked in the Vita
+dsp_gen.cpp object: 4 clz, no loop). Shared by the DSP interpreter and
+the recompiled DSP. THIRD_PARTY.md notes the change.
+VF2's DSP program has 4 PACK (memory writes) a sample, ~3,070 a frame,
+not the 6-12 extern/DIV-OPT-HANDOFF.md assumed: expected gain ~0.1-0.25 ms
+a frame on core 2 (sound board 13-14 ms a frame in a fight), likely within
+the window-to-window noise. Checks: test_scsp_pack (new: every 24-bit val
+and 8 outside, as MAME's loop), scsp_dsp_random(-return), VF2 PC ctest
+22/22. Vita VPK built (--gpu-gl --diagnostics --fast-inaccuracy); not yet
+measured on the console.
+Review of extern/DIV-OPT-HANDOFF.md for VF2 (not committed, ideas only):
+in a fight core 0 is the TGP (vblank handler ~8 ms, ~68,000 TGP
+instructions, no division in tgp_gen.cpp) and core 2 the 68000 driver;
+its point 3 (RBL/RBP as locals) gives ~0.02 ms (the Vita code reloads them
+only after the 4 writes a sample); point 9 has no DIVS in VF2's sound
+program; points 4 and 10: GCC does not compress the switch tables (i960
+chunk_000: 8,237 tbh entries for 1,500 cases; 68000: 9,586 4-byte entries,
+~38 KB, for 2,312 cases), memory only unless dispatches per frame are in
+the thousands (not measured).
+
 ## Vita: the z-clip division in check_culling, tried and dropped (2026-10-16)
 
 Tried: under M2_FAST_GEO, check_culling's float divide for the master z

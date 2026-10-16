@@ -12,6 +12,8 @@
 // as MAME's stream update does.
 #pragma once
 
+#include <algorithm>
+#include <bit>
 #include <cstdint>
 
 namespace snd {
@@ -36,13 +38,10 @@ namespace dsp {
 inline int32_t sext(int32_t v, int bits) { return int32_t(uint32_t(v) << (32 - bits)) >> (32 - bits); }
 inline uint16_t PACK(int32_t val) {
     int const sign = (val >> 23) & 1;
-    uint32_t temp = uint32_t(val ^ (val << 1)) & 0xFFFFFF;
-    int exponent = 0;
-    for (int k = 0; k < 12; k++) {
-        if (temp & 0x800000) break;
-        temp <<= 1;
-        exponent += 1;
-    }
+    uint32_t const temp = uint32_t(val ^ (val << 1)) & 0xFFFFFF;
+    // MAME counts temp's leading zeros (24 bits) one by one, up to 12; one CLZ
+    // here (temp == 0: 32, so 12 as well). Same results for every val.
+    int const exponent = std::min(12, std::countl_zero(temp << 8));
     if (exponent < 12) val = (val << exponent) & 0x3FFFFF;
     else val <<= 11;
     val >>= 11;

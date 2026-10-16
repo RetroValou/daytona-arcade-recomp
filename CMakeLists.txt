@@ -389,6 +389,11 @@ foreach(kind random random-return)
     add_test(NAME scsp_dsp_${kind} COMMAND test_scsp_dsp_${kind})
 endforeach()
 
+# The DSP's PACK against MAME's loop, on every 24-bit value.
+add_executable(test_scsp_pack tests/test_scsp_pack.cpp)
+target_include_directories(test_scsp_pack PRIVATE src)
+add_test(NAME scsp_pack COMMAND test_scsp_pack)
+
 # Geometrizer clipping and display-list streaming (shared runtime code).
 add_executable(test_geo_clip tests/test_geo_clip.cpp)
 target_include_directories(test_geo_clip PRIVATE src)
