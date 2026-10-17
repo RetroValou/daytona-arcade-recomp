@@ -1,5 +1,15 @@
 # Handoff
 
+## Vita: settings, storage and input out of frontend/main.cpp (2026-10-17)
+
+frontend/settings.h/.cpp (VitaSettings: vita.cfg load/save/sanitize, now
+taking the file's path), storage.h/.cpp (data folder paths, app_file,
+load/save_bytes, load_nv/save_nv), input.h/.cpp (read_pad, map_input,
+game_layout). main.cpp 1,537 -> 1,360 lines. New host test vita_settings
+(round trip, ranges, unknown keys, temporary renamed), linked against the
+desktop runtime library. VF2 VPK built; Daytona compile check; Vita host
+tests 15/15. Not run on the console (vita.cfg format unchanged).
+
 ## Vita: render/renderer.cpp split by its sections (2026-10-17)
 
 No code change (platform/vita/HANDOFF.md): 1,789 lines into renderer.cpp

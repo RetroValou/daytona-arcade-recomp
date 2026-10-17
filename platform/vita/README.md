@@ -3,7 +3,9 @@
 ## Source layout
 
 ```
-frontend/   main.cpp (startup, launcher, the game loop), controls.h
+frontend/   main.cpp (startup, launcher, the game loop), settings (vita.cfg), storage
+            (the data folder, files written whole, NV memories), input (pad, game
+            layout), controls.h
 render/     vitaGL renderer: renderer.h (the frontend's API), renderer.cpp (set-up,
             frame entry), model2_textures, model2_polygons, layers_2d (the System 24
             worker), gl_context (vitaGL, frame API, gl.log), shaders, draw_list,

@@ -29,7 +29,8 @@ option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-deri
 # runtime's geo.h/.cpp replaced). Includes name them from here: "system/core_policy.h".
 set(VITA_RENDER_SOURCES render/renderer.cpp render/model2_textures.cpp render/model2_polygons.cpp
     render/layers_2d.cpp render/gl_context.cpp render/shaders.cpp render/draw_list.cpp render/ui_draw.cpp)
-set(VITA_FRONTEND_SOURCES frontend/main.cpp ${VITA_RENDER_SOURCES})
+set(VITA_FRONTEND_SOURCES frontend/main.cpp frontend/settings.cpp frontend/storage.cpp frontend/input.cpp
+    ${VITA_RENDER_SOURCES})
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
 # Link-time optimization (scripts/build_vita.py --release): the generated i960/TGP
 # code can inline the runtime's small memory and bus accessors (cpu.cpp,

@@ -534,8 +534,14 @@ if(M2_VITA_TESTS)
     target_compile_definitions(test_vita_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     add_test(NAME vita_log COMMAND test_vita_log)
 
+    # The launcher's settings (vita.cfg) against the game records.
+    add_executable(test_vita_settings tests/test_vita_settings.cpp platform/vita/frontend/settings.cpp
+        platform/vita/frontend/storage.cpp)
+    target_link_libraries(test_vita_settings PRIVATE runtime)
+    add_test(NAME vita_settings COMMAND test_vita_settings ${CMAKE_CURRENT_BINARY_DIR})
+
     # platform/vita is the include root of its own headers ("system/core_policy.h").
-    foreach(t test_vita_imgui_gl test_vita_controls test_vita_core_policy test_vita_polygon_order
+    foreach(t test_vita_settings test_vita_imgui_gl test_vita_controls test_vita_core_policy test_vita_polygon_order
               test_vita_texel_index test_vita_flat_index test_vita_audio_rate test_vita_native_audio
               test_vita_sound_worker test_vita_audio_worker test_vita_async_log test_vita_log)
         target_include_directories(${t} PRIVATE platform/vita)

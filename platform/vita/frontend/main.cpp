@@ -12,6 +12,9 @@
 #include "net/link.h"
 #endif
 #include "frontend/controls.h"
+#include "frontend/input.h"
+#include "frontend/settings.h"
+#include "frontend/storage.h"
 #include "system/diagnostic_log.h"
 #include "system/async_log.h"
 #include "system/core_policy.h"
@@ -77,6 +80,10 @@
 extern "C" { __attribute__((used)) unsigned int _newlib_heap_size_user = 192 * 1024 * 1024; }
 
 namespace {
+using vita::VitaSettings;
+using vita::app_file, vita::load_nv, vita::save_nv, vita::kDirectory, vita::kRom;
+using vita::read_pad, vita::map_input, vita::game_layout;
+
 // ---- Graphics backend glue (vitaGL) ----
 using Renderer = vita::GpuGlRenderer;
 constexpr const char *kGfxApi = "VITAGL";
@@ -103,7 +110,6 @@ constexpr int kMainCore = DAYTONA_VITA_MAIN_CORE, kGeoCore = DAYTONA_VITA_GEO_CO
               kSoundCore = DAYTONA_VITA_SOUND_CORE;
 constexpr bool kPinnedCores = kMainCore >= 0 || kGeoCore >= 0 || kSoundCore >= 0;
 constexpr double kPerfWindowSeconds = 5.0;
-constexpr const char *kDirectory = "ux0:data/" M2_ROMSET;
 // A package holds one game: this set, and the game's companion set when
 // bundled (Game::companion: Daytona's two sets), which the ROM option
 // switches to. Other games are packages of their own (their own title IDs:
@@ -116,69 +122,6 @@ std::string rom_label(const rt::Game &g) {
     for (char &c : s) c = char(std::toupper(static_cast<unsigned char>(c)));
     return s;
 }
-bool app_file(const std::string &path) {
-    FILE *f = std::fopen(path.c_str(), "rb");
-    if (f) std::fclose(f);
-    return f != nullptr;
-}
-constexpr const char *kRom = "ux0:data/" M2_ROMSET "/" M2_ROMSET ".zip";
-constexpr const char *kConfig = "ux0:data/" M2_ROMSET "/vita.cfg";
-constexpr const char *kConfigTemp = "ux0:data/" M2_ROMSET "/vita.cfg.tmp";
-
-vita::Pad read_pad() {
-    SceCtrlData native{};
-    vita::Pad pad;
-    if (sceCtrlPeekBufferPositive(0, &native, 1) <= 0) return pad;
-    pad.lx = native.lx; pad.ry = native.ry; pad.ly = native.ly;
-    const struct { uint32_t native, portable; } map[] = {
-        {SCE_CTRL_CROSS, vita::Cross}, {SCE_CTRL_CIRCLE, vita::Circle},
-        {SCE_CTRL_SQUARE, vita::Square}, {SCE_CTRL_TRIANGLE, vita::Triangle},
-        {SCE_CTRL_UP, vita::Up}, {SCE_CTRL_DOWN, vita::Down},
-        {SCE_CTRL_LEFT, vita::Left}, {SCE_CTRL_RIGHT, vita::Right},
-        {SCE_CTRL_LTRIGGER, vita::L}, {SCE_CTRL_RTRIGGER, vita::R},
-        {SCE_CTRL_START, vita::Start}, {SCE_CTRL_SELECT, vita::Select}
-    };
-    for (auto e : map) if (native.buttons & e.native) pad.buttons |= e.portable;
-    return pad;
-}
-
-bool load_bytes(const std::string &path, uint8_t *data, size_t size) {
-    FILE *f = std::fopen(path.c_str(), "rb");
-    if (!f) return false;
-    const bool ok = std::fread(data, 1, size, f) == size && std::fgetc(f) == EOF;
-    std::fclose(f);
-    return ok;
-}
-bool save_bytes(const std::string &path, const uint8_t *data, size_t size) {
-    const std::string tmp = path + ".tmp";
-    FILE *f = std::fopen(tmp.c_str(), "wb");
-    if (!f) return false;
-    bool ok = std::fwrite(data, 1, size, f) == size;
-    if (std::fflush(f) != 0) ok = false;
-    if (std::fclose(f) != 0) ok = false;
-    if (!ok) { std::remove(tmp.c_str()); return false; }
-    std::remove(path.c_str());
-    return std::rename(tmp.c_str(), path.c_str()) == 0;
-}
-
-template<class C> void load_nv(const char *name, C &data) {
-    load_bytes(std::string(kDirectory) + "/" + name, data.data(), data.size());
-}
-
-template<class C> bool save_nv(const char *name, const C &data) {
-    return save_bytes(std::string(kDirectory) + "/" + name, data.data(), data.size());
-}
-
-rt::Inputs map_input(const vita::Input &in) {
-    rt::Inputs out;
-    out.steer = in.steer; out.accel = in.accel; out.brake = in.brake;
-    out.in0 = in.in0; out.in1 = in.in1; out.in2 = in.in2;
-    out.handbrake = in.handbrake;
-    return out;
-}
-
-// The game's controls (rt::Game::control_list): what the Controls page lists and binds.
-vita::Layout game_layout() { return {rt::game().control_list.data(), int(rt::game().control_list.size())}; }
 
 // Microseconds. SDL2's Vita performance counter is this same call at 1 MHz; calling it
 // directly skips SDL and a 64-bit division per read (measured 1.39 us per read through SDL,
@@ -189,144 +132,6 @@ uint64_t ticks_us() { return sceKernelGetProcessTimeWide(); }
 uint64_t diagnostic_ticks_us() {
     return kProfile ? ticks_us() : 0;
 }
-
-// Clocks of a first launch (no saved settings) and of "defaults": CPU 444 / GPU 166 MHz.
-// The options menu
-// changes them, and the saved choice wins on the next launches. Override at build time
-// with -DDAYTONA_VITA_DEFAULT_CPU_MHZ=... / -DDAYTONA_VITA_DEFAULT_GPU_MHZ=...
-#ifndef DAYTONA_VITA_DEFAULT_CPU_MHZ
-#define DAYTONA_VITA_DEFAULT_CPU_MHZ 444
-#endif
-#ifndef DAYTONA_VITA_DEFAULT_GPU_MHZ
-#define DAYTONA_VITA_DEFAULT_GPU_MHZ 166
-#endif
-constexpr int kDefaultCpuClock = DAYTONA_VITA_DEFAULT_CPU_MHZ;
-constexpr int kDefaultGpuClock = DAYTONA_VITA_DEFAULT_GPU_MHZ;
-// vita.cfg keys of the controls (rt::Control order); value = button bit. The first
-// twelve are the keys every earlier version saved.
-constexpr const char *kBindKeys[vita::ControlCount] = {"bind_accelerate", "bind_brake",
-    "bind_steer_left", "bind_steer_right", "bind_shift_up", "bind_shift_down", "bind_start",
-    "bind_coin", "bind_view1", "bind_view2", "bind_view3", "bind_view4", "bind_handbrake",
-    "bind_up", "bind_down", "bind_left", "bind_right", "bind_punch", "bind_kick", "bind_guard"};
-
-struct VitaSettings {
-    bool use_companion = false; // the ROM option: the game's companion set (not saved)
-    bool link_enabled = false, link_sync = false;
-    int link_port = 15112, next_port = 15112;
-    int next_ip[4] = {192, 168, 1, 2};
-    std::string next_address() const {
-        return std::to_string(next_ip[0]) + "." + std::to_string(next_ip[1]) + "." +
-            std::to_string(next_ip[2]) + "." + std::to_string(next_ip[3]);
-    }
-    int cpu_clock = kDefaultCpuClock;
-    int gpu_clock = kDefaultGpuClock;
-    int volume = 80;
-    // Balance between the music and the effects (engine, skids, crashes), as the
-    // desktop launcher's; 100/100 is the arcade's mix. The defaults are the game's
-    // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85).
-    int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
-    int deadzone = 12;
-    int aspect = 0, draw_distance = 0, steer_curve = 0;
-    bool hud_edges = false;
-
-    bool fourth_core = false;
-    bool stretch_backdrop = false, skip_launcher = false;
-    // The game's battery-backed RAM (backup_ram.bin: records, bookkeeping, and the
-    // coins not used yet, which a cabinet keeps through a power cut: with them a
-    // game can start a race on its own at the next launch). Off: neither loaded
-    // nor saved, every start is a cabinet switched on afresh. The settings EEPROM
-    // (ioboard_eeprom.bin: test mode settings) is always kept.
-    bool save_backup = false;
-    bool mute = false;
-    bool native_audio = false; // explicitly selected while native fidelity is validated
-    bool steer_invert = false;
-    vita::Bindings bindings = vita::Bindings::defaults(game_layout()); // Controls page of the launcher
-
-    void defaults() { *this = VitaSettings{}; }
-    void sanitize() {
-        link_port = std::clamp(link_port, 1, 65535);
-        next_port = std::clamp(next_port, 1, 65535);
-        for (int &octet : next_ip) octet = std::clamp(octet, 0, 255);
-        const auto valid = [](int value, const int *choices, int count, int fallback) {
-            for (int i = 0; i < count; ++i) if (value == choices[i]) return value;
-            return fallback;
-        };
-        static const int cpus[] = {111, 222, 333, 444, 500};
-        static const int gpus[] = {41, 77, 111, 166};
-        cpu_clock = valid(cpu_clock, cpus, 5, kDefaultCpuClock);
-        gpu_clock = valid(gpu_clock, gpus, 4, kDefaultGpuClock);
-        static_assert(kDefaultCpuClock == 111 || kDefaultCpuClock == 222 || kDefaultCpuClock == 333 ||
-                      kDefaultCpuClock == 444 || kDefaultCpuClock == 500, "CPU default must be a menu choice");
-        static_assert(kDefaultGpuClock == 41 || kDefaultGpuClock == 77 || kDefaultGpuClock == 111 ||
-                      kDefaultGpuClock == 166, "GPU default must be a menu choice");
-        volume = std::clamp(volume, 0, 100);
-        music_volume = std::clamp(music_volume, 0, 100);
-        effects_volume = std::clamp(effects_volume, 0, 100);
-        deadzone = std::clamp(deadzone, 0, 40);
-        aspect = std::clamp(aspect, 0, 3);
-        steer_curve = std::clamp(steer_curve, 0, 2);
-        draw_distance = std::clamp(draw_distance, -2, 2);
-        bindings.sanitize(game_layout());
-    }
-    void load() {
-        FILE *f = std::fopen(kConfig, "r");
-        if (!f) return;
-        char line[96], key[40]; int value = 0;
-        while (std::fgets(line, sizeof line, f)) {
-            if (std::sscanf(line, "%39[^=]=%d", key, &value) != 2) continue;
-            if (!std::strcmp(key, "fourth_core")) fourth_core = value != 0;
-            else if (!std::strcmp(key, "link_enabled")) link_enabled = value != 0;
-            else if (!std::strcmp(key, "link_sync")) link_sync = value != 0;
-            else if (!std::strcmp(key, "link_port")) link_port = value;
-            else if (!std::strcmp(key, "next_port")) next_port = value;
-            else if (!std::strcmp(key, "next_ip0")) next_ip[0] = value;
-            else if (!std::strcmp(key, "next_ip1")) next_ip[1] = value;
-            else if (!std::strcmp(key, "next_ip2")) next_ip[2] = value;
-            else if (!std::strcmp(key, "next_ip3")) next_ip[3] = value;
-            else if (!std::strcmp(key, "stretch_backdrop")) stretch_backdrop = value != 0;
-            else if (!std::strcmp(key, "skip_launcher")) skip_launcher = value != 0;
-            else if (!std::strcmp(key, "save_backup")) save_backup = value != 0;
-            else if (!std::strcmp(key, "steer_curve")) steer_curve = value;
-            else if (!std::strcmp(key, "aspect")) aspect = value;
-            else if (!std::strcmp(key, "draw_distance")) draw_distance = value;
-            else if (!std::strcmp(key, "hud_edges")) hud_edges = value != 0;
-            else if (!std::strcmp(key, "cpu_clock")) cpu_clock = value;
-            else if (!std::strcmp(key, "gpu_clock")) gpu_clock = value;
-            else if (!std::strcmp(key, "volume")) volume = value;
-            else if (!std::strcmp(key, "music_volume")) music_volume = value;
-            else if (!std::strcmp(key, "effects_volume")) effects_volume = value;
-            else if (!std::strcmp(key, "mute")) mute = value != 0;
-            else if (!std::strcmp(key, "native_audio")) native_audio = value != 0;
-            else if (!std::strcmp(key, "deadzone")) deadzone = value;
-            else if (!std::strcmp(key, "steer_invert")) steer_invert = value != 0;
-            else for (int a = 0; a < vita::ControlCount; ++a)
-                if (!std::strcmp(key, kBindKeys[a])) bindings.button[a] = uint32_t(value);
-        }
-        std::fclose(f); sanitize();
-    }
-    bool save() const {
-        FILE *f = std::fopen(kConfigTemp, "w");
-        if (!f) return false;
-        std::fprintf(f, "cpu_clock=%d\ngpu_clock=%d\nvolume=%d\nmute=%d\nnative_audio=%d\ndeadzone=%d\nsteer_invert=%d\n",
-                     cpu_clock, gpu_clock, volume, int(mute), int(native_audio), deadzone, int(steer_invert));
-        std::fprintf(f, "music_volume=%d\neffects_volume=%d\n", music_volume, effects_volume);
-        std::fprintf(f, "stretch_backdrop=%d\nskip_launcher=%d\nsave_backup=%d\n", int(stretch_backdrop), int(skip_launcher),
-                     int(save_backup));
-        std::fprintf(f, "fourth_core=%d\n", int(fourth_core));
-        std::fprintf(f, "link_enabled=%d\nlink_sync=%d\nlink_port=%d\nnext_port=%d\n",
-            int(link_enabled), int(link_sync), link_port, next_port);
-        for (int i = 0; i < 4; ++i) std::fprintf(f, "next_ip%d=%d\n", i, next_ip[i]);
-        std::fprintf(f, "steer_curve=%d\n", steer_curve);
-        std::fprintf(f, "aspect=%d\ndraw_distance=%d\nhud_edges=%d\n", aspect, draw_distance, int(hud_edges));
-        for (int a = 0; a < vita::ControlCount; ++a)
-            if (bindings.button[a]) std::fprintf(f, "%s=%u\n", kBindKeys[a], unsigned(bindings.button[a]));
-        bool ok = std::fflush(f) == 0;
-        if (std::fclose(f) != 0) ok = false;
-        if (!ok) { std::remove(kConfigTemp); return false; }
-        std::remove(kConfig);
-        return std::rename(kConfigTemp, kConfig) == 0;
-    }
-};
 
 // Difference of two cumulative geometrizer statistics (maxima are not differenced).
 rt::Geo::Stats geo_stats_delta(const rt::Geo::Stats &now, const rt::Geo::Stats &before) {

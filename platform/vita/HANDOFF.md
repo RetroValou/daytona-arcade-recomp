@@ -1,5 +1,16 @@
 # Vita port handoff — 29 September 2026
 
+## Settings, storage and input out of main.cpp — 17 October 2026
+
+frontend/settings (VitaSettings; load/save take a path, default kConfig;
+the bind keys private to settings.cpp), storage (kDirectory/kRom/kConfig,
+app_file, load/save_bytes, load_nv/save_nv), input (read_pad, map_input,
+game_layout). Moved as they were, into namespace vita; main.cpp names them
+with using-declarations. Same vita.cfg keys and order. tests/
+test_vita_settings.cpp is the first host test of the launcher's settings.
+Next (step 4): main()'s lambdas into a Session class and the menu into a
+Launcher, one at a time with a test on the console between them.
+
 ## render/renderer.cpp split by its sections — 17 October 2026
 
 The 1,789-line file is now: renderer.cpp (constructor, materials, draw()),
