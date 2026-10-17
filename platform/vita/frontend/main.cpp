@@ -8,12 +8,10 @@
 #include "audio/native_audio.h"
 #include "runtime/sound/native/native_sound_engine.h"
 #include "audio/sound_worker.h"
-#if DAYTONA_VITA_LINK
-#include "net/link.h"
-#endif
 #include "frontend/controls.h"
 #include "frontend/diagnostics.h"
 #include "frontend/input.h"
+#include "frontend/session.h"
 #include "frontend/settings.h"
 #include "frontend/storage.h"
 #include "system/diagnostic_log.h"
@@ -343,34 +341,19 @@ int main(int, char **) {
     log.literal("GPU25 stage: renderer ready; audio begin\n");
     vita::Audio audio;
     vita::NativeAudio<snd::NativeSoundEngine> native_audio;
-    bool active_native_audio = false;
     if (!audio.open()) log.fault("GPU25: audio unavailable: %s\n", SDL_GetError());
     audio.volume(float(settings.volume) / 100.0f);
     audio.mute(settings.mute);
     log.literal("GPU25 stage: audio done; main loop ready\n");
 
-#if DAYTONA_VITA_LINK
-    std::unique_ptr<vita::TcpLink> link; // outlives the board's transport pointer
-#else
-    std::unique_ptr<rt::LinkTransport> link; // no link play in this build: always empty
-#endif
-    std::unique_ptr<rt::GameLoop> game;
-    // Destruction order keeps the detached packet, game and audio alive until
-    // the worker has drained. Only one sound packet may be in flight.
-    rt::GameLoop::SoundPacket active_sound;
-    vita::SoundWorker sound_worker;
-    // Reference sound board on its own core (0: unpinned, the fourth-core policy).
-    sound_worker.set_cpu_mask(vita::core_pin_mask(kSoundCore));
-    sound_worker.open();
-    log.log("GPU25 sound worker: threaded=%d affinity_result=%d affinity_mask=0x%x\n",
-            int(sound_worker.threaded()), sound_worker.affinity_result(), sound_worker.affinity_mask());
-
     vita::Diagnostics diag;
-    diag.open(log, unsigned(main_affinity), main_affinity_result, sound_worker);
     vita::AsyncLog perf_log;
     if constexpr (kDiagnostics) perf_log.open(log, ticks_us);
     log.log("GPU25 periodic log worker: threaded=%d; unavailable worker drops periodic records only\n",
             int(perf_log.threaded()));
+    // The game being played (frontend/session.h): board, link, sound worker.
+    vita::Session session(audio, native_audio, gpu, diag, log, perf_log);
+    diag.open(log, unsigned(main_affinity), main_affinity_result, session.worker());
     vita::Controls controls;
     vita::FrameClock clock(rt::GameLoop::kFrameHz, 1);
     bool running = true, menu = true, options = false, binds = false, wait_release = true;
@@ -378,29 +361,13 @@ int main(int, char **) {
     uint32_t previous_buttons = 0;
     std::string status = "CROSS SELECT. OPTIONS INCLUDE CLOCKS, AUDIO, DISPLAY AND CONTROLS.";
     uint64_t last = ticks_us();
-    bool sound_in_flight = false;
-    bool native_effect_warned = false;
 
-    // Join only after the following frame's board work, or before an operation
-    // that mutates audio/lifetime state. The worker never touches GameLoop's
-    // profile or pending bytes while the next board frame runs.
-    auto finish_sound = [&]() -> bool {
-        if (!sound_in_flight) return true;
-        sound_in_flight = false;
-        const uint64_t begin = diagnostic_ticks_us();
-        try { sound_worker.finish(); }
-        catch (const std::exception &e) {
-            diag.sound_failed(begin);
-            status = e.what();
-            perf_log.sync([&] { log.fault("GPU25 sound runtime: %s\n", e.what()); });
-            menu = true;
-            audio.pause(); native_audio.pause();
-            active_sound = {};
-            game.reset(); // finish has joined, including its error path
-            return false;
-        }
-        diag.sound_joined(begin, sound_worker);
-        return true;
+    // The sound worker joined; a fault stops the game and shows the menu with it.
+    auto sound_ok = [&] {
+        if (session.finish_sound()) return true;
+        status = session.error();
+        menu = true;
+        return false;
     };
 
     int applied_core_setting = -1;
@@ -425,7 +392,7 @@ int main(int, char **) {
         rt::GameLoop::set_draw_distance(settings.draw_distance);
     };
     auto commit_settings = [&](bool set_clocks) {
-        if (!finish_sound()) return;
+        if (!sound_ok()) return;
         perf_log.drain();
         int cpu_result = 0, gpu_result = 0;
         if (set_clocks) {
@@ -449,45 +416,9 @@ int main(int, char **) {
     };
     apply_preferences();
 
-    auto save = [&] {
-        if (!finish_sound()) return false;
-        if (!game) return true;
-        const bool a = save_nv("ioboard_eeprom.bin", game->board().io().eeprom);
-        const bool b = !settings.save_backup || save_nv("backup_ram.bin", game->board().backup_ram());
-        if (!a || !b) perf_log.sync([&] { log.fault("GPU25: save failed\n"); });
-        return a && b;
-    };
-    auto apply_mode = [&] {
-        if (game) {
-            // The GPU draws the 3D and the System 24 layers (the only Vita mode: the
-            // pipelined geometrizer leaves no exact CPU picture to switch to).
-            game->board().video().set_external_3d(true);
-        }
-        gpu.reset_materials();
-        clock.reset();
-    };
-    // Geometrizer on its own core, pipelined (the only Vita GPU mode). The
-    // geometry thread belongs to the board's geometrizer and ends with it.
-    auto apply_geometry = [&]() {
-        rt::Geo *geo = geometry_of(game.get());
-        if (!geo) return;
-        const bool ok = geo->configure(rt::GeoMode::Pipelined, kGeoCore, kProfile ? ticks_us : nullptr);
-        diag.geometry_changed();
-        const rt::Geo::Worker &w = geo->worker();
-        char line[256];
-        const int n = std::snprintf(line, sizeof line,
-            "geometry: mode=%s thread=%d core=%d result=%d mask=0x%x priority=%d fpscr main=0x%08x worker=0x%08x\n",
-            rt::geo_mode_name(geo->mode()), int(w.threaded), w.core, w.create_result,
-            unsigned(w.affinity_mask), w.priority, unsigned(w.fpscr_main), unsigned(w.fpscr_worker));
-        diag.perf_note(line, std::min(n, int(sizeof line) - 1));
-        perf_log.sync([&] {
-            if (ok) log.log("GPU25 %s", line);
-            else log.fault("GPU25 %s", line); // thread unavailable: geometry stays on the main core
-        });
-    };
+    auto save = [&] { return sound_ok() && session.save_nv(settings); };
     auto start_game = [&]() -> bool {
-        if (!finish_sound()) return false;
-        if (!save()) { status = "SAVE FAILED; ROM SWITCH CANCELLED."; return false; }
+        if (!save()) { if (session) status = "SAVE FAILED; ROM SWITCH CANCELLED."; return false; }
         if (settings.use_companion && companion()) {
             // A two-set package: eboot.bin is one set, <companion>.self the
             // other. Running as eboot.bin, the companion is its .self; running
@@ -499,20 +430,14 @@ int main(int, char **) {
             if (executable.empty()) { status = "SELECTED ROM EXECUTABLE NOT PACKAGED. INSTALL THE TWO-ROM VPK."; return false; }
             settings.use_companion = false; // the other executable starts on its own set
             settings.save();
-            native_audio.close(); audio.close(); sound_worker.close();
-            game.reset(); link.reset();
+            native_audio.close(); audio.close(); session.release_all();
             glFinish();
             sceGxmDisplayQueueFinish();
             const int rc = sceAppMgrLoadExec(executable.c_str(), nullptr, nullptr);
             status = "ROM SWITCH FAILED: " + std::to_string(rc);
             return false;
         }
-        active_sound = {};
-        native_audio.close();
-        audio.close();
-        game.reset();
-        link.reset();
-        gpu.reset_materials();
+        session.stop();
         status = std::string("LOADING ") + M2_ROMSET + "...";
         gpu.prepare_frame();
         vita::gl_begin_frame();
@@ -522,68 +447,24 @@ int main(int, char **) {
         ImGui::TextWrapped("%s", status.c_str());
         ImGui::End(); ui.render();
         vita::gl_end_frame();
-        try {
-            if (DAYTONA_VITA_LINK && settings.link_enabled && !rt::game().link)
-                throw std::runtime_error(std::string("LINK PLAY: ") + rt::game().set +
-                                         " HAS NO COMMUNICATION BOARD. SELECT ANOTHER ROM OR TURN LINK OFF.");
-            auto images = rt::import_rom_set(kRom);
-            active_native_audio = settings.native_audio && rt::game().native_sound; // the game's driver tables known
-            native_effect_warned = false;
-            if (active_native_audio) {
-                sound_worker.close();
-                auto engine = std::make_unique<snd::NativeSoundEngine>(
-                    std::move(images.sound_program), std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound);
-                if (!native_audio.open(std::move(engine), kDiagnostics ? ticks_us : nullptr))
-                    throw std::runtime_error("Native audio output unavailable; select Reference audio and reset");
-            } else {
-                if (!sound_worker.threaded()) sound_worker.open();
-                if (!audio.open()) perf_log.sync([&] { log.fault("GPU25 reference audio unavailable: %s\n", SDL_GetError()); });
-            }
-            game = std::make_unique<rt::GameLoop>(std::move(images), !active_native_audio);
-            if (test_hold.armed()) test_hold.arm();
-            perf_log.sync([&] {
-                log.log("GPU25 audio engine: backend=%s clock=%s reference_sound_board=%d\n",
-                        active_native_audio ? "NATIVE_TEST" : "REFERENCE",
-                        active_native_audio ? "AUDIO_DEVICE_48000" : "GAME_FRAME", int(game->sound() != nullptr));
-            });
-            game->set_profile_clock(kProfile ? ticks_us : nullptr);
-            diag.game_started(*game);
-            load_nv("ioboard_eeprom.bin", game->board().io().eeprom);
-            if (settings.save_backup) load_nv("backup_ram.bin", game->board().backup_ram());
-#if DAYTONA_VITA_LINK
-            if (settings.link_enabled) {
-                link = std::make_unique<vita::TcpLink>(settings.link_port, settings.next_address(), settings.next_port);
-                if (!link->error().empty()) throw std::runtime_error("LINK: " + link->error());
-                game->board().set_link(link.get(), settings.link_sync);
-            }
-#endif
-            game->board().video().set_profile_clock(kProfile ? ticks_us : nullptr);
-            apply_mode();
-            apply_geometry();
-            controls = vita::Controls{};
-            apply_preferences();
-            // The menu chord, then the game's controls that are not its usual ones
-            // (the shift, hand brake, view and fighting buttons), with their buttons.
-            status = "START+SELECT MENU.";
-            {
-                const vita::Layout layout = game_layout();
-                for (int i = 0; i < layout.count; ++i) {
-                    const rt::Control c = layout.defs[i].control;
-                    if (c == rt::Control::Accelerate || c == rt::Control::Brake || c == rt::Control::Start ||
-                        c == rt::Control::Coin || c == rt::Control::SteerLeft || c == rt::Control::SteerRight ||
-                        c == rt::Control::Up || c == rt::Control::Down || c == rt::Control::Left || c == rt::Control::Right)
-                        continue;
-                    status += std::string(" ") + layout.defs[i].name + " " + vita::button_name(settings.bindings.button[int(c)]) + ".";
-                }
-            }
-            wait_release = true;
-            return true;
-        } catch (const std::exception &e) {
-            native_audio.close(); audio.pause(); game.reset(); link.reset();
-            status = e.what();
-            perf_log.sync([&] { log.fault("GPU25 start: %s\n", e.what()); });
-            return false;
+        if (!session.start(settings, test_hold)) { status = session.error(); return false; }
+        clock.reset();
+        controls = vita::Controls{};
+        apply_preferences();
+        // The menu chord, then the game's controls that are not its usual ones
+        // (the shift, hand brake, view and fighting buttons), with their buttons.
+        status = "START+SELECT MENU.";
+        const vita::Layout layout = game_layout();
+        for (int i = 0; i < layout.count; ++i) {
+            const rt::Control c = layout.defs[i].control;
+            if (c == rt::Control::Accelerate || c == rt::Control::Brake || c == rt::Control::Start ||
+                c == rt::Control::Coin || c == rt::Control::SteerLeft || c == rt::Control::SteerRight ||
+                c == rt::Control::Up || c == rt::Control::Down || c == rt::Control::Left || c == rt::Control::Right)
+                continue;
+            status += std::string(" ") + layout.defs[i].name + " " + vita::button_name(settings.bindings.button[int(c)]) + ".";
         }
+        wait_release = true;
+        return true;
     };
 
     while (running) {
@@ -601,7 +482,7 @@ int main(int, char **) {
         }
         if (!menu && !wait_release && vita::menu_chord(pad.buttons)) {
             menu = true; options = binds = false; selection = 0; capture = -1;
-            finish_sound();
+            sound_ok();
             audio.pause(); native_audio.pause(); save(); clock.reset(); wait_release = true;
         }
         if (menu && !wait_release) {
@@ -777,12 +658,12 @@ int main(int, char **) {
             } else {
                 if (pressed & vita::Up) selection = (selection + 4) % 5;
                 if (pressed & vita::Down) selection = (selection + 1) % 5;
-                if ((pressed & vita::Circle) && game) {
+                if ((pressed & vita::Circle) && session) {
                     menu = false; clock.reset(); wait_release = true;
                 } else if (pressed & vita::Cross) {
                     if (selection == 0) {
                         const bool same_rom = !settings.use_companion;
-                        if ((game && same_rom) || start_game()) { menu = false; clock.reset(); wait_release = true; }
+                        if ((session && same_rom) || start_game()) { menu = false; clock.reset(); wait_release = true; }
                     } else if (selection == 1) {
                         if (start_game()) { menu = false; clock.reset(); wait_release = true; }
                     } else if (selection == 2) {
@@ -799,65 +680,26 @@ int main(int, char **) {
 
         diag.input_done(now);
         bool simulated = false;
-        if (game && !menu) {
-            if (active_native_audio) native_audio.resume();
+        if (session && !menu) {
+            if (session.native_audio()) native_audio.resume();
             const int frames = clock.advance(elapsed);
             for (int n = 0; n < frames; ++n) {
-                const vita::Diagnostics::FrameStart frame_start = diag.frame_start(*game);
-                try {
-                    auto inputs = map_input(controls.sample(wait_release ? vita::Pad{} : pad));
-                    test_hold.apply(game->frames(), inputs.in0);
-                    auto next_sound = game->run_frame_sound_packet(inputs);
-                    diag.frame_done(*game, frame_start, diagnostic_ticks_us());
-                    const uint64_t sound_begin = diagnostic_ticks_us();
-                    if (active_native_audio) {
-                        // Only commands cross into audio. The callback sequences
-                        // and mixes continuously, not once per graphics frame.
-                        const auto bytes = game->board().take_sound_bytes();
-                        const auto health = native_audio.stats();
-                        if (health.unsupported && !native_effect_warned) {
-                            native_effect_warned = true;
-                            log.log("Native audio: unsupported effect omitted; playback continues\n");
-                        }
-                        if (health.failed || health.invalid) {
-                            char error[192];
-                            std::snprintf(error, sizeof error,
-                                "Native audio fault: callback=%u invalid=%u unsupported=%u. Reset with Reference audio.",
-                                health.failed, health.invalid, health.unsupported);
-                            throw std::runtime_error(error);
-                        }
-                        if (!native_audio.send(bytes.data(), bytes.size()))
-                            throw std::runtime_error("Native audio queue overflow; use Reference audio and reset");
-                    } else {
-                        // Reference backend retains the bounded sound pipeline.
-                        if (!finish_sound()) break;
-                        // The sound worker is idle until the dispatch below: the
-                        // MultiPCMs' music/effects balance changes between its frames.
-                        if (auto *sound = game->sound())
-                            sound->set_volumes(float(settings.music_volume) / 100.0f,
-                                               float(settings.effects_volume) / 100.0f);
-                        active_sound = std::move(next_sound);
-                        sound_worker.dispatch_packet(active_sound, audio, kProfile ? ticks_us : nullptr);
-                        sound_in_flight = true;
-                    }
-                    diag.sound_sync(sound_begin);
-                    simulated = true;
-                } catch (const std::exception &e) {
-                    // A board/dispatch failure must not destroy a sound board
-                    // still used by the previous job.
-                    finish_sound();
-                    status = e.what();
-                    perf_log.sync([&] { log.fault("GPU25 runtime: %s\n", e.what()); });
-                    menu = true; audio.pause(); native_audio.close(); active_sound = {}; game.reset(); break;
+                const rt::Inputs inputs = map_input(controls.sample(wait_release ? vita::Pad{} : pad));
+                if (!session.run_frame(inputs, test_hold, settings)) {
+                    status = session.error();
+                    menu = true;
+                    break;
                 }
+                simulated = true;
             }
         } else clock.reset();
 
-        if (link) link->poll();
+        session.poll_link();
         // A loop without a new emulated frame (the host is ahead of the board's 57.52 Hz
         // clock) draws nothing: the display keeps the last picture, which is the same
         // image, and the rendering time goes to the next emulated frame instead. Menus
         // and the loop that ran a frame draw as before.
+        rt::GameLoop *const game = session.game();
         const bool present = menu || !game || simulated;
         uint64_t gpu_begin = 0, gpu_ready = 0;
         if (present) {
@@ -868,15 +710,7 @@ int main(int, char **) {
             const uint64_t gfx_begun = diagnostic_ticks_us();
             if (menu) {
                 std::string shown_status = status;
-#if DAYTONA_VITA_LINK
-                if (link && game && !options) {
-                    const auto *comm = game->board().comm_board();
-                    shown_status += "\nIP " + link->local_ip() + " RX " + (link->rx_open() ? "YES" : "WAIT") +
-                        " TX " + (link->tx_open() ? "YES" : "WAIT");
-                    if (comm) shown_status += " CABINET " + std::to_string(comm->id()) + "/" +
-                        std::to_string(comm->count()) + (comm->link() == rt::CommBoard::Link::Lost ? " LOST" : "");
-                }
-#endif
+                if (!options) shown_status += session.link_status();
                 ui.frame(float(elapsed));
                 draw_menu(bool(game), options, binds, selection, capture, settings, shown_status, diag.display_fps());
                 ui.render();
@@ -886,17 +720,17 @@ int main(int, char **) {
             const uint64_t drawn = diagnostic_ticks_us();
             vita::gl_end_frame();
             const uint64_t gfx_ended = diagnostic_ticks_us();
-            diag.presented(gpu, {gpu_begin, gpu_ready, gfx_begun, drawn, gfx_ended, !menu && game});
+            diag.presented(gpu, {gpu_begin, gpu_ready, gfx_begun, drawn, gfx_ended, !menu && game != nullptr});
         }
         const vita::Diagnostics::LoopEnd loop_end{now, gpu_ready - gpu_begin, menu, menu_at_start, simulated,
-                                                  active_native_audio};
-        diag.loop_done(loop_end, game.get(), gpu, perf_log, native_audio);
+                                                  session.native_audio()};
+        diag.loop_done(loop_end, game, gpu, perf_log, native_audio);
         if (menu || !simulated) SDL_Delay(1);
-        diag.window_done(loop_end, game.get(), audio, native_audio, sound_worker);
+        diag.window_done(loop_end, game, audio, native_audio, session.worker());
     }
 
-    finish_sound();
-    sound_worker.close();
+    session.finish_sound();
+    session.close_worker();
     save();
     settings.save();
     native_audio.close();

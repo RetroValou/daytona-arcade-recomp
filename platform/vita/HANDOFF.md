@@ -1,5 +1,26 @@
 # Vita port handoff — 29 September 2026
 
+## The game being played in vita::Session — 17 October 2026
+
+frontend/session.h/.cpp: the board (GameLoop), the link, the sound worker
+and the packet in flight, as members in the order the old main() declared
+them (worker destroyed first, link last), so the destruction order is the
+class's and no longer depends on lines in main(). What the lambdas did,
+moved as it was: finish_sound (a fault stops the game, the message in
+error(); main's three-line sound_ok() shows the menu), save_nv, start (the
+ROM import, the audio engine, the board, NV memories, link, external 3D,
+the geometry thread: was start_game's try block, apply_mode and
+apply_geometry), stop (the drop before loading), release_all (before
+sceAppMgrLoadExec), run_frame (one board frame and its sound hand-off,
+native or reference, with the same fault handling), poll_link and
+link_status (the menu's line). main() keeps the ROM switch, the LOADING
+frame, the controls and the menu. Log lines unchanged; the sound worker's
+start line now comes after the periodic log worker's.
+main.cpp 913 -> 747 lines. Checks: VF2 VPK built, Daytona compile check
+(link in). To test on the console: start, reset, pause/resume (Start+
+Select), quit, a settings change, Daytona's ROM switch and link play, a
+native audio start (Daytona) and a board fault's return to the menu.
+
 ## Frontend measurements out of main() — 17 October 2026
 
 On the console (user): the VF2 VPK of cleanup batch 1 works.

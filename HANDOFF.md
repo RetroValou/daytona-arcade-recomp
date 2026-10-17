@@ -1,5 +1,10 @@
 # Handoff
 
+## Vita: the game being played in vita::Session (2026-10-17)
+
+Step 4b (platform/vita/HANDOFF.md). VF2 VPK built, Daytona compile check.
+Not run on the console.
+
 ## tests/ sorted by subject (2026-10-17)
 
 tests/ was 62 entries in one folder. Now: i960/, m68k/, runtime/{board,

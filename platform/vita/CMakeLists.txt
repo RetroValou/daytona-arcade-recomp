@@ -28,7 +28,7 @@ option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-deri
 # runtime's geo.h/.cpp replaced). Includes name them from here: "system/core_policy.h".
 set(VITA_RENDER_SOURCES render/renderer.cpp render/model2_textures.cpp render/model2_polygons.cpp
     render/layers_2d.cpp render/gl_context.cpp render/shaders.cpp render/draw_list.cpp render/ui_draw.cpp)
-set(VITA_FRONTEND_SOURCES frontend/main.cpp frontend/diagnostics.cpp frontend/settings.cpp frontend/storage.cpp
+set(VITA_FRONTEND_SOURCES frontend/main.cpp frontend/session.cpp frontend/diagnostics.cpp frontend/settings.cpp frontend/storage.cpp
     frontend/input.cpp
     ${VITA_RENDER_SOURCES})
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
@@ -75,7 +75,7 @@ endforeach()
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
 set_source_files_properties(${VITA_RENDER_SOURCES} PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${VITA_2D_CORE}")
-set_source_files_properties(frontend/main.cpp frontend/diagnostics.cpp PROPERTIES COMPILE_DEFINITIONS
+set_source_files_properties(frontend/main.cpp frontend/session.cpp frontend/diagnostics.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE};DAYTONA_VITA_LINK=$<BOOL:${DAYTONA_VITA_LINK}>")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build_daytona/recomp/daytona93/gen" CACHE PATH
     "Host-generated i960, TGP and 68000 C++ root (scripts/games.py gen_root: build_<game>/recomp/<set>/gen)")
