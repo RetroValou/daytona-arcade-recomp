@@ -144,7 +144,8 @@ void Scsp::render(float *stereo, int n) {
             m_RBUFDST = m_RINGBUF + m_BUFPTR;
             if (m_Slots[sl].active) {
                 SCSP_SLOT *slot = m_Slots + sl;
-                uint16_t Enc;
+                if (!slot->decoded) DecodeSlot(slot);
+                const SCSP_SLOT::Decoded &d = slot->dec;
 #ifdef M2_SOUND_PROFILE
                 ++prof.active_slots;
                 prof.plfo_slots += PLFOS(slot) != 0;
@@ -153,18 +154,15 @@ void Scsp::render(float *stereo, int n) {
                 prof.pcm8_slots += PCM8B(slot) != 0;
 #endif
 
-                int32_t sample = UpdateSlot(slot);
+                int32_t sample = d.plain ? UpdateSlotPlain(slot) : UpdateSlot(slot);
                 if (!unity_) sample = int32_t(float(sample) * (slot->effect ? effects_ : music_));
 
                 // SDIR bypasses the EG and the TL attenuator in both the DSP
-                // input feed and the direct-output mix (MAME's comment).
-                uint16_t eff_tl = SDIR(slot) ? 0 : TL(slot);
-                Enc = uint16_t((eff_tl << 0x0) | (IMXL(slot) << 0xd));
-                m_DSP.SetSample((sample * m_LPANTABLE[Enc]) >> (SHIFT - 2), ISEL(slot), IMXL(slot));
-                uint16_t dir_tl = SDIR(slot) ? 0 : TL(slot);
-                Enc = uint16_t((dir_tl << 0x0) | (DIPAN(slot) << 0x8) | (DISDL(slot) << 0xd));
-                smpl += (sample * m_LPANTABLE[Enc]) >> SHIFT;
-                smpr += (sample * m_RPANTABLE[Enc]) >> SHIFT;
+                // input feed and the direct-output mix (MAME's comment). The
+                // gains are the pan tables' entries DecodeSlot looked up.
+                m_DSP.SetSample((sample * d.dsp_gain) >> (SHIFT - 2), d.isel, d.imxl);
+                smpl += (sample * d.left_gain) >> SHIFT;
+                smpr += (sample * d.right_gain) >> SHIFT;
             }
             ++m_BUFPTR;
             m_BUFPTR &= 63;
@@ -332,7 +330,7 @@ void Scsp::Compute_EG(SCSP_SLOT *slot) {
     slot->EG.EGHOLD = uint8_t(EGHOLD(slot));
 }
 
-int Scsp::EG_Update(SCSP_SLOT *slot) {
+inline int Scsp::EG_Update(SCSP_SLOT *slot) {
     switch (slot->EG.state) {
     case SCSP_ATTACK:
         slot->EG.volume += slot->EG.AR;
@@ -655,6 +653,7 @@ void Scsp::w16(uint32_t addr, uint16_t val) {
         int slot = int(addr / 0x20);
         addr &= 0x1f;
         m_Slots[slot].udata.data[addr / 2] = val;
+        m_Slots[slot].decoded = false;
         UpdateSlotReg(slot, int(addr & 0x1f));
     } else if (addr < 0x600) {
         if (addr < 0x430) {
@@ -720,6 +719,115 @@ uint16_t Scsp::r16(uint32_t addr) {
             v = uint16_t(m_DSP.EXTS[(addr - 0xee0) / 2]);
     }
     return v;
+}
+
+// The slot registers render() and UpdateSlotPlain read on every sample, decoded
+// once per register write (MAME reads them through the macros each time; the same
+// values).
+void Scsp::DecodeSlot(SCSP_SLOT *slot) {
+    SCSP_SLOT::Decoded &d = slot->dec;
+    d.sa = uint32_t(SA(slot));
+    d.lsa = uint16_t(LSA(slot));
+    d.lea = uint16_t(LEA(slot));
+    d.lpctl = uint8_t(LPCTL(slot));
+    d.sbctl = uint8_t(SBCTL(slot));
+    d.isel = uint8_t(ISEL(slot));
+    d.imxl = uint8_t(IMXL(slot));
+    d.pcm8 = PCM8B(slot) != 0;
+    d.sdir = SDIR(slot) != 0;
+    d.stwinh = STWINH(slot) != 0;
+    d.lpslnk = LPSLNK(slot) != 0;
+    d.plain = SSCTL(slot) == 0 && PLFOS(slot) == 0 && ALFOS(slot) == 0 && MDL(slot) == 0 && MDXSL(slot) == 0 &&
+              MDYSL(slot) == 0;
+    const uint32_t tl = d.sdir ? 0 : TL(slot);
+    d.dsp_gain = m_LPANTABLE[uint16_t(tl | (IMXL(slot) << 0xd))];
+    const uint16_t direct = uint16_t(tl | (DIPAN(slot) << 0x8) | (DISDL(slot) << 0xd));
+    d.left_gain = m_LPANTABLE[direct];
+    d.right_gain = m_RPANTABLE[direct];
+    d.ring_gain = m_LPANTABLE[uint16_t(tl | (0x7 << 0xd))];
+    slot->decoded = true;
+}
+
+// UpdateSlot for the common slot (DecodeSlot's `plain`: SSCTL 0, no pitch or
+// amplitude LFO, no modulation): MAME's operations in MAME's order on the
+// decoded registers, without the cases that do not apply. The same samples
+// and the same slot state as UpdateSlot.
+inline int32_t Scsp::UpdateSlotPlain(SCSP_SLOT *slot) {
+    const SCSP_SLOT::Decoded &d = slot->dec;
+    const int step = int(slot->step);
+    const int32_t fpart = int32_t(slot->cur_addr & ((1 << SHIFT) - 1));
+    int32_t sample;
+    if (d.pcm8) { // 8 bit signed
+        const int8_t p1 = read_byte(d.sa + (slot->cur_addr >> SHIFT));
+        const int8_t p2 = read_byte(d.sa + (slot->nxt_addr >> SHIFT));
+        sample = (int(p1 << 8) * ((1 << SHIFT) - fpart) + int(p2 << 8) * fpart) >> SHIFT;
+    } else { // 16 bit signed
+        const int16_t p1 = read_word(d.sa + ((slot->cur_addr >> (SHIFT - 1)) & ~1u));
+        const int16_t p2 = read_word(d.sa + ((slot->nxt_addr >> (SHIFT - 1)) & ~1u));
+        sample = (int(p1) * ((1 << SHIFT) - fpart) + int(p2) * fpart) >> SHIFT;
+    }
+
+    if (d.sbctl & 0x1) sample ^= 0x7FFF;
+    if (d.sbctl & 0x2) sample = int16_t(sample ^ 0x8000);
+
+    if (slot->Backwards) slot->cur_addr -= uint32_t(step);
+    else slot->cur_addr += uint32_t(step);
+    slot->nxt_addr = slot->cur_addr + (1 << SHIFT);
+
+    const uint32_t lsa = d.lsa, lea = d.lea;
+    if ((slot->cur_addr >> SHIFT) >= lsa && !(slot->Backwards)) {
+        if (d.lpslnk && slot->EG.state == SCSP_ATTACK) slot->EG.state = SCSP_DECAY1;
+    }
+
+    // The loop end, for the current then the next address (MAME's addr_select loop).
+    const uint32_t addrs[2] = {slot->cur_addr >> SHIFT, slot->nxt_addr >> SHIFT};
+    uint32_t *const slot_addr[2] = {&slot->cur_addr, &slot->nxt_addr};
+    for (int i = 0; i < 2; ++i) {
+        const uint32_t a = addrs[i];
+        uint32_t &sa = *slot_addr[i];
+        int32_t rem_addr;
+        switch (d.lpctl) {
+        case 0: // no loop
+            if (a >= lsa && a >= lea) StopSlot(slot, 0);
+            break;
+        case 1: // normal loop
+            if (a >= lea) {
+                rem_addr = int32_t(sa - (lea << SHIFT));
+                sa = (lsa << SHIFT) + uint32_t(rem_addr);
+            }
+            break;
+        case 2: // reverse loop
+            if (a >= lsa && !(slot->Backwards)) {
+                rem_addr = int32_t(sa - (lsa << SHIFT));
+                sa = (lea << SHIFT) - uint32_t(rem_addr);
+                slot->Backwards = 1;
+            } else if ((a < lsa || (sa & 0x80000000)) && slot->Backwards) {
+                rem_addr = int32_t((lsa << SHIFT) - sa);
+                sa = (lea << SHIFT) - uint32_t(rem_addr);
+            }
+            break;
+        case 3: // ping-pong
+            if (a >= lea) { // reached end, reverse till start
+                rem_addr = int32_t(sa - (lea << SHIFT));
+                sa = (lea << SHIFT) - uint32_t(rem_addr);
+                slot->Backwards = 1;
+            } else if ((a < lsa || (sa & 0x80000000)) && slot->Backwards) { // reached start or negative
+                rem_addr = int32_t((lsa << SHIFT) - sa);
+                sa = (lsa << SHIFT) + uint32_t(rem_addr);
+                slot->Backwards = 0;
+            }
+            break;
+        }
+    }
+
+    if (!d.sdir) {
+        if (slot->EG.state == SCSP_ATTACK) sample = (sample * EG_Update(slot)) >> SHIFT;
+        else sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
+    }
+
+    if (!d.stwinh) *m_RBUFDST = int16_t((sample * d.ring_gain) >> (SHIFT + 1));
+
+    return sample;
 }
 
 int32_t Scsp::UpdateSlot(SCSP_SLOT *slot) {

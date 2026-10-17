@@ -1,5 +1,32 @@
 # Handoff
 
+## SCSP slots: registers decoded per write, a plain-slot path (2026-10-17)
+
+From the user's perf.log (extern/result_perf_vita/vf2/perf_sound.log, 30
+windows, attract then fights; first run of the slot probe 7af308c): the
+sound board is 5.5 ms a frame on the title screen, 13-15 ms in fights and
+16.4-17.2 ms in the busiest ones (windows 24, 25, 29: core 2 at 100-105 %,
+audio gaps, playback speed 97-98 %). Of it: 68000 3-4.3 ms (always 14,357
+instructions; ~700-1,000 SCSP register accesses), DSP 2.6 ms (flat), output
+mix 0.8 ms, and the slots, linear in the active voices: ~0.46 ms a frame
+per voice (0.6 us per voice and sample, ~265 cycles at 444 MHz), up to
+9.5 ms with 20.7 voices. VF2's voices are all 8-bit, none with a pitch or
+amplitude LFO or modulation.
+Change (scsp.h/.cpp, MAME's code otherwise; THIRD_PARTY.md updated):
+w16 marks the slot's registers changed; render() decodes them once
+(DecodeSlot: SA, LSA, LEA, LPCTL, SBCTL, PCM8B, SDIR, STWINH, LPSLNK, ISEL,
+IMXL, and the four pan-table gains: DSP send, left, right, ring buffer)
+instead of through the macros on every sample; a "plain" slot (SSCTL 0,
+no PLFO/ALFO, no modulation: all of VF2's) runs UpdateSlotPlain, MAME's
+UpdateSlot operations in MAME's order without the cases that do not apply;
+EG_Update and UpdateSlotPlain inlined into render().
+Checks: m2run vf2_fight 6,000 frames, vf2_attract 8,000, srallyc_race
+4,000, srallyc_attract 4,000: WAV md5 and every count identical to before;
+ctest 23/23 (VF2, Sega Rally). PC perf (perf record, vf2_fight 4,000
+frames, samples in render + UpdateSlot + EG_Update): 1,451 before, 1,206
+decoded, 916 inlined (-37 %). On the Vita, not measured yet: the macros
+cost more there than on x86; the next perf.log tells.
+
 ## src/runtime/rom/ renamed romset/ (2026-10-17)
 
 The "rom/" line of .gitignore (any folder named rom: a safety net for ROM

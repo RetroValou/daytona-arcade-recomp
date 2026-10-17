@@ -4,7 +4,8 @@
 // The Sega/Yamaha YMF292-F SCSP of the Model 2A/2B/2C sound board, and its
 // DSP: MAME's scsp_device and SCSPDSP (src/devices/sound/scsp.cpp,
 // scspdsp.cpp; BSD-3-Clause, notice kept), transplanted (THIRD_PARTY.md).
-// The sound computation is MAME's, line for line. What MAME's device
+// The sound computation is MAME's, line for line, except where noted
+// (DecodeSlot / UpdateSlotPlain: the same results, faster). What MAME's device
 // framework did is the host's (ScspHost): the 68000 interrupt lines, the
 // three timers (one-shot, in seconds of board time), the MIDI output, and
 // memory (the 512 KiB sound RAM it shares with the 68000, big-endian). The
@@ -186,6 +187,18 @@ private:
         int slot;
         int16_t Prev; // Previous sample (for interpolation)
         bool effect;  // keyed for a sound effect (set_volumes), else the music
+        // Not MAME's: the slot registers render() reads on every sample, decoded
+        // when they change (w16 sets `decoded` false), and the gains they select
+        // from the pan tables. `plain`: the common case UpdateSlotPlain renders
+        // (sound RAM data, no LFO, no modulation); otherwise MAME's UpdateSlot.
+        struct Decoded {
+            uint32_t sa;
+            uint16_t lsa, lea;
+            uint8_t lpctl, sbctl, isel, imxl;
+            bool pcm8, sdir, stwinh, lpslnk, plain;
+            int dsp_gain, left_gain, right_gain, ring_gain; // m_LPANTABLE / m_RPANTABLE entries
+        } dec;
+        bool decoded; // zeroed with the slots (Scsp's constructor): decoded at first use
     };
 
     ScspHost &host_;
@@ -257,7 +270,8 @@ private:
     int Get_AR(int base, int R);
     int Get_DR(int base, int R);
     void Compute_EG(SCSP_SLOT *slot);
-    int EG_Update(SCSP_SLOT *slot);
+    // Inlined into render()'s per-sample path (UpdateSlotPlain): a call per slot and sample.
+    [[gnu::always_inline]] inline int EG_Update(SCSP_SLOT *slot);
     uint32_t Step(SCSP_SLOT *slot);
     void Compute_LFO(SCSP_SLOT *slot);
     void StartSlot(SCSP_SLOT *slot);
@@ -269,6 +283,8 @@ private:
     void w16(uint32_t addr, uint16_t val);
     uint16_t r16(uint32_t addr);
     int32_t UpdateSlot(SCSP_SLOT *slot);
+    [[gnu::always_inline]] inline int32_t UpdateSlotPlain(SCSP_SLOT *slot);
+    void DecodeSlot(SCSP_SLOT *slot);
     void start_timer(int n, int reg);
 
     void LFO_Init();
