@@ -47,12 +47,12 @@ int main(int argc, char **argv) {
 
     // Out of range values and unknown keys.
     write(path, "cpu_clock=123\ngpu_clock=166\nvolume=250\ndeadzone=-3\nlink_port=0\nnext_ip0=999\n"
-                "aspect=9\nsteer_curve=-1\ndraw_distance=7\nfuture_option=1\nnot a line\n");
+                "aspect=2\nsteer_curve=-1\ndraw_distance=7\nfuture_option=1\nnot a line\n");
     vita::VitaSettings c;
     c.load(path.c_str());
     CHECK(c.cpu_clock == vita::kDefaultCpuClock && c.gpu_clock == 166); // not a menu choice: the default
     CHECK(c.volume == 100 && c.deadzone == 0 && c.link_port == 1 && c.next_ip[0] == 255);
-    CHECK(c.aspect == 3 && c.steer_curve == 0 && c.draw_distance == 2);
+    CHECK(c.steer_curve == 0 && c.draw_distance == 2); // aspect=: an old key, skipped
 
     std::remove(path.c_str());
     std::puts("vita settings: ok");

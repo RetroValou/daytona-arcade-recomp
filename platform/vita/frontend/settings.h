@@ -1,7 +1,8 @@
 #pragma once
 
 // The launcher's settings, saved in vita.cfg ("key=value" lines; keys a version does
-// not know are skipped, so files of older and newer versions both load).
+// not know are skipped, so files of older and newer versions both load: the aspect,
+// hud_edges and stretch_backdrop keys of the removed widescreen renderer are ignored).
 
 #include "frontend/input.h"
 #include "frontend/storage.h"
@@ -41,11 +42,10 @@ struct VitaSettings {
     // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85).
     int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
     int deadzone = 12;
-    int aspect = 0, draw_distance = 0, steer_curve = 0;
-    bool hud_edges = false;
+    int draw_distance = 0, steer_curve = 0;
 
     bool fourth_core = false;
-    bool stretch_backdrop = false, skip_launcher = false;
+    bool skip_launcher = false;
     // The game's battery-backed RAM (backup_ram.bin: records, bookkeeping, and the
     // coins not used yet, which a cabinet keeps through a power cut: with them a
     // game can start a race on its own at the next launch). Off: neither loaded

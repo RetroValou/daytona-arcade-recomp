@@ -34,7 +34,6 @@ void VitaSettings::sanitize() {
     music_volume = std::clamp(music_volume, 0, 100);
     effects_volume = std::clamp(effects_volume, 0, 100);
     deadzone = std::clamp(deadzone, 0, 40);
-    aspect = std::clamp(aspect, 0, 3);
     steer_curve = std::clamp(steer_curve, 0, 2);
     draw_distance = std::clamp(draw_distance, -2, 2);
     bindings.sanitize(game_layout());
@@ -55,13 +54,10 @@ void VitaSettings::load(const char *path) {
         else if (!std::strcmp(key, "next_ip1")) next_ip[1] = value;
         else if (!std::strcmp(key, "next_ip2")) next_ip[2] = value;
         else if (!std::strcmp(key, "next_ip3")) next_ip[3] = value;
-        else if (!std::strcmp(key, "stretch_backdrop")) stretch_backdrop = value != 0;
         else if (!std::strcmp(key, "skip_launcher")) skip_launcher = value != 0;
         else if (!std::strcmp(key, "save_backup")) save_backup = value != 0;
         else if (!std::strcmp(key, "steer_curve")) steer_curve = value;
-        else if (!std::strcmp(key, "aspect")) aspect = value;
         else if (!std::strcmp(key, "draw_distance")) draw_distance = value;
-        else if (!std::strcmp(key, "hud_edges")) hud_edges = value != 0;
         else if (!std::strcmp(key, "cpu_clock")) cpu_clock = value;
         else if (!std::strcmp(key, "gpu_clock")) gpu_clock = value;
         else if (!std::strcmp(key, "volume")) volume = value;
@@ -84,14 +80,13 @@ bool VitaSettings::save(const char *path) const {
     std::fprintf(f, "cpu_clock=%d\ngpu_clock=%d\nvolume=%d\nmute=%d\nnative_audio=%d\ndeadzone=%d\nsteer_invert=%d\n",
                  cpu_clock, gpu_clock, volume, int(mute), int(native_audio), deadzone, int(steer_invert));
     std::fprintf(f, "music_volume=%d\neffects_volume=%d\n", music_volume, effects_volume);
-    std::fprintf(f, "stretch_backdrop=%d\nskip_launcher=%d\nsave_backup=%d\n", int(stretch_backdrop), int(skip_launcher),
-                 int(save_backup));
+    std::fprintf(f, "skip_launcher=%d\nsave_backup=%d\n", int(skip_launcher), int(save_backup));
     std::fprintf(f, "fourth_core=%d\n", int(fourth_core));
     std::fprintf(f, "link_enabled=%d\nlink_sync=%d\nlink_port=%d\nnext_port=%d\n",
         int(link_enabled), int(link_sync), link_port, next_port);
     for (int i = 0; i < 4; ++i) std::fprintf(f, "next_ip%d=%d\n", i, next_ip[i]);
     std::fprintf(f, "steer_curve=%d\n", steer_curve);
-    std::fprintf(f, "aspect=%d\ndraw_distance=%d\nhud_edges=%d\n", aspect, draw_distance, int(hud_edges));
+    std::fprintf(f, "draw_distance=%d\n", draw_distance);
     for (int a = 0; a < ControlCount; ++a)
         if (bindings.button[a]) std::fprintf(f, "%s=%u\n", kBindKeys[a], unsigned(bindings.button[a]));
     bool ok = std::fflush(f) == 0;

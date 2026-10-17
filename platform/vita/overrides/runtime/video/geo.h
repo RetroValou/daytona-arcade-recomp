@@ -21,8 +21,8 @@
 //
 // Two modes, nothing in between:
 //   Sync       single core: the parse on the main core, the reference image
-//              (the CPU build, main.cpp, and the fallback without a thread).
-//   Pipelined  two cores (the GPU builds, frontend/main.cpp): shown list = the
+//              (the fallback when the geometry thread cannot be created).
+//   Pipelined  two cores (frontend/main.cpp): shown list = the
 //              previous parse; the parse of frame N overlaps the whole next game
 //              frame. Game-visible state is unchanged; the vitaGL renderer shows
 //              the 2D layers (HUD, sky tilemap) one frame late too, in phase.

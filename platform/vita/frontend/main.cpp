@@ -19,10 +19,8 @@
 #include "system/async_log.h"
 #include "system/core_policy.h"
 #include "system/core_profile.h"
-// The renderer: vitaGL (render/renderer.cpp), the only one since 2026-10-16 (the CPU
-// frontend main.cpp and the vita2d/GXM gpu_fast.cpp were removed).
+// The renderer: vitaGL (render/).
 #include "render/renderer.h"
-#include "render/text.h"
 #include "render/imgui_backend.h"
 #include "runtime/board/game_loop.h"
 #include "runtime/cpu/i960_profile.h"
@@ -84,21 +82,7 @@ using vita::VitaSettings;
 using vita::app_file, vita::load_nv, vita::save_nv, vita::kDirectory, vita::kRom;
 using vita::read_pad, vita::map_input, vita::game_layout;
 
-// ---- Graphics backend glue (vitaGL) ----
-using Renderer = vita::GpuGlRenderer;
-constexpr const char *kGfxApi = "VITAGL";
-constexpr const char *kRendererName = "VITAGL";
-// Widescreen (aspect, HUD at the edges, stretched backdrop) was drawn by the removed GXM
-// renderer only: the vitaGL renderer keeps the original 4:3 picture.
-constexpr bool kWidescreen = false;
-bool gfx_init(const char *&error) {
-    if (!vita::gl_init()) { error = vita::gl_error(); return false; }
-    return true;
-}
-void gfx_begin() { vita::gl_begin_frame(); }   // clears colour + depth
-void gfx_end() { vita::gl_end_frame(); }       // replays the draw list and swaps
-void gfx_idle() { glFinish(); }
-void gfx_fini() { vita::gl_fini(); }
+constexpr const char *kRendererName = "VITAGL"; // in the menu's title and the logs
 
 constexpr bool kDiagnostics = DAYTONA_VITA_DIAGNOSTICS != 0;
 // Every log file (vita-diag.log periodic lines, perf.log, gl.log) and the profiling
@@ -183,7 +167,7 @@ bool has_steering() {
 // The Options page's rows, in display order.
 enum Option {
     OptCpu, OptGpu, OptVolume, OptMute, OptMusic, OptEffects, OptDeadzone, OptInvert, OptAudioEngine, OptRom,
-    OptAspect, OptHud, OptDistance, OptSteerCurve, OptStretch, OptSkipLauncher, OptSaveBackup, OptFourthCore,
+    OptDistance, OptSteerCurve, OptSkipLauncher, OptSaveBackup, OptFourthCore,
     OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync,
     OptTestHold, OptDefaults, OptBack, kOptions
 };
@@ -195,8 +179,8 @@ bool rom_switch_packaged() {
     return packaged;
 }
 // Only the options that can change something in this build, for this game, are
-// listed: none fixed at build time (renderer, fullscreen), none the game or the
-// renderer has no use for (widescreen on vitaGL, the native audio engine without
+// listed: none fixed at build time (renderer, fullscreen), none the game has no
+// use for (the native audio engine without
 // the game's driver tables, the music and effects volumes when neither the native
 // engine nor the sound board can tell them apart, the draw distance without its hook,
 // link play without the communication board, the ROM switch without a second
@@ -211,7 +195,6 @@ bool option_available(Option o, const VitaSettings &s) {
     case OptMusic: case OptEffects: return (native && s.native_audio) || rt::has_music_effects(rt::game());
     case OptAudioEngine: return native;
     case OptRom: return rom_switch_packaged();
-    case OptAspect: case OptHud: case OptStretch: return kWidescreen;
     case OptDistance: return rt::game().draw_distance;
     case OptLink: return link_play();
     case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
@@ -233,7 +216,7 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
     ImGui::SetNextWindowSize({936, 520});
     ImGui::Begin(rt::game().title, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
     ImGui::Text("%s | %.1f FPS | CPU %d MHz | GPU %d MHz | %s",
-                rt::game().title, fps, scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency(), kGfxApi);
+                rt::game().title, fps, scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency(), kRendererName);
     if (ImGui::Button("Game")) { options = binds = false; selection = 0; }
     ImGui::SameLine();
     if (ImGui::Button("Options")) { options = true; binds = false; selection = 0; }
@@ -304,15 +287,12 @@ void draw_menu(bool have_game, bool &options, bool &binds, int &selection, int c
     static std::string rom;
     rom = rom_label(selected_game(settings.use_companion));
     values[OptRom]=rom.c_str();
-    static const char* aspects[] = {"ASPECT: ORIGINAL", "ASPECT: 16:10", "ASPECT: 16:9", "ASPECT: 21:9"};
     static const char* distances[] = {"DISTANCE: SHORTEST", "DISTANCE: SHORTER", "DISTANCE: DEFAULT", "DISTANCE: FURTHER", "DISTANCE: FURTHEST"};
-    values[OptAspect]=aspects[settings.aspect]; values[OptHud]=settings.hud_edges ? "HUD: SCREEN EDGES" : "HUD: CENTRED";
     values[OptDistance]=distances[settings.draw_distance + 2];
     values[OptTestHold]=test_hold.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF";
     values[OptDefaults]="RESET DEFAULTS"; values[OptBack]="BACK";
     values[OptFourthCore]=!settings.fourth_core ? "4TH CORE: OFF" :
         vita::fourth_core_active() ? "4TH CORE: ENABLED" : "4TH CORE: UNAVAILABLE (PLUGIN REQUIRED)";
-    values[OptStretch]=settings.stretch_backdrop ? "STRETCH TILE BACKGROUND: ON" : "STRETCH TILE BACKGROUND: OFF";
     values[OptSkipLauncher]=settings.skip_launcher ? "SKIP LAUNCHER: ON" : "SKIP LAUNCHER: OFF";
     values[OptSaveBackup]=settings.save_backup ? "SAVE RECORDS (BACKUP RAM): ON" : "SAVE RECORDS (BACKUP RAM): OFF";
     static const char* curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
@@ -346,7 +326,7 @@ int main(int, char **) {
     sceIoMkdir(kDirectory, 0777);
     vita::DiagnosticLog log(kDiagnostics);
     log.begin();
-    log.literal("GPU25: configurable clocks and GXM System24 fast path starting\n");
+    log.literal("GPU25: starting\n");
     void *heap_probe = std::malloc(1024);
     if (!heap_probe) { log.fault("GPU25: heap unavailable\n"); sceKernelExitProcess(1); }
     std::free(heap_probe);
@@ -389,32 +369,31 @@ int main(int, char **) {
         return 1;
     }
     log.literal("GPU25 stage: SDL init done; graphics init begin\n");
-    const char *gfx_error = "";
-    if (!gfx_init(gfx_error)) {
-        log.fault("GPU25: %s initialization failed: %s\n", kGfxApi, gfx_error);
+    if (!vita::gl_init()) {
+        log.fault("GPU25: %s initialization failed: %s\n", kRendererName, vita::gl_error());
         SDL_Quit();
         restore_clocks();
         return 1;
     }
-    log.literal("GPU25 stage: graphics init done; framebuffer textures begin\n");
+    log.literal("GPU25 stage: graphics init done; renderer textures begin\n");
     sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
     vita::ImGuiVita ui;
     if (!ui.init()) {
         log.fault("ImGui font texture allocation failed\n");
-        gfx_fini(); SDL_Quit(); restore_clocks(); return 1;
+        vita::gl_fini(); SDL_Quit(); restore_clocks(); return 1;
     }
 
-    Renderer gpu;
+    vita::GpuGlRenderer gpu;
     if (!gpu.ok()) {
-        log.fault("GPU25: framebuffer texture allocation failed\n");
-        gpu.shutdown(); ui.shutdown(); gfx_fini(); SDL_Quit(); restore_clocks(); return 1;
+        log.fault("GPU25: renderer texture allocation failed\n");
+        gpu.shutdown(); ui.shutdown(); vita::gl_fini(); SDL_Quit(); restore_clocks(); return 1;
     }
     if (gpu.worker_2d_threaded())
         log.log("GPU25 2D worker: thread on core %d\n", gpu.worker_2d_core());
     else
         log.fault("GPU25 2D worker: thread unavailable (result=%d), 2D prepared on the main core\n",
                   gpu.worker_2d_result());
-    log.log("GPU25 stage: GPU texture arenas ready: reserved_mb=%.2f; audio begin\n", double(gpu.reserved_bytes()) / (1024.0 * 1024.0));
+    log.literal("GPU25 stage: renderer ready; audio begin\n");
     vita::Audio audio;
     vita::NativeAudio<snd::NativeSoundEngine> native_audio;
     bool active_native_audio = false;
@@ -564,12 +543,6 @@ int main(int, char **) {
         controls.set_layout(game_layout());
         controls.set_bindings(settings.bindings);
         rt::GameLoop::set_draw_distance(settings.draw_distance);
-        if (game) {
-            static constexpr double aspects[] = {0, 16.0/10, 16.0/9, 21.0/9};
-            game->set_aspect(kWidescreen ? aspects[settings.aspect] : 0);
-            game->set_hud_edges(kWidescreen && settings.hud_edges);
-            game->set_stretch_backdrop(kWidescreen && settings.stretch_backdrop);
-        }
     };
     auto commit_settings = [&](bool set_clocks) {
         if (!finish_sound()) return;
@@ -609,10 +582,6 @@ int main(int, char **) {
             // The GPU draws the 3D and the System 24 layers (the only Vita mode: the
             // pipelined geometrizer leaves no exact CPU picture to switch to).
             game->board().video().set_external_3d(true);
-            // Hardware reports show the wide GPU tile path slower overall.
-            // Keep original-aspect GPU tiles; use CPU wide layers until total
-            // device frame time, not CPU composition alone, justifies it.
-            game->board().video().set_gpu_background(false);
         }
         gpu.reset_materials();
         clock.reset();
@@ -652,7 +621,7 @@ int main(int, char **) {
             settings.save();
             native_audio.close(); audio.close(); sound_worker.close();
             game.reset(); link.reset();
-            gfx_idle();
+            glFinish();
             sceGxmDisplayQueueFinish();
             const int rc = sceAppMgrLoadExec(executable.c_str(), nullptr, nullptr);
             status = "ROM SWITCH FAILED: " + std::to_string(rc);
@@ -666,13 +635,13 @@ int main(int, char **) {
         gpu.reset_materials();
         status = std::string("LOADING ") + M2_ROMSET + "...";
         gpu.prepare_frame();
-        gfx_begin();
+        vita::gl_begin_frame();
         ui.frame(1.f / 60);
         ImGui::SetNextWindowPos({24, 24}); ImGui::SetNextWindowSize({912, 496});
         ImGui::Begin("Starting", nullptr, ImGuiWindowFlags_NoDecoration);
         ImGui::TextWrapped("%s", status.c_str());
         ImGui::End(); ui.render();
-        gfx_end();
+        vita::gl_end_frame();
         try {
             if (DAYTONA_VITA_LINK && settings.link_enabled && !rt::game().link)
                 throw std::runtime_error(std::string("LINK PLAY: ") + rt::game().set +
@@ -872,12 +841,6 @@ int main(int, char **) {
                             status = "ROM SELECTED. CHOOSE START/RESET TO SWITCH. SAVES ARE SEPARATE.";
                         }
                         break;
-                    case OptAspect:
-                        if (step) { settings.aspect = (settings.aspect + (direction < 0 ? 3 : 1)) % 4; changed = true; }
-                        break;
-                    case OptHud:
-                        if (step) { settings.hud_edges = !settings.hud_edges; changed = true; }
-                        break;
                     case OptDistance:
                         if (step) {
                             settings.draw_distance = std::clamp(settings.draw_distance + (direction < 0 ? -1 : 1), -2, 2);
@@ -886,9 +849,6 @@ int main(int, char **) {
                         break;
                     case OptSteerCurve:
                         if (step) { settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true; }
-                        break;
-                    case OptStretch:
-                        if (step) { settings.stretch_backdrop = !settings.stretch_backdrop; changed = true; }
                         break;
                     case OptSkipLauncher:
                         if (step) { settings.skip_launcher = !settings.skip_launcher; changed = true; }
@@ -1121,7 +1081,7 @@ int main(int, char **) {
             gpu_begin = diagnostic_ticks_us();
             gpu.prepare_frame();
             gpu_ready = diagnostic_ticks_us();
-            gfx_begin();
+            vita::gl_begin_frame();
             const uint64_t gfx_begun = diagnostic_ticks_us();
             if (menu) {
                 std::string shown_status = status;
@@ -1141,7 +1101,7 @@ int main(int, char **) {
                 gpu.draw(game->board().video()); // System 24 layers + polygons on the GPU (the only case)
             }
             const uint64_t drawn = diagnostic_ticks_us();
-            gfx_end();
+            vita::gl_end_frame();
             const uint64_t gfx_ended = diagnostic_ticks_us();
             if constexpr (kPerfLog) {
                 using P = vita::CoreProfiler;
@@ -1221,7 +1181,7 @@ int main(int, char **) {
                 const auto log_stats = perf_log.stats();
                 const auto native_stats = native_audio.stats();
                 const uint64_t log_begin = ticks_us();
-                perf_log.try_log("gpu25: mode=%s menu=%d frames=%u presents=%u window_ms=%.2f log_enqueue_prev_ms=%.2f log_write_prev_ms=%.2f log_write_peak_ms=%.2f log_drops=%u log_failures=%u sound_frames=%u frame_peak_ms=%.2f sim_fps=%.2f run_ms=%.2f core_ms=%.2f geo_ms=%.2f video_ms=%.2f sound_ms=%.2f gpu_submit_ms=%.2f gpu_encode_ms=%.2f gpu_wait_ms=%.2f sound_wait_ms=%.2f audio_worker_queue_ms=%.2f sort_ms=%.2f poly_ms=%.2f tiles_ms=%.2f upload_ms=%.2f cpu_mhz=%d gpu_mhz=%d cpu_raster_ms=%.2f tile_cache_ms=%.2f tile_draw_ms=%.2f compose_ms=%.2f layers=%u tiles=%u chars=%u materials=%u sources=%u builds=%u defers=%u cache_mb=%.2f cache_reserved_mb=%.2f pool_free_kb=%u pool_drops=%u material_drops=%u subdiv_polys=%u vertices=%u tile_uploads=%u cache_resets=%u tile_quads=%u draws=%u/%u clips=%u polys=%u/%u shader_setups=%u state_reuses=%u draw_errors=%u checker_polys=%u textured_checker_polys=%u sys24_ctrl=%04x/%04x audio=%s native_frames=%u native_last_ms=%.3f native_peak_ms=%.3f native_queue=%u native_overflows=%u native_failed=%u native_unsupported=%u native_invalid=%u native_notes=%u native_voices=%u\n",
+                perf_log.try_log("gpu25: mode=%s menu=%d frames=%u presents=%u window_ms=%.2f log_enqueue_prev_ms=%.2f log_write_prev_ms=%.2f log_write_peak_ms=%.2f log_drops=%u log_failures=%u sound_frames=%u frame_peak_ms=%.2f sim_fps=%.2f run_ms=%.2f core_ms=%.2f geo_ms=%.2f video_ms=%.2f sound_ms=%.2f gpu_submit_ms=%.2f gpu_encode_ms=%.2f gpu_wait_ms=%.2f sound_wait_ms=%.2f audio_worker_queue_ms=%.2f sort_ms=%.2f poly_ms=%.2f tiles_ms=%.2f upload_ms=%.2f cpu_mhz=%d gpu_mhz=%d cpu_raster_ms=%.2f tile_cache_ms=%.2f tile_draw_ms=%.2f compose_ms=%.2f layers=%u tiles=%u chars=%u materials=%u sources=%u builds=%u defers=%u cache_mb=%.2f material_drops=%u vertices=%u tile_uploads=%u cache_resets=%u tile_quads=%u clips=%u polys=%u/%u checker_polys=%u textured_checker_polys=%u sys24_ctrl=%04x/%04x audio=%s native_frames=%u native_last_ms=%.3f native_peak_ms=%.3f native_queue=%u native_overflows=%u native_failed=%u native_unsupported=%u native_invalid=%u native_notes=%u native_voices=%u\n",
                         kRendererName, int(menu), unsigned(perf_frames), unsigned(perf_presents),
                         sec * 1000.0, double(previous_log_us) / 1000.0,
                         double(log_stats.last_write_ticks) / 1000.0, double(log_stats.max_write_ticks) / 1000.0,
@@ -1235,7 +1195,7 @@ int main(int, char **) {
                         double(vp.raster)/1000.0, double(vp.tile_cache)/1000.0, double(vp.tile_draw)/1000.0,
                         double(vp.composite)/1000.0, unsigned(vp.layers_rebuilt), vp.tiles_rebuilt, vp.characters_changed,
                         unsigned(gpu.cached_materials()), unsigned(gpu.cached_sources()), gpu.material_builds(), gpu.material_defers(), double(gpu.cached_bytes())/(1024.0*1024.0),
-                        double(gpu.reserved_bytes())/(1024.0*1024.0), gpu.min_pool_free()/1024u, gpu.pool_drops(), gpu.material_drops(), gpu.subdivided_polys(), unsigned(gpu.submitted_vertices()), gpu.system24_uploaded_tiles(), gpu.cache_resets(), gpu.system24_quads(), gpu.textured_draws(), gpu.solid_draws(), gpu.clip_changes(), gpu.textured_polys(), gpu.solid_polys(), gpu.shader_setups(), gpu.state_reuses(), gpu.draw_errors(), gpu.checker_polys(), gpu.textured_checker_polys(),
+                        gpu.material_drops(), unsigned(gpu.submitted_vertices()), gpu.system24_uploaded_tiles(), gpu.cache_resets(), gpu.system24_quads(), gpu.clip_changes(), gpu.textured_polys(), gpu.solid_polys(), gpu.checker_polys(), gpu.textured_checker_polys(),
                         unsigned(game->board().video().system24_word(0x5004)),
                         unsigned(game->board().video().system24_word(0x5006)),
                         active_native_audio ? "NATIVE_TEST" : "REFERENCE", native_stats.frames,
@@ -1351,7 +1311,7 @@ int main(int, char **) {
     gpu.shutdown();
     ui.shutdown();
     restore_clocks();
-    gfx_fini();
+    vita::gl_fini();
     perf_log.close(); // join file I/O before destroying SDL synchronization
     perf_file.close();
     SDL_Quit();

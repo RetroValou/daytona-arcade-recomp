@@ -1,7 +1,7 @@
 #pragma once
 
-// The Vita's renderer: vitaGL (the only one; the libvita2d/GXM renderer and the CPU
-// frontend were removed on 2026-10-16).
+// The Vita's renderer, on vitaGL: what frontend/main.cpp calls (the design is
+// described at the top of render/renderer.cpp).
 
 #include "runtime/video/video.h"
 #include "render/flat_index.h"
@@ -19,7 +19,7 @@
 #include <psp2/kernel/processmgr.h>
 #include <vitaGL.h>
 
-// RGBA8 packing (libvita2d's macro): bytes in memory are r, g, b, a.
+// RGBA8 packing: bytes in memory are r, g, b, a.
 #ifndef RGBA8
 #define RGBA8(r, g, b, a) ((((a) & 0xFF) << 24) | (((b) & 0xFF) << 16) | (((g) & 0xFF) << 8) | (((r) & 0xFF) << 0))
 #endif
@@ -32,7 +32,6 @@ const char *gl_error();      // last init error, empty when none
 void gl_begin_frame();       // clear the screen and the recorded draw list
 void gl_end_frame();         // draw everything recorded since gl_begin_frame() and swap
 void gl_fini();              // release shaders/buffers
-void gl_fill_rect(float x, float y, float w, float h, uint32_t rgba); // display pixels (960x544)
 
 // ImGui menu (render/imgui_backend.h): an RGBA texture (linear, clamped) and textured triangles in
 // display pixels, vertex colour bytes r, g, b, a, alpha blended, drawn in recording order
@@ -65,7 +64,7 @@ uint64_t gl_last_diagnostic_us();
 class GpuGlRenderer {
 public:
     GpuGlRenderer();
-    ~GpuGlRenderer(); // stops the 2D worker; main_gpu calls shutdown() before gl_fini()
+    ~GpuGlRenderer(); // stops the 2D worker; frontend/main.cpp calls shutdown() before gl_fini()
     GpuGlRenderer(const GpuGlRenderer &) = delete;
     GpuGlRenderer &operator=(const GpuGlRenderer &) = delete;
 
@@ -99,7 +98,6 @@ public:
     std::size_t cached_bytes() const { return cached_bytes_; }
     std::size_t cached_materials() const { return palette_index_.size(); } // palette rows
     std::size_t cached_sources() const { return sources_.size(); }         // index textures
-    std::size_t reserved_bytes() const { return 0; }
     unsigned cache_resets() const { return cache_resets_; }
     unsigned material_drops() const { return material_drops_; }
     unsigned material_builds() const { return material_builds_; }
@@ -112,15 +110,6 @@ public:
     unsigned checker_polys() const { return checker_polys_; }
     unsigned textured_checker_polys() const { return textured_checker_polys_; }
     unsigned clip_changes() const { return clip_changes_; }
-    // Not tracked by this backend.
-    unsigned pool_drops() const { return 0; }
-    unsigned subdivided_polys() const { return 0; }
-    unsigned min_pool_free() const { return 0; }
-    unsigned textured_draws() const { return 0; }
-    unsigned solid_draws() const { return 0; }
-    unsigned shader_setups() const { return 0; }
-    unsigned state_reuses() const { return 0; }
-    unsigned draw_errors() const { return 0; }
 
 private:
     // Model 2 textures are 4-bit texel indices; the colour comes from a palette chosen per

@@ -22,8 +22,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Wextra -fno-fast-math -ffp-contract=off -ffunction-sections -fdata-sections)
 
 option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-derived code; produces no VPK" OFF)
-# The renderer is vitaGL (render/renderer.cpp), the only one: the CPU frontend and
-# the vita2d/GXM renderer were removed on 2026-10-16.
+# The renderer is vitaGL (render/).
 # Sources by role: frontend/ (main loop, launcher, controls), render/ (vitaGL),
 # audio/, system/ (cores, profiling, logs), net/ (link), overrides/ (the shared
 # runtime's geo.h/.cpp replaced). Includes name them from here: "system/core_policy.h".
@@ -70,7 +69,7 @@ foreach(role MAIN GEO SOUND 2D)
         set(VITA_${role}_CORE ${DAYTONA_VITA_${role}_CORE})
     endif()
 endforeach()
-# Keep the switch frontend-only; audio/render/game code is identical in both builds.
+# Frontend and renderer only: the runtime and the game code are the same with or without it.
 # DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
 set_source_files_properties(${VITA_RENDER_SOURCES} PROPERTIES COMPILE_DEFINITIONS

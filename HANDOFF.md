@@ -1,5 +1,18 @@
 # Handoff
 
+## Vita cleanup, batch 1: dead widescreen and renderer leftovers (2026-10-17)
+
+Code the vitaGL-only build no longer reaches, removed (platform/vita/
+HANDOFF.md has the list): the widescreen options and settings (kWidescreen
+was false), the always-zero renderer counters and their perf fields,
+render/text.h (the pre-ImGui font, unused), the gfx_* wrappers,
+docs/history/. README.md rewritten for the current port.
+Correction of the link play entry below: the communication board is
+Revision A's (src/games/daytona.cpp: set "daytona" has .link = true), not
+daytona93's; that entry and the Vita README said the opposite.
+Checks: VF2 VPK built, Daytona compile check, Vita host tests 15/15,
+Python tests. Not run on the console.
+
 ## src/runtime sorted by subsystem (2026-10-17)
 
 64 files moved with git mv into board/, cpu/, tgp/, video/, sound/

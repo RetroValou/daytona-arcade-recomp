@@ -12,7 +12,7 @@ namespace vita {
 // has its own application core: main 0, geometry 1, sound board and vitaGL 2D
 // worker 2 (DAYTONA_VITA_*_CORE). scripts/build_vita.py --free-core leaves
 // them all unpinned (-1): they then follow core_mask below, so the optional
-// fourth core can take any of them. In both builds the SDL audio callbacks
+// fourth core can take any of them. Pinned or not, the SDL audio callbacks
 // follow core_mask.
 constexpr int core_pin_mask(int core) {
 #ifdef __vita__

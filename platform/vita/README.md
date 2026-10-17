@@ -1,4 +1,10 @@
-# Native PS Vita target (experimental)
+# PS Vita port
+
+A native Vita application (VitaSDK, SDL2 for input and audio, vitaGL for the GPU),
+**not a PSP/Adrenaline build**. The i960, TGP and 68000 programs are recompiled on
+the host from your ROM set, as for the desktop build; nothing is interpreted on the
+Vita. One package per game: Daytona USA (`DAYT00093`), Sega Rally Championship
+(`SRAL00094`), Virtua Fighter 2 (`VFTR00095`), installable side by side.
 
 ## Source layout
 
@@ -10,291 +16,80 @@ render/     vitaGL renderer: renderer.h (the frontend's API), renderer.cpp (set-
             frame entry), model2_textures, model2_polygons, layers_2d (the System 24
             worker), gl_context (vitaGL, frame API, gl.log), shaders, draw_list,
             ui_draw (the menu's triangles), gl_internal.h (what they share); the
-            ImGui backend, text, and pure helpers (texel/flat index, polygon order,
+            ImGui backend and pure helpers (texel/flat index, polygon order,
             System 24 upload)
 audio/      reference and native audio output, the sound worker, rate conversion
 system/     core placement, per-core profiling, logs
-net/        LAN link (link.h)
-overrides/  runtime/video/geo.h/.cpp: replace the shared runtime's geometrizer (first on
-            the include path; the original is compiled unchanged inside)
-docs/       performance, optimization and diagnostics notes; history/: closed work
+net/        LAN link (link.h), compiled in only where it was tested (Daytona)
+overrides/  runtime/video/geo.h/.cpp: replace the shared runtime's geometrizer (first
+            on the include path; the original is compiled unchanged inside)
+docs/       performance, optimization and diagnostics notes
 ```
 
-Headers are included from this folder: `#include "system/core_policy.h"`
-(CMake and the host tests add `platform/vita` to the include path).
-
-## ImGui launcher (01.24)
-
-Options also includes **Hold Test button**: enable it, then Start/Resume.
-It waits for the game to accept inputs, holds Test for three game seconds,
-then clears itself. This request is not saved. Existing Test/Service chords
-remain available; Reset Defaults cancels a pending hold.
-
-The GXM build now uses Dear ImGui for its launcher, options and loading screen.
-D-pad navigates, Cross activates, Left/Right changes the highlighted setting,
-and Circle goes back/resumes. Front touch selects rows, arrow buttons and the
-scrollbar. Start+Select still opens the menu during play. The existing clocks,
-ROM selector, link configuration, steering curves and display/audio options
-retain their saved vita.cfg values. Both ROM executables use the new UI.
-
-ImGui draws through vitaGL (the frame's draw list) only while the menu is
-visible. No SDL3 renderer, extra display-buffer mode or game-renderer switch
-was introduced. Wide GPU tiles remain disabled following the earlier hardware
-slowdown. Host contract tests do not establish appearance or speed on a Vita.
-
-This is a VitaSDK/SDL2 frontend for the existing native runtime. It is a
-native Vita application, **not a PSP/Adrenaline build**. The i960, TGP and
-68000 programs still come from the host recompilation pipeline. No
-interpreter, replacement game logic, ROM bytes or generated code is added.
-
-The desktop SDL3/SDL_GPU application and root CMake build are unchanged.
-The Vita frontend uploads the existing 496x384 software-composited screen
-through SDL2's Vita renderer. This does **not** move the Model 2 rasterizer
-onto the Vita GPU. Tested on a real Vita (2026-10-06): it plays with no
-issues reported. Performance, memory headroom and full-race parity figures
-are not recorded yet.
-
-## Multicore flow
-
-The renderer is vitaGL (`frontend/main.cpp` + `render/renderer.cpp`), the only one: the vita2d/GXM
-renderer (`--gpu-fast`) and the CPU frontend (`main.cpp`) were removed on 2026-10-16,
-and `--gpu-gl` with them (no flag needed). One multicore flow. The Vita has three
-application cores (0-2) and a fourth, system core (3) that a core-unlock plugin can open.
-
-| core (default) | thread | work |
-|---|---|---|
-| 0 | main | input and menu; the i960 game code; the TGP (run synchronously by the i960, no thread of its own); at vblank start, a copy of the display list RAM (128 KiB) handed to the geometry thread; at vblank end, the System 24 tile update (`Video::screen_update`); the sound hand-off; then the GPU frame: polygon priority sort, materials/textures, vertices, submission and swap |
-| 1 | geometry | the display list parse (the MAME geometrizer, unmodified: transforms, clipping, lighting) of the frame the main core just finished |
-| 2 | sound worker | the reference sound board of the frame just finished: 68000 program, two MultiPCM, YM3438, resampling into the output queue |
-| 2 | 2D worker (vitaGL only) | System 24 tile and palette uploads into the second texture set, layer rectangles (scroll, split screen, windows) |
-| any | SDL audio callbacks | mixing the queued samples to the device (reference engine), or the whole native sound engine when it is selected (no sound worker then) |
-
-The GPU (SGX543) draws on its own; core 0 only records and submits.
-
-How one emulated frame N overlaps (each worker is joined before its data is touched again):
-
-* core 0 runs frame N's game logic while core 1 parses frame N-1's display list and
-  core 2 runs frame N-1's sound board;
-* at vblank start of frame N the display list is copied and core 1 starts parsing it
-  (the previous parse, normally finished long ago, becomes the shown list);
-* after frame N, core 0 joins the sound worker (frame N-1's packet) and gives it
-  frame N's sound packet: one packet in flight at most;
-* core 0 then records the picture: the polygons of frame N-1 with, in vitaGL, the 2D
-  of frame N-1 (the 2D worker prepares frame N's into the other texture set in
-  parallel and is joined at the end of `draw()`).
-
-Load, verified with `--diagnostics` (`perf.log`, one report per 5 s of gameplay, per core:
-busy %, ms per frame, worst frame; `core_profile.h`, details in
-[GEO_ASYNC.md](docs/GEO_ASYNC.md)). Core 0 is the limit: about 16 ms of the 17.4 ms frame
-in a race with vitaGL (estimates in [PERFORMANCE.md](docs/PERFORMANCE.md)). Core 2 comes next
-with vitaGL (sound board + 2D worker, about 15 ms); the geometry parse leaves core 1 the
-most room. `--free-core` lets the scheduler, and the fourth core, use that room.
-
-* **3D one frame late.** The geometrizer parses frame N while the game runs frame N+1,
-  so the polygons shown are the previous frame's. This is fixed, not an option; there is
-  no CPU/GPU picture switch any more (the pipelined geometry leaves no exact CPU picture
-  to switch to).
-  * vitaGL shows the previous frame's 2D layers with them (two sets of layer textures,
-    `GpuGlRenderer::S24Slot`, prepared by the 2D worker): the exact picture, one frame
-    late.
-* **Cores.** By default each thread above is pinned to its core. `build_vita.py
-  --free-core` (CMake `DAYTONA_VITA_FREE_CORES`) leaves them all unpinned, as the
-  earlier GXM build did: they then follow the **4TH CORE** option (`core_policy.h`), so
-  with a core-unlock plugin any of them can run on the fourth core. In the default
-  pinned build the option opens the fourth core to the SDL audio callbacks only.
-  Single cores can also be moved with `DAYTONA_VITA_{MAIN,GEO,SOUND,2D}_CORE`.
-* **CPU 500 MHz** and the fourth core are the options described below, in both builds.
-* **Emulated sound (reference engine).** `audio.h` + `audio_rate.h`: a 64 ms cushion kept
-  by a slight resampling speed change instead of crackles when a frame is late, one short
-  silent gap after an underrun, and silent FM not queued. The board's samples are queued
-  at its own rate and converted once, in the callback (cubic interpolation, rate and speed
-  together): no SDL_AudioStream. The native engine is unchanged.
-* **Widescreen** (aspect, HUD at the edges, stretched backdrop) is drawn by the GXM build
-  only for now; the vitaGL build keeps the original 4:3 picture and shows those options
-  as GXM-only.
-* **Game code options** (both builds): `--fast-inaccuracy` (i960 lockstep checks per
-  block + direct work-RAM accesses, TGP counted per block; the fastest) or `--fast-gen`
-  (the Dreamcast's `scripts/fast_gen.py` pass, exact), made from the
-  host tools into `BUILD_DIR/gen_vita`; the shared runtime's fast paths
-  (`src/runtime/board/fast_paths.h`) are on unless `--no-fast-paths`; `--release` adds link-time optimization and
-  drops the logs; `--diagnostics` writes `vita-diag.log`, `perf.log` (per-core report,
-  `core_profile.h`) and, with vitaGL, `gl.log`.
-
-```sh
-python3 scripts/build_vita.py --release --fast-inaccuracy                 # pinned cores
-python3 scripts/build_vita.py --release --fast-inaccuracy --free-core
-```
-
-The home-screen name is the game's (`vita_name` in `scripts/games.py`) for every
-build option. Icon and LiveArea images, per game: put `icon0.png` (128x128),
-`bg.png` (840x500), `startup.png` (280x158) and optionally `template.xml` in
-`platform/vita/logo_livearea/<game>/` (`daytona/`, `segarally/`; 8-bit indexed
-PNGs; see the README there). Each file present is packaged, a missing one keeps the Vita's
-default; the build summary lists them. They are not committed.
+Headers are included from this folder: `#include "system/core_policy.h"` (CMake and
+the host tests add `platform/vita` to the include path).
 
 ## Build
 
-### Optional GXM CPU enhancements
-
-The GXM frontend options offer CPU 500 MHz and fourth-core scheduling.
-Both require compatible firmware/plugin support; no plugins are installed
-by the game. Defaults: CPU 444 MHz / GPU 166 MHz, fourth core off (a saved choice wins; RESET DEFAULTS
-in the options goes back to them).
-The CPU option shows actual frequency, and unsuccessful 500 MHz requests
-fall back to requesting 444 MHz. Check your overclock plugin's per-game
-profile if the actual frequency differs from the selection.
-Fourth-core access is verified through thread affinity readback. Rejected
-requests retain ordinary three-core scheduling and show unavailable.
-Game and audio threads may use the extra core; this does not split sequential
-game logic into additional workers or guarantee higher FPS. (Default GPU builds pin
-the game, geometry and sound threads to cores 0-2: there the fourth core takes the
-audio callbacks only; build with `--free-core` to let every thread use it.)
-
-Use a homebrew-enabled Vita, a host C++20 toolchain and VitaSDK with its
-SDL2 development package. Reference SDK release: 2026.08. Set `VITASDK`
-and install the package with that release's package manager:
+Needs a host C++20 toolchain, VitaSDK (reference release 2026.08) with its SDL2
+package, and vitaGL built inside the project:
 
 ```sh
 export VITASDK=/usr/local/vitasdk
 export PATH="$VITASDK/bin:$PATH"
 vdpm install sdl2
+python3 scripts/setup_vitagl.py          # once; again after a pin or flag change
+python3 scripts/setup.py                 # host tools; recompiles the game if roms/<set>.zip exists
+python3 scripts/build_vita.py --game GAME --fast-inaccuracy
 ```
 
-Follow the SDK's installation documentation at https://vitasdk.org/ for a
-new SDK install. No proprietary SDK or runtime module is required by this
-frontend. The vitaGL renderer also needs `python3 scripts/setup_vitagl.py` once: it builds a pinned
-vitaGL inside the project (see "vitaGL: pinned build and flags" below).
-
-From the repository root, prepare the host build using your own complete
-`daytona93` ROM set in `roms/daytona93.zip` (or `.7z`):
-
-```sh
-python3 scripts/setup.py
-# After changing the seeds/recompilers, regenerate with the HOST compiler:
-python3 scripts/recompile.py --game GAME
-# Build a separate ARM executable and installable package:
-python3 scripts/build_vita.py --game GAME
-```
-
-`GAME` is the game's name in `scripts/games.py` (`daytona`, the default, or
-`segarally`). `setup.py` already recompiles when the ROM set is present. The
-explicit `recompile.py` command is only necessary after changes or when adding
-the ROM set later. Everything a game makes stays in its folder:
+`GAME` is `daytona` (default), `segarally` or `virtuafighter2` (`scripts/games.py`).
+After changing the seeds or a recompiler, run `python3 scripts/recompile.py --game
+GAME` first. Everything a game makes stays in its folder:
 
 ```text
 build_<game>/recomp/<set>/   rom_cache/ (the images) and gen/ (the recompiled code)
 build_<game>/pc/<set>/       the host build (the recompilers, m2run, the PC game)
 build_<game>/vita/           <game>.vpk
-build_<game>/vita_diag/      <game>_diag.vpk (--diagnostics)
+build_<game>/vita_diag/      <game>_diag.vpk (--diagnostics: its own app, title ID 9xxxx)
 ```
 
-`--build-dir` puts the Vita build somewhere else (to keep two variants side by
-side, with `--title-id`). The equivalent CMake configuration is:
+`build_vita.py` options:
 
-```sh
-cmake -S platform/vita -B build_daytona/vita \
-  -DCMAKE_TOOLCHAIN_FILE="$VITASDK/share/vita.toolchain.cmake" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DDAYTONA_GEN_ROOT="$PWD/build_daytona/recomp/daytona93/gen" \
-  -DDAYTONA_VITA_VPK=daytona.vpk \
-  -DDAYTONA_VITA_LIVEAREA_DIR="$PWD/platform/vita/logo_livearea/daytona"
-cmake --build build_daytona/vita --parallel 4
-```
+| Option | Effect |
+| --- | --- |
+| `--fast-inaccuracy` | i960 lockstep checks per block and direct work-RAM accesses, TGP counted per block: the fastest (checked on every game) |
+| `--fast-gen` | `scripts/fast_gen.py`'s rewrite of the exact i960 code (Daytona only) |
+| `--diagnostics` | `vita-diag.log`, `perf.log` (per-core report, `system/core_profile.h`) and `gl.log` |
+| `--tgp-profile`, `--i960-profile` | their sections in `perf.log` (imply `--diagnostics`) |
+| `--release` | link-time optimization, no logs; slow to build, only for a release package |
+| `--free-core` | threads unpinned, so the 4TH CORE option can move any of them |
+| `--link`, `--no-link` | link play in or out (default: in for Daytona only, `vita_link`) |
+| `--no-fast-paths`, `--reference-renderer`, `--inline-bus` | comparison builds |
+| `--compile-check` | objects only, no ROM needed (what CI runs) |
+| `--build-dir`, `--title-id` | another build folder or title ID, to keep two variants |
 
-Do not configure the host build directory with the Vita toolchain. The
-importer and three recompilers run on your computer, not on the Vita. The
-Vita configuration fails rather than creating an empty game if any required
-generated source group is missing. Keep VPKs, ROM caches and generated C++
-local, under the ignored `build_<game>/` folders.
+Icon and LiveArea images, per game: `icon0.png` (128x128), `bg.png` (840x500),
+`startup.png` (280x158) and optionally `template.xml` in `logo_livearea/<game>/`
+(8-bit indexed PNGs; see the README there). They are not committed.
+
+Do not configure the host build directory with the Vita toolchain: the importer and
+the recompilers run on the computer. The Vita configuration fails rather than
+building an empty game if a generated source group is missing.
 
 ## Install and play
 
-### Dual-ROM GXM package and LAN link play
+Install the VPK with VitaShell and put your complete ZIP ROM set at
+`ux0:data/<set>/<set>.zip`: `daytona93`, `srallyc` (MAME's merged `srallycb.zip`
+works, renamed) or `vf2`. The importer checks every file's CRC; a renamed other set
+is refused. The Vita reads `.zip` only (no 7z decoder: its memory peaks); repack a
+`.7z` set as `.zip` with the same file names.
 
-The dual package launches daytona93 by default. In Options, change ROM to
-DAYTONA (1994 REVISION A), then choose Start/Reset; switch back the same way.
-Switching replaces the native executable, not just the ROM data.
-Supply both complete ZIPs yourself:
-
-- `ux0:data/daytona93/daytona93.zip`
-- `ux0:data/daytona/daytona.zip`
-
-Settings, EEPROM and backup RAM stay in each set's own directory. Revision A
-has its own defaults; CPU/core and other options may need setting again.
-An older single-game package reports when the other executable is missing.
-
-Link play requires Revision A on all cabinets and a connected Wi-Fi LAN.
-Enable Link Play in its Vita options, set the four next-cabinet IPv4 octets,
-listen port and next-cabinet port (default 15112). Reset to apply.
-With two cabinets, each one's next address is the other. With more, form a
-ring. Desktop uses main's Link Play settings and the same TCP port/protocol.
-The pause menu shows the Vita IP, receive/transmit connection and cabinet ID.
-No discovery, hostname resolution or internet port forwarding is provided.
-
-Enter test mode with Select+Triangle; Select+Square is service, Cross advances
-the menu and Start confirms. Under GAME SYSTEM set one MASTER, the others
-SLAVE, and unique CAR NUMBERs. Cabinet type/region and game settings must
-match (for example TWIN/JPN); otherwise the game can cancel the link.
-Frame sync is optional, off by default. For solo Revision A play, disable
-link and configure a single cabinet in test mode.
-
-Recompile each set separately (`scripts/recompile.py --game daytona` for
-daytona93, `--set daytona` for Revision A; both in `build_daytona/`). Then:
-
-```sh
-python3 scripts/build_vita.py --set daytona --build-dir build_daytona/vita_revision_a
-python3 scripts/build_vita.py --game daytona --revision-a-self build_daytona/vita_revision_a/eboot.bin
-```
-
-The second VPK contains both executables. Actual Vita-to-Vita/Vita-to-desktop
-Wi-Fi operation and executable switching require hardware validation.
-
-Link play is a build option: `build_vita.py` compiles it in only for the games
-it was tested on (`vita_link` in `scripts/games.py`: Daytona). Sega Rally and
-Virtua Fighter 2 packages leave it out (no SceNet code, no link rows in the
-menu); `--link` puts it in anyway, `--no-link` leaves it out of Daytona's. The
-menu rows still need a set with the communication board (`Game::link`:
-daytona93).
-
-### Sega Rally Championship (srallyc), a separate app
-
-Sega Rally is its own package with its own title ID, SRAL00094 (Daytona's is
-DAYT00093), so both apps can be installed side by side. Its sound is the
-SCSP sound board (reference audio: the recompiled 68000 and MAME's SCSP, on
-the sound worker; the native audio option is Daytona's only); vitaGL or GXM
-builds only. `--fast-inaccuracy` applies (its frames and sound
-match the exact code over a 6,000-frame race on the PC); `--fast-gen` is
-Daytona-only:
-
-```sh
-python3 scripts/recompile.py --game segarally
-python3 scripts/build_vita.py --game segarally --fast-inaccuracy --release   # build_segarally/vita/segarally.vpk
-```
-
-The ROM goes to `ux0:data/srallyc/srallyc.zip` (MAME's merged
-`srallycb.zip` works too, renamed). `--title-id` overrides the title ID.
-
-Install your locally built VPK with VitaShell, then put your **complete
-ZIP ROM set** at:
-
-```text
-ux0:data/daytona93/daytona93.zip
-```
-
-Launch **Daytona USA** and choose **START GAME**. ROM CRC and size
-validation uses the existing importer. Renaming a different Daytona set
-will not make it compatible. The Vita target deliberately omits the 7z
-SDK to avoid solid-archive decoding memory spikes. A host `.7z` source can
-still be used for recompilation; repack the complete set as `.zip` with
-unchanged ROM filenames before copying it to the Vita.
-
-Each game has its own controls, listed in its record (`Game::control_list`,
-`src/games/*.cpp`, from the cabinet's: MAME's input ports): the Controls page
-shows only those, with the game's default buttons.
+Each game's controls come from its record (`Game::control_list`, `src/games/*.cpp`):
 
 | Daytona USA | Sega Rally | Virtua Fighter 2 | Vita control |
 | --- | --- | --- | --- |
-| Steering | Steering | Joystick | Left stick, or D-pad left/right (VF2: D-pad or left stick, all four directions) |
+| Steering | Steering | Joystick | Left stick, or D-pad left/right (VF2: D-pad or left stick, four directions) |
 | Accelerate / brake | Accelerate / brake | - | R / L (analogue: right stick up / down) |
 | Shift up / down | Shift up / down | - | D-pad up / down (one shift per press) |
 | View 1 / 2 / 3 / 4 | View (one button) | - | Cross / Circle / Square / Triangle (Sega Rally: Triangle) |
@@ -302,246 +97,146 @@ shows only those, with the game's default buttons.
 | - | - | Punch / Kick / Guard | Cross / Circle / Square |
 | Coin / start | Coin / start | Coin / start | Select / Start |
 
-| Everywhere | Vita control |
-| --- | --- |
-| Pause menu | Start + Select together |
-| Navigate / select / resume | D-pad / Cross / Circle |
-| Test switch / service coin | Pause-menu entries |
+Fixed: Start+Select opens the menu; Select+Triangle is the cabinet's Test switch,
+Select+Square its Service switch (in test mode Cross gives VR1, menu next, and Start
+selects); plain Select inserts a coin on release. The Controls page rebinds each of
+the game's controls to one button (Cross then the new button, or Left/Right to cycle;
+a button already used swaps). Bindings are saved as `bind_*` keys; an invalid or
+duplicated set goes back to the game's defaults.
 
-These are the defaults. The launcher's Controls page rebinds each of the game's
-controls to one button: Cross then press the new button, or Left/Right to cycle;
-a button already used by another control swaps with it. The sticks and the
-Start+Select, Select+Triangle and Select+Square chords stay fixed. The steering
-options (curve, invert) only show for a game with a wheel. Saved as `bind_*`
-keys in the game's own vita.cfg (button bit); an invalid or duplicated entry, or
-a missing one for one of the game's controls, resets all bindings to the
-game's defaults.
+The menu: D-pad, Cross, Circle, or the front touch screen. Options lists only what
+can change something for this game in this build (`option_available`,
+`frontend/main.cpp`):
 
-The menu chord suppresses coin/start while both buttons are held. Pressing
-Select significantly before Start can still insert a coin before the chord
-exists. Buttons must be released after loading, pausing or resuming so menu
-presses do not leak into the game.
+* CPU / GPU clock (default 444 / 166 MHz; 500 MHz needs an overclock plugin and
+  falls back to 444; the menu shows the actual clock), 4TH CORE (needs a core-unlock
+  plugin; checked by reading the affinity back).
+* Volume, mute, Music and Effects (the MultiPCM voices split by the game's channel;
+  shown when the board can tell them apart, `rt::has_music_effects`), the audio
+  engine (Daytona: the native engine, still being validated).
+* Dead zone, invert steering and steering curve (Linear, Soft, Extra Soft; for a game
+  with a wheel), draw distance (a game with its hook, `Game::draw_distance`).
+* Skip launcher, save records (backup RAM), hold Test button (holds Test for three
+  game seconds at the next start, not saved), the ROM switch (a package holding the
+  companion set), link play (below), reset defaults.
 
-The frontend retains the desktop's square-pixel framebuffer aspect ratio,
-with side bars on the Vita display. Simulation steps use
-`rt::GameLoop::kFrameHz`, not a hard-coded 60 Hz. The Vita frontend now runs
-at most one complete simulation frame before presenting it. Fractional host
-time is retained at normal speed; overdue whole steps are discarded under
-load rather than rendering four complete frames and displaying only the last.
-This slows wall-clock progress when the device cannot keep up; it does not
-skip guest instructions, increase the guest timestep, or make the simulation
-itself four times faster. The generic FrameClock default remains four steps.
+The picture is the original 496x384 at 4:3, scaled to the 544 lines and centred.
 
-See [PERFORMANCE.md](docs/PERFORMANCE.md) for the stage timings now written to
-`vita.log`. This is a diagnostic build, not a confirmed full-speed fix.
+### Daytona: two sets and link play
 
-## Sound and saved data
-
-FM and PCM are queued at the board's rates and resampled independently to the
-output device rate in the audio callback (audio_rate.h), mixed, clamped and
-played as stereo signed 16-bit audio. The callback only consumes
-samples; board execution stays on the main thread. Queues are bounded and
-cleared on pause/reset. Mute is saved independently of board state.
-
-MUSIC and EFFECTS (Options, under MUTE) balance the music against everything else
-(engine, skids, crashes), as the desktop launcher does: the MultiPCM voices are
-split by the game's channel at key-on, in both audio engines; the FM part follows
-only VOLUME. Defaults 100% and 20% (the effects cover the music on the Vita's
-speakers); 100/100 is the arcade's mix. Saved as music_volume/effects_volume in
-vita.cfg.
-
-EEPROM and backup RAM are saved when changed, every five seconds and on
-pause/reset/quit. Writes use a temporary file and retain a `.bak` generation;
-loads reject incorrect sizes and try the backup. A sudden power loss can
-still lose changes since the last successful save. Use SAVE AND QUIT for a
-clean exit. All files are under `ux0:data/daytona93/`:
-
-```text
-ioboard_eeprom.bin
-backup_ram.bin
-mute.bin
-vita.log
-```
-
-`vita.log` is replaced on each launch. Copy it before reopening the app when
-reporting a crash. Missing/incorrect ROM errors and runtime faults are also
-shown in the menu. A decoder/runtime fault requires a reset rather than
-resuming a possibly inconsistent board state.
-
-## Validation and limitations
-
-Host tests (no ROM or SDK required):
+`--revision-a-self` bundles Revision A with daytona93; the ROM option then switches
+executables (each set keeps its own folder and settings):
 
 ```sh
-mkdir -p build
-c++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined \
-  tests/test_vita_controls.cpp -o build/test_vita_controls
-build/test_vita_controls
-python3 -m unittest discover -s tests -p test_build_vita.py -v
-python3 -m unittest discover -s tests -p test_setup_vitagl.py -v
+python3 scripts/recompile.py --set daytona
+python3 scripts/build_vita.py --set daytona --build-dir build_daytona/vita_revision_a
+python3 scripts/build_vita.py --game daytona --revision-a-self build_daytona/vita_revision_a/eboot.bin
 ```
 
-ROM-free ARM compile check (requires VitaSDK, SDL2, and fetched SoftFloat/ymfm):
+Link play (Daytona's packages only) needs the communication board, which only
+Revision A has (`Game::link`), on every cabinet, and a Wi-Fi LAN: the dual package
+above, switched to Revision A. In Options: Link Play on,
+the next cabinet's IPv4 address and port, the listen port (default 15112), then
+reset. Two cabinets point at each other; more form a ring. The desktop build uses the
+same TCP protocol. The menu shows the Vita's IP, both connections and the cabinet
+number. In test mode, GAME SYSTEM: one MASTER, the others SLAVE, unique car numbers,
+the same cabinet type and region. Frame sync is optional. Vita-to-Vita play still
+needs hardware validation.
 
-```sh
-python3 scripts/setup.py --no-build
-python3 scripts/build_vita.py --compile-check
-```
+## Threads and cores
 
-The included workflow performs the host tests and this ARM compile check.
-**Compile-check mode makes objects only: it does not link generated game
-code, produce a VPK, prove floating-point parity on ARM, or test gameplay.**
-It intentionally does not upload artifacts or use ROM secrets.
+| core (default) | thread | work |
+|---|---|---|
+| 0 | main | input and menu; the i960 game code; the TGP (run by the i960, no thread of its own); at vblank start, a copy of the display list RAM (128 KiB) for the geometry thread; at vblank end, the System 24 tile update; the sound hand-off; then the GPU frame: polygon priority sort, materials, vertices, submission and swap |
+| 1 | geometry | the display list parse (the MAME geometrizer, unmodified) of the frame the main core just finished |
+| 2 | sound worker | the reference sound board of the frame just finished |
+| 2 | 2D worker | System 24 tile and palette uploads into the second texture set, layer rectangles |
+| any | SDL audio callbacks | mixing the queued samples (reference engine), or the whole native sound engine |
 
-This target still needs a full ROM-generated ARM link and real-device
-verification: boot, all courses, manual/automatic gears, sound, sustained
-frame time, peak memory, saved settings, and suspend/resume. The Vita
-frontend handles SDL background/foreground events and limits post-stall
-catch-up, but whether the installed SDL build emits those events during
-system suspend must be verified on hardware. No overclock is forced.
+The 3D and the 2D are shown one frame late, in phase: the geometrizer parses frame N
+while the game runs frame N+1, and the 2D worker fills the other of two texture sets.
+Each worker is joined before its data is touched again; at most one sound packet is
+in flight. `--free-core` leaves every thread unpinned; single cores move with
+`DAYTONA_VITA_{MAIN,GEO,SOUND,2D}_CORE`.
 
-SoftFloat keeps the existing 8086-SSE *semantic specialization* (not x86
-machine instructions) but uses a project-owned portable platform header
-without GCC `__int128`. Its state is main-thread-only in this target. Do
-not move board execution onto multiple threads without restoring TLS or
-introducing explicitly separate SoftFloat state.
+At most one emulated frame runs before each present: when the Vita cannot keep up,
+the game slows down rather than skipping frames (no guest instruction is skipped).
 
-See [HANDOFF.md](HANDOFF.md) for the port's status and
-[THIRD_PARTY.md](THIRD_PARTY.md) for SDK dependency references.
+Reference audio: the board's samples are queued at its own rates and converted once,
+in the callback (cubic interpolation, `audio/audio_rate.h`), with a 64 ms cushion kept
+by a slight speed change, one short silent gap after an underrun.
 
-## Widescreen, draw distance and cabinet controls
+SoftFloat's state is used by the main thread only; moving board execution to more
+threads would need separate state.
 
-The Options page lists only what can be changed in this build, for this game
-(`option_available` in `frontend/main.cpp`): Aspect, HUD and Stretch Tile Background
-with the GXM renderer only (vitaGL draws the original 4:3 picture); the audio
-engine for a game whose driver tables are known (`Game::native_sound`); Music
-and Effects when the sound board can tell them apart (`rt::has_music_effects`:
-the Model 1 board, or an SCSP board with its driver's voice table,
-`Game::scsp_voices`) or the native engine is selected; Draw Distance
-for a game with its hook (`Game::draw_distance`); Link Play, and its addresses,
-ports and frame sync once it is on, for a game with the communication board
-(`Game::link`); the ROM switch when the package holds the companion set's
-executable. Nothing fixed at build time is listed (renderer, fullscreen).
+## Saved data
 
-SAVE RECORDS (BACKUP RAM), off by default: whether the game's battery-backed
-RAM (`backup_ram.bin`: records, bookkeeping, and the coins not used yet) is
-loaded at start and saved at each pause and on quitting. Off, every start is
-a cabinet switched on afresh: coins left from an earlier session cannot start
-a race on their own. The test mode settings (`ioboard_eeprom.bin`) are always
-kept.
-
-The GXM Options menu now saves Aspect (Original, 16:10, 16:9, 21:9),
-HUD (Centred or Screen Edges), and scenery Draw Distance (Shortest through
-Furthest). Changes apply on resume; original aspect, centred HUD and default
-distance remain the defaults. Widescreen shows additional scenery with the
-same focal length, not stretched pixels. On the 960x544 display, 21:9 is
-letterboxed vertically. The road window is unchanged by scenery distance.
-
-HUD relocation shares the desktop per-item rules and only activates when
-the race HUD is visible. Scenery stays put and crossing banners stay whole.
-Recovery 1 restores the earlier rendering paths after the perspective build
-lost textured geometry on hardware. Original mode uses GXM tile composition;
-wide mode uses CPU tile/HUD composition. Road wobble and widescreen performance
-are not fixed by this recovery. Steering curves remain available. The layer arena is12MiB instead of10MiB,
-making the three GPU arenas32MiB total.
-
-Hold Select and press Triangle for cabinet Test (enter/confirm).
-Hold Select and press Square for cabinet Service (advance/select).
-Release between presses. Cross supplies VR1 (menu next) and Start supplies
-cabinet Start (menu select), as used by the game's test screens.
-Start+Select still opens the frontend pause menu.
-Plain Select inserts a coin on release; Test/Service chords do not insert
-coins or operate view buttons. The menu's footer lists the fixed chords.
-
-Draw distance requires generated code with seeds/daytona93_hooks.txt:
-regenerate with scripts/recompile.py before building. Merely linking the
-enhancement runtime cannot add a missing hook to old generated code.
-
-## Steering curves
-
-Options → Steering Curve selects Linear (default), Soft (signed square) or
-Extra Soft (cubic). Curves apply after the stick deadzone and before inversion;
-full lock and D-pad steering remain unchanged. Soft settings give finer control
-around centre. The choice is saved as steer_curve=0/1/2 in vita.cfg.
-
-
-## Wide 2 update
-
-Includes GitHub main through c081a2d, including the stricter condition-panel
-overlay detection. Options adds Stretch Tile Background and Skip Launcher,
-both off by default and saved in vita.cfg. Background stretching in the Vita
-GPU frontend scales only the backdrop to the wide viewport, not the 3D scene
-or HUD. Original aspect is unaffected. Unlike desktop's coverage-gated setting,
-the Vita option stretches the backdrop whenever widescreen is selected.
-Skip Launcher auto-loads the installed ROM on next launch; a load failure
-returns to the menu with its error. Start+Select always opens the menu in-game.
-
-The restored polygon/tessellation path is unchanged. Widescreen keeps a native
-496x384 CPU tile backdrop and scales it with the existing 2D draw API; no custom
-matrix or GPU tile compositor change. This reduces backdrop upload bytes by27%
-at16:9. Unchanged foreground pixels reuse HUD grouping and uploads. CPU tile
-drawing and wider scene geometry still cost time; real Vita FPS is unverified.
-
-## GPU tiles after main 3044f3b
-
-Current recovery build disables wide GPU tile composition after a hardware
-slowdown report, using the CPU wide layers instead. Original-aspect GPU tiles
-and GPU 3D stay enabled. The implementation below is retained for profiling.
-
-The Vita branch includes the latest desktop GPU renderer but still uses GXM,
-not SDL_GPU's desktop shaders. Background and centred foreground tile layers
-are composed on GXM, including widescreen. Like desktop main, moving individual
-HUD items to the edges retains a CPU foreground-composition fallback. Tile
-decoding/cache updates remain on the CPU. Physical GPU buffering is separate:
-double by default, with single and triple available in Options.
-
-Road subdivision additionally checks perspective texture error against the
-same reciprocal-depth interpolation used by main. The existing eight-way cap
-and pool limits remain; this is not per-pixel perspective-shader parity and
-can increase geometry work. Hardware appearance/performance needs testing.
+In `ux0:data/<set>/`: `vita.cfg` (settings), `ioboard_eeprom.bin` (test mode
+settings, always kept), `backup_ram.bin` (records and unused coins, only with SAVE
+RECORDS on). Saved when the menu opens, on a ROM switch and on quitting, each file
+written to a temporary and renamed. Logs: `vita-diag.log` (faults; everything in a
+diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
 
 ## vitaGL renderer
 
-`scripts/build_vita.py` builds `frontend/main.cpp` + `render/renderer.cpp` against vitaGL, the only
-renderer (the libvita2d one, `--gpu-fast`, and the CPU-exact `main.cpp` were removed on
-2026-10-16). Same launcher, options, dual-ROM switching and link play as the GXM build (the ImGui
-menu is drawn through vitaGL, `render/imgui_backend.h`); widescreen stays a GXM feature for now
-(see "Multicore GPU builds" above).
+* Polygons follow the Model 2 draw priority (higher window first, then smaller z sort
+  key, then newest polygon first). The Model 2 has no depth buffer; the GPU's only
+  reproduces that order: each polygon gets one depth from its rank (`GL_GEQUAL`), so
+  intersecting polygons do not cut, as on the arcade board. Polygons are grouped by
+  (clip, shader, texture), one draw call per group, as indexed quads.
+* System 24 layers are placed by the same depth buffer: foreground before the polygons,
+  background after them, so hidden pixels are rejected before their shader runs
+  (`k2DLayersByDepth` in `render/gl_internal.h`; false restores the painter order,
+  same image).
+* Needs `libshacccg.suprx` on the console (runtime shader compiler); the compiled
+  shaders are cached in `ux0:data/shader_cache/<TITLE_ID>/`.
 
-* Build requirements: vitaGL and its libraries, built pinned inside the project by
-  `python3 scripts/setup_vitagl.py` (next section), and `libshacccg.suprx` installed
-  on the console (runtime shader compiler).
-* Polygons follow the Model 2 draw priority, as in the CPU reference renderer (higher
-  window first, then smaller z sort key, then newest polygon first). The Model 2 has no
-  depth buffer; the GPU one only reproduces that order: each polygon gets one depth from
-  its rank (`GL_GEQUAL`, never cleared during the frame), so whole polygons are in front
-  of or behind each other and intersecting polygons do not cut, as on the arcade board.
-  Polygons are grouped by (clip, shader, texture) into one draw call per group.
-* System 24 layers are placed by the same depth buffer: foreground before the polygons
-  (in front of every polygon), background after them (behind every polygon), so hidden
-  pixels are rejected before their shader runs. `k2DLayersByDepth = false` in
-  `render/gl_internal.h` restores the plain painter order (same image). The menu font never uses
-  the depth buffer.
+### How the 2D layers (System 24) are drawn
 
-### Performance on a Vita (vitaGL build)
+The HUD, the sky and the other 2D layers come from the System 24 tilemap chip. Like
+the arcade hardware, the renderer keeps **indexed images** and resolves the colours
+on the GPU.
 
-Measured on a PS Vita at CPU 444 MHz / GPU 166 MHz (bus 222 MHz), default pinned
-cores, `--fast-inaccuracy` (vitaGL), with the per-core profiler (`perf.log`, written by
-`--diagnostics` builds): 41 windows of 5 s, about 3.5 minutes of racing.
+* **Layer textures hold colour numbers.** Each of the 4 layers is a 512x512 texture
+  (one per pass: 8 in all). A texel stores the pen number (0-8191) as palette
+  coordinates: column (`pen % 128`) in red, row (`pen / 128`) in green; alpha 0 for an
+  empty pixel, which the shader discards (`system24_index_texel`,
+  `render/system24_upload.h`).
+* **One palette texture holds every colour**: 128x64, one texel per pen.
+* **The shader does the lookup**, point sampled on texture unit 2.
+
+  ```
+  layer texture (512x512)          palette texture (128x64)
+  texel = pen 1234  ──────────────▶ texel (1234 % 128, 1234 / 128) = colour ──▶ pixel
+  ```
+* **Fades cost almost nothing.** A fade rewrites palette RAM only: the renderer copies
+  the 8192 colours (32 KB) when one changed. With RGB textures each fade step meant
+  rewriting all 16384 tiles (8 MB, ~67 ms on the Vita).
+* **Only changed tiles are rewritten.** Each 8x8 tile has a generation number;
+  `upload_system24_layer_indices` rewrites changed tiles by runs, each texel line in
+  one go (NEON, 8 texels per step).
+
+Model 2 polygon textures work the same way, except that their 4-bit texels are
+**filtered** by the GPU before the lookup, as the real board did: each polygon gets a
+128-entry row of a palette texture (per luma table, colour and face brightness), built
+by the CPU the first time a combination appears, then cached.
+
+### Performance (vitaGL build)
+
+Measured on a Vita at CPU 444 MHz / GPU 166 MHz, pinned cores, `--fast-inaccuracy`,
+`perf.log` (41 windows of 5 s, about 3.5 minutes of Daytona racing):
 
 | | Result |
 | --- | --- |
-| Speed | median **57.3 fps** for 57.52 on the arcade (99.6%); 40 of 41 windows at 55 fps or more, 33 at 57 or more; only the first window (start of the race) at 50.8 |
+| Speed | median **57.3 fps** for 57.52 on the arcade (99.6%); 40 of 41 windows at 55 fps or more |
 | Polygons | about 1,200 per frame on average, up to 1,700 |
 | Core 0 (game + drawing) | 74% busy on average, 95% at worst: the limit |
 | Core 1 (geometry) | 53% on average, 71% at worst |
 | Core 2 (sound + 2D) | 78% on average, 87% at worst |
-| Sound | 8 short gaps in 3.5 minutes (start and a few heavy moments), playback speed 99-100% |
+| Sound | 8 short gaps in 3.5 minutes, playback speed 99-100% |
 
-So the game runs at (almost) full speed without overclocking plugins: 444 MHz is the
-Vita's highest stock CPU clock. Core 0 has little room left, so a heavy scene can still
-drop a frame. The release build (`--release`: link-time optimization, no profiling) is
-not profiled, but does the same work with less overhead.
+More in [docs/PERFORMANCE.md](docs/PERFORMANCE.md), [docs/GEO_ASYNC.md](docs/GEO_ASYNC.md)
+and [docs/PERF_BREAKDOWN.md](docs/PERF_BREAKDOWN.md).
 
 ### vitaGL: pinned build and flags
 
@@ -549,16 +244,10 @@ vitaGL, vitaShaRK and the Vita port of math-neon are the work of **Rinnegatamant
 (math-neon originally by Lachlan Tychsen-Smith), SceShaccCgExt of **Bythos**: thank
 you! This renderer would not exist without them.
 
-```sh
-export VITASDK=/usr/local/vitasdk
-python3 scripts/setup_vitagl.py              # once; again after a pin or flag change
-python3 scripts/build_vita.py --release
-```
-
-`setup_vitagl.py` clones vitaGL and the libraries it is linked with at fixed commits
-and builds them with the VitaSDK toolchain into `extern/vitagl/` (git-ignored, like the
-rest of `extern/`). A new vitaGL commit upstream therefore never changes or breaks this
-build; moving to one means editing `PINS` in the script and testing on the console.
+`scripts/setup_vitagl.py` clones vitaGL and the libraries it is linked with at fixed
+commits and builds them into `extern/vitagl/` (git-ignored): a new vitaGL commit
+upstream never changes this build; moving to one means editing `PINS` in the script
+and testing on the console.
 
 | Library | Why | Pinned commit |
 | --- | --- | --- |
@@ -567,47 +256,41 @@ build; moving to one means editing `PINS` in the script and testing on the conso
 | [math-neon](https://github.com/Rinnegatamante/math-neon) | NEON maths used by vitaGL | `0faab814782c071ff4015527f1ca955ab1ccc470` (2020-07-05) |
 | [SceShaccCgExt](https://github.com/bythos14/SceShaccCgExt) | needed by vitaShaRK | `fb0e9d338525b067f3679ab33571323336493cca` (2026-07-29) |
 
-Only the base VitaSDK is used (toolchain, stubs, taiHEN). Nothing is installed into
-`$VITASDK`, and a vitaGL already installed there is neither used nor changed: the
-script puts its own headers first (`CPATH`) and `platform/vita/CMakeLists.txt` links the
-libraries of `extern/vitagl/install` by full path. The configure step prints which
-vitaGL it uses (`GPU GL: pinned vitaGL <commit> (release: ...)`), and so does the
-summary of `build_vita.py`. Without `extern/vitagl/install` the build falls back to the
-VitaSDK's vitaGL with a warning. A rerun with the same pins, flags and toolchain does
-nothing; `--force` rebuilds, `--print-flags` shows the make flags.
+Nothing is installed into `$VITASDK`, and a vitaGL already there is neither used nor
+changed: the script puts its own headers first (`CPATH`) and `CMakeLists.txt` links
+the libraries of `extern/vitagl/install` by full path. The configure step and the
+`build_vita.py` summary print the vitaGL used (`GPU GL: pinned vitaGL <commit>
+(release: ...)`). Without `extern/vitagl/install` the build falls back to the SDK's
+vitaGL with a warning. A rerun with the same pins, flags and toolchain does nothing;
+`--force` rebuilds, `--print-flags` shows the make flags.
 
-#### Release flags (default, `--profile release`)
-
-Chosen from what `render/renderer.cpp` actually does: GLSL shaders only (no fixed-function
-pipeline), `GL_TRIANGLES` only, 16-bit indices, no instancing, no framebuffer objects,
-no `glTexSubImage2D` (texture memory written in place after `sceGxmFinish`), one VBO
-pointing at our own GPU memory (`vglBufferData`), all GL calls on the main thread.
+**Release flags** (default, `--profile release`), chosen from what the renderer does:
+GLSL shaders only, `GL_TRIANGLES` only, 16-bit indices, no instancing, no framebuffer
+objects, no `glTexSubImage2D` (texture memory written in place after `sceGxmFinish`),
+one VBO on our own GPU memory (`vglBufferData`), every GL call on the main thread.
 
 | Flag | Effect for this renderer |
 | --- | --- |
-| `NO_DEBUG=1` | No argument validation in every GL call (CPU time on the main core, the busiest one). The renderer checks shader compile/link status itself. |
-| `HAVE_VERTEX_LAYOUT_CACHE=1` | The attribute layout and patched vertex program are cached per (program, VAO, draw type): a draw with an unchanged layout skips `patch_vertex_program`. Our layout changes once per frame, our draws are many. |
-| `HAVE_SHADER_CACHE=1` | The compiled shaders of the 7 programs are cached in `ux0:data/shader_cache/<TITLE_ID>/` (keyed by source hash): only the first boot runs the runtime compiler. |
-| `TEXTURES_SPEEDHACK=1` | No texture use tracking in every draw. What it gives up (the copy on `glTexSubImage2D` of a texture still in use) is never needed: the renderer does not call `glTexSubImage2D`. Freed textures are always released by vitaGL's garbage collector, a few frames later. |
-| `INDICES_SPEEDHACK=1` | Skips per-stream index source setup. Only breaks instanced draws and 32-bit (`GL_UNSIGNED_INT`) indices, which are not used. |
-| `PRIMITIVES_SPEEDHACK=1` | Skips the polygon mode restore after each draw. Only breaks `GL_LINES` / `GL_POINTS`, which are not used. |
+| `NO_DEBUG=1` | No argument validation in every GL call (CPU time on the busiest core). The renderer checks shader compile/link status itself. |
+| `HAVE_VERTEX_LAYOUT_CACHE=1` | The attribute layout and patched vertex program are cached per (program, VAO, draw type); our layout changes once per frame, our draws are many. |
+| `HAVE_SHADER_CACHE=1` | The 7 programs' compiled shaders are cached per title ID: only the first boot runs the runtime compiler. |
+| `TEXTURES_SPEEDHACK=1` | No texture use tracking in every draw; what it gives up (the copy on `glTexSubImage2D` of a texture in use) is never needed. |
+| `INDICES_SPEEDHACK=1` | Skips per-stream index source setup; only breaks instanced draws and 32-bit indices, not used. |
+| `PRIMITIVES_SPEEDHACK=1` | Skips the polygon mode restore after each draw; only breaks `GL_LINES` / `GL_POINTS`, not used. |
 
+`DRAW_SPEEDHACK` is refused: `glDrawArrays` would ignore its first vertex, which the
+indexed quads need (`render/draw_list.cpp`).
 
-#### Debug flags (`--profile debug`)
+**Debug flags** (`--profile debug`): `LOG_ERRORS=1` (GL errors through
+`sceClibPrintf`) and `HAVE_SHARK_LOG=1` (shader compiler messages), every speed hack
+off: the first thing to try on a rendering glitch. Read the output with a log plugin
+(PrincessLog, for example).
 
-`LOG_ERRORS=1` (GL errors through `sceClibPrintf`) and `HAVE_SHARK_LOG=1` (shader
-compiler messages), with every speed hack off: first thing to try when the vitaGL
-build shows a glitch the GXM build does not. Read the output with a log plugin
-(PrincessLog, for example). `python3 scripts/setup_vitagl.py` alone goes back to the release flags.
-
-#### Testing the script from scratch on a machine that already has vitaGL
-
-The script never reads the vitaGL of the SDK, but to prove it, run it with a copy of
-the SDK that has none, from a fresh clone of the project:
+To prove the script never reads the SDK's vitaGL, run it with a copy of the SDK that
+has none, from a fresh clone:
 
 ```sh
-# Hard-link copy of the SDK: instant, no extra disk space (same file system).
-cp -al "$VITASDK" /tmp/vitasdk-nogl            # macOS (APFS): cp -Rc
+cp -al "$VITASDK" /tmp/vitasdk-nogl            # hard links (macOS APFS: cp -Rc)
 cd /tmp/vitasdk-nogl/arm-vita-eabi
 rm -f include/vitaGL.h include/vitashark.h include/math_neon.h include/shacccg_ext.h \
       lib/libvitaGL.a lib/libvitashark.a lib/libmathneon.a lib/libSceShaccCgExt.a
@@ -618,57 +301,13 @@ VITASDK=/tmp/vitasdk-nogl python3 scripts/build_vita.py --compile-check
 rm -rf /tmp/vitasdk-nogl /tmp/daytona-clean      # the real SDK is untouched
 ```
 
-`rm` on the copy only removes its own links. The configure output must say `GPU GL:
-pinned vitaGL ...`; with no vitaGL anywhere it would stop with `GPU GL: no vitaGL`.
+## Tests
 
-### How the 2D layers (System 24) are drawn
+Host tests (no ROM or SDK): configure the root build with `-DM2_VITA_TESTS=ON`, then
+`ctest -R vita`; `python3 scripts/test_vita_renderer.py` (the optimized rasterizer and
+tile cache against their reference); `python3 -m unittest discover -s tests -p
+'test_*vita*.py'`. `build_vita.py --compile-check` builds the ARM objects without a
+ROM: it does not link game code, produce a VPK, or test anything on the console.
 
-The HUD, the sky and the other 2D layers come from the System 24 tilemap chip of the
-board. The vitaGL renderer does not turn them into RGB images: like the arcade
-hardware, it keeps **indexed images** and resolves the colours on the GPU.
-
-* **Layer textures hold colour numbers, not colours.** Each of the 4 layers is a
-  512x512 texture (one for the background pass, one for the foreground pass: 8 in
-  all). A texel stores the pen number (0-8191) of that pixel, encoded as palette
-  texture coordinates: column (`pen % 128`) in red, row (`pen / 128`) in green.
-  Alpha is 0 for an empty pixel, which the shader discards (it never reads a colour).
-  See `system24_index_texel` in `system24_upload.h`.
-* **One palette texture holds every colour.** A 128x64 texture, one texel per pen:
-  all 8192 System 24 colours, shared by every layer and both passes
-  (`upload_system24_palette`).
-* **The shader does the lookup.** For each pixel the `Layer` shader reads the layer
-  texture at the scrolled position, gets the pen number, then reads exactly that
-  texel of the palette texture (bound on texture unit 2, point sampled: no filtering,
-  which would mix unrelated colours). The palette is a lookup table: it is never
-  displayed or scaled.
-
-  ```
-  layer texture (512x512)          palette texture (128x64)
-  texel = pen 1234  ──────────────▶ texel (1234 % 128, 1234 / 128) = colour ──▶ pixel
-  ```
-* **Fades cost almost nothing.** A fade to black is done by the game itself: it
-  rewrites its palette RAM step by step, the tile pixels do not change. The renderer
-  only copies the 8192 colours (32 KB) into the palette texture when a colour changed.
-  With RGB textures, every fade step meant rewriting all 16384 tiles (8 MB, ~67 ms on
-  the Vita): the old stutters during fades.
-* **Only changed tiles are rewritten.** Each 8x8 tile has a generation number;
-  `upload_system24_layer_indices` rewrites the tiles changed since the last upload,
-  row of tiles by row of tiles: changed neighbouring tiles become one run, and each
-  texel line of a run is written in one go (NEON, 8 texels per step). A full rewrite
-  (scene change) is then long sequential lines, which suits the write-combined GPU
-  memory.
-* **One frame late, prepared on core 2.** The geometrizer runs pipelined (the 3D shown
-  is the previous frame's), so the 2D shown is the previous frame's too. There are two
-  sets of layer + palette textures: while a frame draws the set prepared during the
-  previous frame, the `daytona_2d` worker thread (core 2, `DAYTONA_VITA_2D_CORE`)
-  uploads the current frame's tiles and palette into the other set and computes the
-  layer rectangles (scroll, split screen, windows). The main core only emits the quads.
-* **Placement by depth.** Foreground layers are drawn before the polygons and
-  background layers after them, with fixed depths (see above).
-
-Model 2 polygon textures work on the same principle, with one difference: their texels
-are 4-bit indices that the GPU **filters** (blends between neighbours) before the
-lookup, as the real board did. Each polygon gets one 128-entry row of a palette texture
-(one row per luma table, colour and face brightness), so the filtered in-between values
-also have a colour. The rows are built by the CPU the first time a combination appears,
-then cached.
+See [HANDOFF.md](HANDOFF.md) for the port's status and
+[THIRD_PARTY.md](THIRD_PARTY.md) for the SDK dependencies.

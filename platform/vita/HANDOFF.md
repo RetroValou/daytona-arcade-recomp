@@ -1,5 +1,31 @@
 # Vita port handoff — 29 September 2026
 
+## Cleanup batch 1 — 17 October 2026
+
+Removed, all unreachable in the vitaGL-only build:
+- Widescreen: kWidescreen (false since the GXM renderer went), the Aspect,
+  HUD and Stretch options, VitaSettings aspect/hud_edges/stretch_backdrop
+  (their vita.cfg keys are now skipped as unknown), the set_aspect /
+  set_hud_edges / set_stretch_backdrop calls, set_gpu_background(false)
+  (Video::gpu_background needs a widescreen margin: already a no-op).
+- GpuGlRenderer's stubs that always returned 0 (reserved_bytes, pool_drops,
+  subdivided_polys, min_pool_free, textured/solid_draws, shader_setups,
+  state_reuses, draw_errors) and their fields in the periodic "gpu25:"
+  vita-diag line (cache_reserved_mb, pool_free_kb, pool_drops, subdiv_polys,
+  draws, shader_setups, state_reuses, draw_errors): a log reader keyed on
+  those names must drop them.
+- render/text.h and gl_fill_rect: the menu font before ImGui, included but
+  never called. The gfx_* wrappers and kGfxApi (= kRendererName).
+- docs/history/ (GPU04-06: the removed vita2d renderer; OPT03-HANDOFF).
+Startup messages no longer name GXM or framebuffer textures. The log
+prefix GPU25 is kept (habits and greps). README.md rewritten: what the
+port is now (build options table, games, controls, options, threads, saved
+files as main.cpp writes them: no .bak, no mute.bin; vitaGL design and
+pins); its wrong claim that link play needs daytona93 corrected (Revision
+A has the communication board).
+Checks: VF2 VPK built, Daytona compile check (link in), Vita host tests
+15/15. Not run on the console.
+
 ## The runtime's new paths — 17 October 2026
 
 src/runtime is sorted by subsystem (root HANDOFF.md). Here: the geometrizer

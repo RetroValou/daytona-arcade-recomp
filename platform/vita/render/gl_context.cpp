@@ -272,8 +272,5 @@ void gl_fini() {
     g.ready = false;
 }
 
-void gl_fill_rect(float x, float y, float w, float h, uint32_t rgba) {
-    push_quad(Prog::Flat, 0, x, y, x + w, y + h, 0.0f, 0.0f, 0.0f, 0.0f, rgba);
-}
 
 } // namespace vita
