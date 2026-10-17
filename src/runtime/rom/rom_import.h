@@ -27,9 +27,6 @@ std::vector<RomCheck> check_rom_set(const std::string &zip_path);
 // Load and lay out the images. Throws ZipError naming the first problem.
 M2Board::Images import_rom_set(const std::string &zip_path);
 
-// The MAME name of the set this build was recompiled from.
-const char *rom_set_name();
-
 // The TGP program the i960 uploads at boot, cut from main_data (CRC-checked).
 std::vector<uint8_t> tgp_program(const M2Board::Images &img);
 // The SCSP DSP program the sound driver loads (Game::dsp), cut from the sound

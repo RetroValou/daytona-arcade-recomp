@@ -1,5 +1,27 @@
 # Handoff
 
+## src/runtime cleanup: dead video options and unused functions (2026-10-17)
+
+Removed, none of it ran: Video's gpu_background option (set_gpu_background
+had one caller left, the Vita's set_gpu_background(false), removed in the
+Vita cleanup: gpu_background() and gpu_foreground() were always false;
+their branch in screen_update and the conditions on them went), the
+background/foreground_generation counters (incremented, never read) and
+their accessors, Video::hud_at_edges_active, wide_margin (= margin()) and
+the stretch_backdrop getter, Raster::hud_polygon_offset, rom_set_name().
+Comments that still described the removed GXM compositor corrected.
+Checked and kept: every #ifdef macro is still defined by some build (the
+M2_DC_* ones by the Dreamcast port only: kept so it keeps compiling); the
+transplanted MAME code keeps its unused helpers (rgb_t, spaces,
+sample_rate) to stay comparable with upstream.
+A wrong lead, checked before any change: screen_update does not compose
+the 2D layers on the CPU on the Vita (an early return when the host draws
+them), so there is nothing to gain there.
+Checks: m2run 4,000 frames, daytona93 race_basic, srallyc srallyc_race,
+vf2 vf2_fight: counts, last screen hashes and WAV as before the change;
+ctest 23/23 x3; Vita host tests 15/15; test_vita_renderer.py; VF2 VPK
+built. No performance change expected (none of it executed).
+
 ## Sound probe: the SCSP render split into slots, DSP and output (2026-10-17)
 
 For VF2's sound on the Vita (the user's next target: find what costs).

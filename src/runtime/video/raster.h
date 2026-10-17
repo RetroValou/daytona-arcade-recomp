@@ -77,7 +77,6 @@ public:
     // and its sort z, for the hardware renderer's copy of the move.
     const float *hud_box() const { return hud_box_; }
     uint16_t hud_z() const { return hud_z_; }
-    int hud_polygon_offset(const GeoPoly &projected) const;
     // Widescreen with the hardware renderer, which leaves no CPU 3D layer to
     // count: roughly how much of the original 496x384 screen the polygons
     // cover, in percent, from a coarse rasterization (8x8-pixel cells).

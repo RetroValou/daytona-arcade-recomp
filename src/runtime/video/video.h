@@ -68,15 +68,12 @@ public:
     const std::vector<uint32_t> &screen() const { return screen_; } // width() x H
     // Widescreen (enhancement, 0 = off): the screen grows by `margin` pixels on
     // each side. The 3D layer fills it; the tilemap layers (HUD, text) stay
-    // 496 wide in the centre. Not available with external 3D (the Vita path).
+    // 496 wide in the centre. External 3D without M2_VITA_RENDER_OPT turns it off.
     void set_wide_margin(int margin);
-    bool hud_at_edges_active() const { return hud_on_; }
-    int wide_margin() const { return margin_; }
     int width() const { return W + 2 * margin_; }
     // With widescreen, behind 3D: stretch the tile backdrop across the whole
     // width (on) or fill the margins with the sky's plain colour (off, default).
     void set_stretch_backdrop(bool on) { stretch_backdrop_ = on; }
-    bool stretch_backdrop() const { return stretch_backdrop_; }
     // With widescreen: the race HUD's side groups (lap times; position,
     // condition panel, course map) at the screen edges instead of 4:3 centred.
     void set_hud_edges(bool on) {
@@ -84,12 +81,12 @@ public:
         hud_edges_ = on;
         if (!on && hud_on_) { hud_on_ = false; set_raster_hud_moves(); render_done_ = false; }
     }
-    // Vita GPU-fast path: keep the exact CPU tile layers, but let the host
-    // draw the 3D polygons. The normal desktop/CPU path remains the default.
-    // desktop: the SDL_GPU renderer, which draws the tilemap layers
-    // itself from the decoded pixmaps (system24_pixels, system24_flags, the
-    // tile generations) and this frame's snapshot (gpu_tile_words,
-    // gpu_pens). Vita uses its separate GXM tile path, also with widescreen.
+    // External 3D: the host draws the 3D polygons (gpu_polys); the CPU path
+    // remains the default. desktop: the SDL_GPU renderer, which draws the
+    // tilemap layers itself from the decoded pixmaps (system24_pixels,
+    // system24_flags, the tile generations) and this frame's snapshot
+    // (gpu_tile_words, gpu_pens). The Vita (not desktop) draws the tilemap
+    // layers itself too, from the same pixmaps (platform/vita/render/layers_2d.cpp).
     void set_external_3d(bool enabled, bool desktop = false) {
         if (enabled == external_3d_ && desktop == desktop_) return;
         external_3d_ = enabled;
@@ -117,10 +114,6 @@ public:
     bool cpu_front() const { return hud_on_; }
     uint64_t instance() const { return instance_; } // tells a new Video from an old one at the same address
     bool external_3d() const { return external_3d_; }
-    void set_gpu_background(bool enabled) { gpu_background_ = enabled; }
-    bool gpu_background() const { return external_3d_ && gpu_background_ && margin_; }
-    // Like desktop main: only relocated per-item HUDs need the CPU front layer.
-    bool gpu_foreground() const { return gpu_background() && !hud_on_; }
 #ifdef M2_DC_MEMORY
     // The Dreamcast, external 3D: the layers as composed, not copies (1.5 MB):
     // the background is the screen, the front tile layers sys24 (W x (H + 4)).
@@ -178,15 +171,13 @@ public:
     const std::vector<uint32_t> &background_layer() const { return background_gpu_; }
     const std::vector<uint32_t> &foreground_layer() const { return foreground_gpu_; }
 #endif
-    uint64_t background_generation() const { return background_generation_; }
-    uint64_t foreground_generation() const { return foreground_generation_; }
     const uint16_t *system24_pixels(int layer) const { return pixmap_[layer & 3].data(); }
     const uint8_t *system24_flags(int layer) const { return flags_[layer & 3].data(); }
     uint32_t system24_pen(uint32_t index) const { return pens_[index & 0x1fff]; }
     uint16_t system24_word(uint32_t index) const {
 #ifdef M2_VITA_RENDER_OPT
-        // GXM must use the same tile-register snapshot as screen_update. The
-        // guest can write the live registers again before the host presents.
+        // The Vita renderer must use the same tile-register snapshot as screen_update.
+        // The guest can write the live registers again before the host presents.
         const uint8_t *ram = tiles_valid_ ? tile_ram_copy_.data() : tile_ram_;
         return uint16_t(ram[index * 2] | ram[index * 2 + 1] << 8);
 #else
@@ -310,7 +301,7 @@ private:
     bool scroll_mode(int &sx, int &sy) const;
 #endif
     std::vector<uint32_t> background_gpu_, foreground_gpu_;
-    uint64_t background_generation_ = 0, foreground_generation_ = 0, system24_texture_generation_ = 0;
+    uint64_t system24_texture_generation_ = 0;
     bool system24_source_dirty_ = true;
     std::vector<uint64_t> system24_tile_generations_;
     uint64_t system24_palette_generation_ = 0;
@@ -321,7 +312,6 @@ private:
     std::vector<uint16_t> gpu_tile_words_;
     std::vector<uint32_t> gpu_pens_;
     uint64_t instance_;
-    bool gpu_background_ = false;
     std::vector<uint32_t> gpu_front_source_;
     int gpu_front_margin_ = -1;
     bool gpu_front_hud_ = false;

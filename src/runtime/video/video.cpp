@@ -653,8 +653,8 @@ M2_PIXEL_TEMPLATE void Video::draw(std::vector<M2_PIXEL> &bitmap, int layer, int
 
 bool Video::system24_gpu_compatible() const {
     if (margin_) return false; // Wide HUD uses the shared per-item compositor.
-    // The Vita GXM compositor supports normal windowing plus all three
-    // System24 split-layer modes. Keep this query for the CPU fallback API.
+    // The Vita renderer draws normal windowing and the three System 24
+    // split-layer modes itself (platform/vita/render/layers_2d.cpp).
     return true;
 }
 
@@ -797,7 +797,6 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
             for (int layer = 3; layer >= 0; --layer) draw(sys24_, (layer << 1) | 1, 0);
             foreground_gpu_.assign(size_t(width()) * H, 0u);
             copy_front_hud_to_edges(foreground_gpu_);
-            ++foreground_generation_;
             profile_.tile_draw += ticks() - before;
         }
         return;
@@ -807,8 +806,8 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
     // (Not the Dreamcast: its PVR renderer uploads the two layers this
     // function composes below, the screen and sys24.)
     if (external_3d_ && !desktop_ && system24_gpu_compatible()) {
-        // GXM composes the cached System-24 tile textures around the 3D
-        // layer. Do not spend ~35 ms rebuilding CPU bitmaps for scrolling.
+        // The Vita renderer draws the System 24 layers from the tile pixmaps
+        // around the 3D layer: no CPU bitmaps (they took ~35 ms a frame).
         rendered_now_ = false;
         return;
     }
@@ -904,7 +903,7 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
     before = ticks();
     if (external_3d_ && margin_)
         hud_on_ = hud_edges_ && raster_.find_race_hud(polys, crtc_x_ + margin_, crtc_y_);
-    const bool rebuild_background = background_dirty_ && !gpu_background();
+    const bool rebuild_background = background_dirty_;
     if (rebuild_background) {
         // All tile writes are replacements, not blends. Drawing the back
         // layers over pen 0 is identical to zero + transparent copy over pen 0.
@@ -912,14 +911,12 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
         for (int layer = 3; layer >= 2; --layer) draw(background_, layer << 1, DRAW_OPAQUE);
         for (int layer = 1; layer >= 0; --layer) draw(background_, layer << 1, 0);
         background_dirty_ = false;
-        ++background_generation_;
         profile_.layers_rebuilt = true;
     }
-    if (foreground_dirty_ && !gpu_foreground()) {
+    if (foreground_dirty_) {
         std::fill(sys24_.begin(), sys24_.end(), 0u);
         for (int layer = 3; layer >= 0; --layer) draw(sys24_, (layer << 1) | 1, 0);
         foreground_dirty_ = false;
-        ++foreground_generation_;
         profile_.layers_rebuilt = true;
     }
     profile_.tile_draw = ticks() - before;
@@ -927,16 +924,9 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
     if (external_3d_ && margin_) {
         // Keep the backdrop native-sized: scaling and plain sky margins are
         // cheap 2D GPU draws, not a CPU widescreen bitmap per frame.
-        if (!gpu_background() && (rebuild_background || background_gpu_.size() != size_t(W) * H))
+        if (rebuild_background || background_gpu_.size() != size_t(W) * H)
             background_gpu_.assign(background_.data(), background_.data() + size_t(W) * H);
         set_raster_hud_moves();
-        if (gpu_foreground()) {
-            // Do not build, compare or upload a CPU front bitmap. Leave the
-            // dirty flag set so a later HUD-edge frame reconstructs it.
-            profile_.composite += ticks() - before;
-            rendered_now_ = false;
-            return;
-        }
         if (gpu_front_margin_ != margin_ || gpu_front_hud_ != hud_on_ || gpu_front_source_ != sys24_) {
             std::fill(screen_.begin(), screen_.end(), 0u);
             if (hud_on_) copy_front_hud_to_edges(screen_);
@@ -945,7 +935,6 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
             gpu_front_source_ = sys24_;
             gpu_front_margin_ = margin_;
             gpu_front_hud_ = hud_on_;
-            ++foreground_generation_;
         }
         profile_.composite += ticks() - before;
         rendered_now_ = false;
@@ -983,9 +972,9 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
 #endif
     rendered_now_ = false;
     if (external_3d_) {
-        // Save the exact two System-24 layers separately. The Vita frontend
-        // draws background -> GPU 3D -> foreground. No CPU polygon pixels are
-        // produced in this mode, so raster_ms should remain zero.
+        // Save the exact two System-24 layers separately, for a host that draws
+        // background -> its 3D -> foreground from them (widescreen, the tests).
+        // No CPU polygon pixels are produced in this mode, so raster_ms stays zero.
 #ifndef M2_DC_MEMORY
         // (The Dreamcast reads screen_ and sys24_ themselves: no copies.)
         std::copy_n(screen_.data(), screen_.size(), background_gpu_.data());
@@ -1005,7 +994,6 @@ void Video::screen_update(const std::vector<GeoPoly> &polys, int windows, const 
             if (hud_on_) copy_front_hud_to_edges(screen_);
             else copy_trans(sys24_.data(), W, W, margin_);
             foreground_gpu_ = screen_;
-            ++background_generation_; ++foreground_generation_;
         } else {
             std::fill(foreground_gpu_.begin(), foreground_gpu_.end(), 0u);
             std::copy_n(sys24_.data(), std::min(sys24_.size(), foreground_gpu_.size()), foreground_gpu_.data());
@@ -1201,7 +1189,6 @@ void Video::set_wide_margin(int margin) {
     background_gpu_.assign(screen_.size(), 0u);
     foreground_gpu_.assign(screen_.size(), 0u);
 #endif
-    ++background_generation_; ++foreground_generation_;
     raster_.set_wide_margin(margin_);
     render_done_ = false; // redraw the 3D layer at the new width
 }

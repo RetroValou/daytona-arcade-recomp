@@ -90,8 +90,6 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
     return img;
 }
 
-const char *rom_set_name() { return game().set; }
-
 std::vector<uint8_t> dsp_program(const M2Board::Images &img) {
     const ScspDspProgram &dsp = img.game->dsp;
     if (!dsp.steps) return {};
