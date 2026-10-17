@@ -1,4 +1,4 @@
-#include "../platform/vita/link.h"
+#include "../platform/vita/net/link.h"
 #include "app/link_socket.h"
 #include <cstdio>
 #include <cstdlib>

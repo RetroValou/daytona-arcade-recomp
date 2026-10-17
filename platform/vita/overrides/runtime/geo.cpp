@@ -11,7 +11,7 @@
 #include <utility>
 #include <psp2/kernel/cpu.h>
 #include <psp2/kernel/threadmgr.h>
-#include "../../core_policy.h" // unpinned (--free-core): the fourth-core policy
+#include "system/core_policy.h" // unpinned (--free-core): the fourth-core policy
 
 // ---- 1. The original geometrizer as rt::GeoCore --------------------------------
 #define DAYTONA_VITA_GEO_CORE_TU 1

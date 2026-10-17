@@ -114,5 +114,5 @@ wall time, not main-frame work. `native_frames`, `native_notes`, `native_voices`
 GPU23 disables routine logging by default and preserves the existing file;
 unexpected faults still append a record. Diagnostic-enabled builds replace
 `ux0:data/daytona93/vita-diag.log` on startup, so copy it before relaunching.
-See [Vita diagnostics](../platform/vita/PERFORMANCE.md) for the build switch
+See [Vita diagnostics](../platform/vita/docs/PERFORMANCE.md) for the build switch
 and the GPU22 device-log findings.

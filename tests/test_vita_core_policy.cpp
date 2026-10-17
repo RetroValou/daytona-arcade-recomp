@@ -1,4 +1,4 @@
-#include "../platform/vita/core_policy.h"
+#include "../platform/vita/system/core_policy.h"
 #include <cstdlib>
 #include <vector>
 #define CHECK(x) do { if (!(x)) std::abort(); } while (0)

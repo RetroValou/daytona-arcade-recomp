@@ -1,7 +1,7 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
-#include "../platform/vita/diagnostic_log.h"
+#include "../platform/vita/system/diagnostic_log.h"
 #include <cassert>
 #include <cstring>
 #include <string>

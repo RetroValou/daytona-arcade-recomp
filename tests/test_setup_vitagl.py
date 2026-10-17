@@ -35,7 +35,7 @@ class FlagTests(unittest.TestCase):
         flags = SETUP.resolve_flags("release", {})
         self.assertEqual(flags["NO_DEBUG"], "1")
         self.assertEqual(flags["HAVE_VERTEX_LAYOUT_CACHE"], "1")
-        self.assertNotIn("DRAW_SPEEDHACK", flags)  # gpu_gl.cpp's indexed quads need 'first'
+        self.assertNotIn("DRAW_SPEEDHACK", flags)  # render/renderer.cpp's indexed quads need 'first'
         SETUP.check_rules(flags)
 
     def test_extra_flags_add_and_remove(self):

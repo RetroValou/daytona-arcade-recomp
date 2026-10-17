@@ -1,5 +1,13 @@
 # Handoff
 
+## Vita: platform/vita sorted by role (2026-10-17)
+
+Pure moves (platform/vita/HANDOFF.md): frontend/, render/, audio/, system/,
+net/, overrides/runtime/geo.*, docs/. Paths updated in the Vita CMake, the
+root CMake's Vita tests (include root platform/vita), tests, scripts'
+comments, docs. Vita host tests 14/14, test_vita_renderer.py, Python tests,
+VF2 VPK built.
+
 ## VF2: the test menu's inline-argument helpers (m2recomp --inline) (2026-10-17)
 
 On the Vita, VF2 stopped with "no recompiled code at 0005ef60" (the test

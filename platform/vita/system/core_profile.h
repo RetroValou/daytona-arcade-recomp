@@ -1,6 +1,6 @@
 // Per-core time accounting for the Vita GPU frontend (perf.log).
 //
-// Every loop iteration of main_gpu.cpp (one presented frame) adds the time of
+// Every loop iteration of frontend/main.cpp (one presented frame) adds the time of
 // each measured section; a report is produced every few seconds of gameplay.
 // For each core it gives the share of the core's wall time, the average per
 // presented frame and the worst frame, so the sections to optimize first can
@@ -8,7 +8,7 @@
 //
 //   core 0  main thread: input, i960 + TGP, geometry kick (or the whole parse
 //           in SYNC mode), 2D video, sound hand-off, GPU recording/submission
-//   core 1  geometry thread (platform/vita/src/runtime/geo.cpp): the parse
+//   core 1  geometry thread (platform/vita/overrides/runtime/geo.cpp): the parse
 //   core 2  sound worker (reference sound board: 68000 + MultiPCM + FM) and
 //           the vitaGL 2D worker (System 24 uploads + layer rectangles)
 //

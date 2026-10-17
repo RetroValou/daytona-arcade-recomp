@@ -11,8 +11,8 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
-#include "../platform/vita/async_log.h"
-#include "../platform/vita/diagnostic_log.h"
+#include "../platform/vita/system/async_log.h"
+#include "../platform/vita/system/diagnostic_log.h"
 
 struct SDL_mutex { std::mutex value; };
 struct SDL_cond { std::condition_variable value; };

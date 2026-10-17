@@ -1,8 +1,8 @@
 #pragma once
 #include "imgui.h"
 #include <psp2/touch.h>
-// The menu through vitaGL (gpu_gl.h): its triangles join the frame's draw list, blended.
-#include "gpu_gl.h"
+// The menu through vitaGL (render/renderer.h): its triangles join the frame's draw list, blended.
+#include "render/renderer.h"
 #include <vector>
 #include <algorithm>
 #include <cstring>

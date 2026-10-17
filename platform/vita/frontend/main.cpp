@@ -1,19 +1,19 @@
 #define SDL_MAIN_HANDLED
-#include "audio.h"
-#include "native_audio.h"
+#include "audio/audio.h"
+#include "audio/native_audio.h"
 #include "runtime/native_sound_engine.h"
-#include "sound_worker.h"
-#include "link.h"
-#include "controls.h"
-#include "diagnostic_log.h"
-#include "async_log.h"
-#include "core_policy.h"
-#include "core_profile.h"
-// The renderer: vitaGL (gpu_gl.cpp), the only one since 2026-10-16 (the CPU
+#include "audio/sound_worker.h"
+#include "net/link.h"
+#include "frontend/controls.h"
+#include "system/diagnostic_log.h"
+#include "system/async_log.h"
+#include "system/core_policy.h"
+#include "system/core_profile.h"
+// The renderer: vitaGL (render/renderer.cpp), the only one since 2026-10-16 (the CPU
 // frontend main.cpp and the vita2d/GXM gpu_fast.cpp were removed).
-#include "gpu_gl.h"
-#include "gpu_text.h"
-#include "imgui_vita.h"
+#include "render/renderer.h"
+#include "render/text.h"
+#include "render/imgui_backend.h"
 #include "runtime/game_loop.h"
 #include "runtime/i960_profile.h"
 #include "runtime/tgp_profile.h"
@@ -49,10 +49,10 @@
 // The multicore flow:
 //   main thread      i960 + TGP, 2D video, sound hand-off, GPU recording   core 0
 //   geometry thread  the geometrizer, always pipelined: the 3D of frame N-1 is drawn
-//                    with frame N (platform/vita/src/runtime/geo.h)        core 1
+//                    with frame N (platform/vita/overrides/runtime/geo.h)        core 1
 //   sound worker     the reference (emulated) sound board                  core 2
-//   vitaGL 2D worker System 24 uploads + layer rectangles (gpu_gl.cpp)     core 2
-// vitaGL draws the 2D layers of frame N-1 too (two texture sets, gpu_gl.cpp): the picture
+//   vitaGL 2D worker System 24 uploads + layer rectangles (render/renderer.cpp)     core 2
+// vitaGL draws the 2D layers of frame N-1 too (two texture sets, render/renderer.cpp): the picture
 // is the exact one, one frame late, in phase with the 3D. -1 = unpinned: scripts/build_vita.py --free-core leaves every thread
 // free, and the optional fourth core usable by all of them (core_policy.h). If the
 // geometry thread cannot be created, Geo stays on the main core and the fault is logged.
@@ -338,7 +338,7 @@ rt::Geo::Stats geo_stats_delta(const rt::Geo::Stats &now, const rt::Geo::Stats &
     return d;
 }
 
-// The game's geometrizer (platform/vita/src/runtime/geo.h), found from its
+// The game's geometrizer (platform/vita/overrides/runtime/geo.h), found from its
 // board's TGP buffer RAM: M2Board itself is the unmodified shared runtime.
 rt::Geo *geometry_of(rt::GameLoop *game) {
     return game ? rt::Geo::find(game->board().tgp().buffer_data()) : nullptr;
@@ -1363,7 +1363,7 @@ int main(int, char **) {
                 } else {
                     core_profile.add(P::Upload, draw_total); // the menu
                 }
-                // The gl.log write is diagnostics, not frame end (gpu_gl.cpp).
+                // The gl.log write is diagnostics, not frame end (render/renderer.cpp).
                 const uint64_t gl_diagnostic = std::min<uint64_t>(vita::gl_last_diagnostic_us(), gfx_ended - drawn);
                 core_profile.add(P::GfxEnd, gfx_ended - drawn - gl_diagnostic);
                 core_profile.add(P::Log, gl_diagnostic);

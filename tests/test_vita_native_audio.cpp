@@ -1,7 +1,7 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
-#include "../platform/vita/native_audio.h"
+#include "../platform/vita/audio/native_audio.h"
 #include <cassert>
 #include <condition_variable>
 #include <mutex>

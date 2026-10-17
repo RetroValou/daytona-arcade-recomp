@@ -2,7 +2,7 @@
 // objects as m2run, plus tests/vita_audio_shim for SDL-shaped host threads.
 // Usage: test_vita_sound_pipeline_rom ROM_CACHE_DIR [FRAMES=6000]
 #include "runtime/game_loop.h"
-#include "../platform/vita/sound_worker.h"
+#include "../platform/vita/audio/sound_worker.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>

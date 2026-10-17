@@ -22,8 +22,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_compile_options(-Wall -Wextra -fno-fast-math -ffp-contract=off -ffunction-sections -fdata-sections)
 
 option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-derived code; produces no VPK" OFF)
-# The renderer is vitaGL (main_gpu.cpp + gpu_gl.cpp), the only one: the CPU frontend
-# (main.cpp) and the vita2d/GXM renderer (gpu_fast.cpp) were removed on 2026-10-16.
+# The renderer is vitaGL (render/renderer.cpp), the only one: the CPU frontend and
+# the vita2d/GXM renderer were removed on 2026-10-16.
+# Sources by role: frontend/ (main loop, launcher, controls), render/ (vitaGL),
+# audio/, system/ (cores, profiling, logs), net/ (link), overrides/ (the shared
+# runtime's geo.h/.cpp replaced). Includes name them from here: "system/core_policy.h".
+set(VITA_FRONTEND_SOURCES frontend/main.cpp render/renderer.cpp)
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
 # Link-time optimization (scripts/build_vita.py --release): the generated i960/TGP
 # code can inline the runtime's small memory and bus accessors (cpu.cpp,
@@ -46,7 +50,7 @@ endif()
 # frame late); vitaGL shows the 2D layers one frame late too, in phase. Application
 # cores (0-2) of the busy threads; -1 =
 # unpinned. DAYTONA_VITA_FREE_CORES (build_vita.py --free-core) leaves them all
-# unpinned: they then follow the fourth-core setting (core_policy.h).
+# unpinned: they then follow the fourth-core setting (system/core_policy.h).
 option(DAYTONA_VITA_FREE_CORES "Leave the main, geometry, sound and 2D threads unpinned (the 4th core can take them)" OFF)
 set(DAYTONA_VITA_MAIN_CORE 0 CACHE STRING "Core of the main thread (i960, TGP, video, GPU submission)")
 set(DAYTONA_VITA_GEO_CORE 1 CACHE STRING "Core of the geometry thread")
@@ -62,9 +66,9 @@ endforeach()
 # Keep the switch frontend-only; audio/render/game code is identical in both builds.
 # DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
-set_source_files_properties(gpu_gl.cpp PROPERTIES COMPILE_DEFINITIONS
+set_source_files_properties(render/renderer.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${VITA_2D_CORE}")
-set_source_files_properties(main_gpu.cpp PROPERTIES COMPILE_DEFINITIONS
+set_source_files_properties(frontend/main.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE}")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build_daytona/recomp/daytona93/gen" CACHE PATH
     "Host-generated i960, TGP and 68000 C++ root (scripts/games.py gen_root: build_<game>/recomp/<set>/gen)")
@@ -133,7 +137,7 @@ target_include_directories(vita_ymfm SYSTEM PUBLIC "${YMFM_DIR}")
 target_compile_options(vita_ymfm PRIVATE -w)
 
 # The same native runtime as the desktop; no refcore or interpreter is linked.
-# geo.cpp is replaced by its Vita version (platform/vita/src/runtime/geo.cpp),
+# geo.cpp is replaced by its Vita version (platform/vita/overrides/runtime/geo.cpp),
 # which compiles the original unchanged and runs it on its own core.
 set(RUNTIME_FILES cpu tgp tgp_profile i960_profile m2_tgp_board raster video m2_board game_loop zip rom_import
     archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
@@ -145,12 +149,13 @@ endforeach()
 foreach(name games daytona srallyc vf2) # every game's record and hooks (src/games/)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/games/${name}.cpp")
 endforeach()
-# Vita replacement of the geometrizer (platform/vita/src/runtime/geo.h/.cpp).
-# Nothing in src/ is modified: platform/vita/src comes FIRST on the include
+# Vita replacement of the geometrizer (platform/vita/overrides/runtime/geo.h/.cpp).
+# Nothing in src/ is modified: platform/vita/overrides comes FIRST on the include
 # path, so the shared runtime's "runtime/geo.h" resolves to the Vita one.
-add_library(vita_runtime STATIC ${RUNTIME_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/geo.cpp")
+add_library(vita_runtime STATIC ${RUNTIME_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/overrides/runtime/geo.cpp")
 target_compile_options(vita_runtime PRIVATE -fno-math-errno)
-target_include_directories(vita_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src" "${DAYTONA_ROOT}/src")
+target_include_directories(vita_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/overrides" "${DAYTONA_ROOT}/src"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(vita_runtime PUBLIC vita_trace vita_i960 vita_ymfm)
 target_compile_definitions(vita_runtime PUBLIC M2_ROMSET="${DAYTONA_VITA_ROMSET}")
 # Runtime support of the i960 code rewritten by scripts/fast_gen.py
@@ -265,7 +270,7 @@ set(VITAGL_LINK_LIBS ${VITAGL_LIBRARIES}
     SceCtrl_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
     SceNet_stub SceNetCtl_stub SceTouch_stub
     SceLibKernel_stub pthread m)
-# The ImGui menu (imgui_vita.h, through vitaGL).
+# The ImGui menu (render/imgui_backend.h, through vitaGL).
 set(IMGUI_DIR "${DAYTONA_ROOT}/extern/imgui")
 add_library(vita_imgui STATIC "${IMGUI_DIR}/imgui.cpp" "${IMGUI_DIR}/imgui_draw.cpp"
     "${IMGUI_DIR}/imgui_tables.cpp" "${IMGUI_DIR}/imgui_widgets.cpp")
@@ -275,8 +280,8 @@ target_link_libraries(vita_runtime PUBLIC vita_imgui)
 set(VITA_IMGUI_LICENSE FILE "${DAYTONA_ROOT}/extern/imgui/LICENSE.txt" "licenses/imgui.txt")
 
 if(DAYTONA_VITA_COMPILE_CHECK)
-    add_library(daytona_vita_frontend OBJECT main_gpu.cpp gpu_gl.cpp)
-    target_include_directories(daytona_vita_frontend PRIVATE "${VITAGL_INCLUDE_DIR}")
+    add_library(daytona_vita_frontend OBJECT ${VITA_FRONTEND_SOURCES})
+    target_include_directories(daytona_vita_frontend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}")
     target_link_libraries(daytona_vita_frontend PRIVATE vita_runtime ${VITA_SDL_TARGET})
     message(STATUS "ROM-free COMPILE CHECK only: no linked game or installable VPK will be produced")
 else()
@@ -286,8 +291,8 @@ else()
     if(EXISTS "${DAYTONA_GEN_ROOT}/${DAYTONA_VITA_ROMSET}_dsp/dsp_gen.cpp")
         list(APPEND GEN_SOURCES "${DAYTONA_GEN_ROOT}/${DAYTONA_VITA_ROMSET}_dsp/dsp_gen.cpp")
     endif()
-    add_executable(daytona_vita main_gpu.cpp gpu_gl.cpp ${GEN_SOURCES})
-    target_include_directories(daytona_vita PRIVATE "${VITAGL_INCLUDE_DIR}")
+    add_executable(daytona_vita ${VITA_FRONTEND_SOURCES} ${GEN_SOURCES})
+    target_include_directories(daytona_vita PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}")
     target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
     target_link_options(daytona_vita PRIVATE -Wl,--gc-sections)
     # vita-elf-create appends its SCE data (~4.3 KB) after the code segment, inside the

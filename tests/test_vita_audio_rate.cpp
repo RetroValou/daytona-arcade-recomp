@@ -1,8 +1,8 @@
-// Reference audio pacing (platform/vita/audio_rate.h) in a simulated device: the
+// Reference audio pacing (platform/vita/audio/audio_rate.h) in a simulated device: the
 // sound board's output arrives once per emulated frame (late frames lose their time,
 // as vita::FrameClock drops it), the device pulls 512 frames every 10.67 ms through
 // the same steps as audio.h's callback (prime, rate update, resampler, underrun).
-#include "../platform/vita/audio_rate.h"
+#include "../platform/vita/audio/audio_rate.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

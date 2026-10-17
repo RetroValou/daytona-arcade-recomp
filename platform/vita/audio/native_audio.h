@@ -1,5 +1,5 @@
 #pragma once
-#include "core_policy.h"
+#include "system/core_policy.h"
 
 #include <SDL.h>
 #include <algorithm>

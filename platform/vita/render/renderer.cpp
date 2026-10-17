@@ -39,12 +39,12 @@
 // back from GPU memory, which the CPU reads very slowly (~30 ms/frame for the System 24
 // layers in the race).
 
-#include "gpu_gl.h"
-#include "core_policy.h"
+#include "render/renderer.h"
+#include "system/core_policy.h"
 #include "runtime/raster_texel.h"
-#include "texel_index.h"
-#include "system24_upload.h"
-#include "polygon_order.h"
+#include "render/texel_index.h"
+#include "render/system24_upload.h"
+#include "render/polygon_order.h"
 
 #include <psp2/kernel/threadmgr.h>
 #include <psp2/power.h>
@@ -262,7 +262,7 @@ constexpr ProgramDef kPrograms[int(Prog::Count)] = {
     {"ModelAlpha", "#define TEXTURED\n#define MODEL\n#define ALPHA_TEST\n"},
     {"FlatChecker", "#define CHECKER\n"},
     {"ModelChecker", "#define TEXTURED\n#define MODEL\n#define ALPHA_TEST\n#define CHECKER\n"},
-    {"Ui", "#define TEXTURED\n"}, // ImGui menu (imgui_vita.h): RGBA texture * vertex colour, blended
+    {"Ui", "#define TEXTURED\n"}, // ImGui menu (render/imgui_backend.h): RGBA texture * vertex colour, blended
 };
 inline bool textured(Prog p) { return p != Prog::Flat && p != Prog::FlatChecker; }
 
@@ -337,7 +337,7 @@ struct Timing {
     uint64_t gpu_wait = 0;                   // gl_begin_frame: GPU still busy with the previous frame
     uint64_t submit = 0;                     // execute(): GL calls
     uint64_t swap = 0;                       // vglSwapBuffers: waits for a free buffer / vsync
-    // Main loop, reported by main_gpu.cpp through gl_profile_loop().
+    // Main loop, reported by frontend/main.cpp through gl_profile_loop().
     unsigned loops = 0, menu_loops = 0, board_frames = 0;
     uint64_t board = 0, board_core = 0, board_geometry = 0, board_video = 0, board_max = 0;
     uint64_t sound_wait = 0, sound_worker = 0, prepare = 0;
@@ -916,7 +916,7 @@ void gl_fill_rect(float x, float y, float w, float h, uint32_t rgba) {
     push_quad(Prog::Flat, 0, x, y, x + w, y + h, 0.0f, 0.0f, 0.0f, 0.0f, rgba);
 }
 
-// ---- ImGui menu (imgui_vita.h) -----------------------------------------------------------
+// ---- ImGui menu (render/imgui_backend.h) -----------------------------------------------------------
 uint32_t gl_create_ui_texture(int w, int h, const void *rgba) {
     if (w <= 0 || h <= 0 || !rgba) return 0;
     GLuint texture = 0;

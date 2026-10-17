@@ -4,7 +4,7 @@
 // frontend were removed on 2026-10-16).
 
 #include "runtime/video.h"
-#include "flat_index.h"
+#include "render/flat_index.h"
 
 #include <array>
 #include <atomic>
@@ -26,7 +26,7 @@
 
 namespace vita {
 
-// ---- Frame level API (main_gpu.cpp) ----------------------------------------
+// ---- Frame level API (frontend/main.cpp) ----------------------------------------
 bool gl_init();              // init vitaGL + shaders; false on failure (see gl_error())
 const char *gl_error();      // last init error, empty when none
 void gl_begin_frame();       // clear the screen and the recorded draw list
@@ -34,7 +34,7 @@ void gl_end_frame();         // draw everything recorded since gl_begin_frame() 
 void gl_fini();              // release shaders/buffers
 void gl_fill_rect(float x, float y, float w, float h, uint32_t rgba); // display pixels (960x544)
 
-// ImGui menu (imgui_vita.h): an RGBA texture (linear, clamped) and textured triangles in
+// ImGui menu (render/imgui_backend.h): an RGBA texture (linear, clamped) and textured triangles in
 // display pixels, vertex colour bytes r, g, b, a, alpha blended, drawn in recording order
 // inside the scissor rectangle [x0, x1) x [y0, y1). Recorded like everything else and run
 // by gl_end_frame().
@@ -44,7 +44,7 @@ void gl_delete_ui_texture(uint32_t texture);
 void gl_ui_triangles(uint32_t texture, const GlUiVertex *vertices, size_t count, int x0, int y0, int x1, int y1);
 
 // What the main loop did during one iteration (one presented frame), in microseconds.
-// main_gpu.cpp fills it and calls gl_profile_loop() once per iteration; gl.log prints
+// frontend/main.cpp fills it and calls gl_profile_loop() once per iteration; gl.log prints
 // averages next to the renderer's own timings, so a whole frame is accounted for.
 struct GlLoopProfile {
     bool menu = false;
@@ -75,7 +75,7 @@ public:
     void shutdown();
     void draw(rt::Video &video);       // System 24 layers + Model 2 polygons (the only Vita GPU case)
 
-    // ---- Diagnostics read by main_gpu.cpp ----
+    // ---- Diagnostics read by frontend/main.cpp ----
     double last_gpu_ms() const { return last_gpu_ms_; }
     uint64_t last_sort_us() const { return last_sort_us_; } // priority sort feeding the depth ranks
     uint64_t last_texture_us() const { return last_texture_us_; } // index texture builds (inside polygons)

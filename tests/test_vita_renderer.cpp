@@ -2,7 +2,7 @@
 // The reference translation units are built without M2_VITA_RENDER_OPT.
 #include "runtime/video.h"
 #include "reference/video.h"
-#include "../platform/vita/system24_upload.h"
+#include "../platform/vita/render/system24_upload.h"
 #include <array>
 #include <algorithm>
 #include <chrono>

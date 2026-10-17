@@ -85,7 +85,7 @@ THE SOFTWARE.
 
 The launcher links the same pinned Dear ImGui core recorded in the root
 THIRD_PARTY.md (MIT). Its unmodified core provides widgets/font atlas; the
-Vita input and vitaGL draw adapter (imgui_vita.h) is project code. The VPK
+Vita input and vitaGL draw adapter (render/imgui_backend.h) is project code. The VPK
 includes licenses/imgui.txt.
 
 # vitaGL (the renderer)
@@ -104,8 +104,8 @@ files are copied to `extern/vitagl/install/licenses/`):
 Without that directory the build falls back to the same libraries from the user's
 VitaSDK installation. Shaders are compiled at run time by the console's
 `libshacccg.suprx`, which the user installs; it is not distributed with the game. The same ImGui menu is drawn
-through vitaGL by project code (`imgui_vita.h`, `gl_ui_triangles` in
-`gpu_gl.cpp`). Distributing a VPK of this build statically linked to vitaGL
+through vitaGL by project code (`render/imgui_backend.h`, `gl_ui_triangles` in
+`render/renderer.cpp`). Distributing a VPK of this build statically linked to vitaGL
 carries the LGPL-3.0 obligations (allow relinking with a modified vitaGL). SceShaccCgExt
 is GPL-3.0: a distributed VPK that links it is a combined work under the GPL-3.0
 (corresponding source to be offered). The project's own source stays BSD-3-Clause.

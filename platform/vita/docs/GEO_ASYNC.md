@@ -29,11 +29,11 @@ and in `cores:` of every report.
 
 | File | Role |
 | --- | --- |
-| `src/runtime/geo.h` (this directory) | Replaces `src/runtime/geo.h`: the Vita CMake puts `platform/vita/src` **before** `src` on the include path. It includes the original header unchanged, its class renamed `rt::GeoCore`, then declares `rt::Geo`, a wrapper with exactly the interface `M2Board` uses (constructor, `zclip_w`, `parse`, `polys`, `windows`, `set_wide_margin`). |
+| `src/runtime/geo.h` (this directory) | Replaces `src/runtime/geo.h`: the Vita CMake puts `platform/vita/overrides` **before** `src` on the include path. It includes the original header unchanged, its class renamed `rt::GeoCore`, then declares `rt::Geo`, a wrapper with exactly the interface `M2Board` uses (constructor, `zclip_w`, `parse`, `polys`, `windows`, `set_wide_margin`). |
 | `src/runtime/geo.cpp` (this directory) | Replaces `src/runtime/geo.cpp` in the Vita runtime: compiles the original unchanged as `rt::GeoCore`, plus the wrapper and its thread. |
 | `core_profile.h` | Per-core accounting and the `perf.log` writer. |
-| `main_gpu.cpp` | Shared by both GPU builds: core placement (geometry always pipelined), profiling. |
-| `gpu_gl.cpp/.h` | vitaGL: single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the `--diagnostics` build. |
+| `frontend/main.cpp` | Shared by both GPU builds: core placement (geometry always pipelined), profiling. |
+| `render/renderer.cpp/.h` | vitaGL: single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the `--diagnostics` build. |
 | `core_policy.h` | Pin masks, fourth-core policy of the unpinned threads. |
 | `sound_worker.h` | `set_cpu_mask()`: the sound worker pins itself to its core. |
 | `CMakeLists.txt` | The replacement source, include order, core options, LTO. |

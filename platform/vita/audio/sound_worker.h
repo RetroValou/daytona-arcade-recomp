@@ -1,5 +1,5 @@
 #pragma once
-#include "core_policy.h"
+#include "system/core_policy.h"
 
 #include <SDL.h>
 #include <cstdint>
@@ -40,7 +40,7 @@ public:
     }
     bool threaded() const { return thread_ != nullptr; }
     // Affinity applied by the next open(): a SCE_KERNEL_CPU_MASK_USER_n mask
-    // pins the sound board to one core (main_gpu.cpp: core 2, away from the
+    // pins the sound board to one core (frontend/main.cpp: core 2, away from the
     // main and geometry threads); 0 keeps all application cores and follows
     // the fourth-core policy (core_policy.h, --free-core builds).
     void set_cpu_mask(int mask) { requested_mask_ = mask; }

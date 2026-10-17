@@ -8,7 +8,7 @@
 #endif
 
 namespace vita {
-// Core placement of the GPU builds (main_gpu.cpp). By default each busy thread
+// Core placement of the GPU builds (frontend/main.cpp). By default each busy thread
 // has its own application core: main 0, geometry 1, sound board and vitaGL 2D
 // worker 2 (DAYTONA_VITA_*_CORE). scripts/build_vita.py --free-core leaves
 // them all unpinned (-1): they then follow core_mask below, so the optional
@@ -43,7 +43,7 @@ inline std::atomic<bool> core_rejected{false};
 inline int set_cpu_clock(int mhz) {
     return request_cpu_clock(mhz, scePowerSetArmClockFrequency, scePowerGetArmClockFrequency);
 }
-// home_mask: the calling thread's own core when the build pins it (main_gpu.cpp,
+// home_mask: the calling thread's own core when the build pins it (frontend/main.cpp,
 // default build: core 0). The fourth core is probed on that thread, which then
 // goes back home: only the threads left free (audio callbacks, and every worker
 // of a --free-core build) follow core_mask through apply_core_policy.

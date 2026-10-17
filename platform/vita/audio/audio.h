@@ -1,8 +1,8 @@
 #pragma once
-#include "core_policy.h"
+#include "system/core_policy.h"
 #include <SDL.h>
 #include "runtime/sound_board.h"
-#include "audio_rate.h"
+#include "audio/audio_rate.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>

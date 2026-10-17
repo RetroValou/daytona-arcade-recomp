@@ -1,6 +1,6 @@
-// vita::FlatIndex (gpu_gl.cpp's per-polygon lookups) against std::unordered_map:
+// vita::FlatIndex (render/renderer.cpp's per-polygon lookups) against std::unordered_map:
 // inserts, lookups, O(1) clears, and the 3/4 fill limit.
-#include "../platform/vita/flat_index.h"
+#include "../platform/vita/render/flat_index.h"
 #include <cstdio>
 #include <cstdlib>
 #include <random>

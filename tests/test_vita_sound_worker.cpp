@@ -1,6 +1,6 @@
 // Runs the production sound worker against real host threads and SDL-shaped
 // primitives. Checks ownership, overlap, lifecycle, failures, and exact tasks.
-#include "../platform/vita/sound_worker.h"
+#include "../platform/vita/audio/sound_worker.h"
 #include "../src/runtime/frame_profile.h"
 #include <atomic>
 #include <condition_variable>

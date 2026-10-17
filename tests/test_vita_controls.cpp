@@ -1,4 +1,4 @@
-#include "../platform/vita/controls.h"
+#include "../platform/vita/frontend/controls.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

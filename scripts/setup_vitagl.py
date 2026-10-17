@@ -25,7 +25,7 @@ nor modified: the headers built here come first (CPATH) and CMake links the libr
 by their full path.
 
 Profiles (vitaGL make flags, see platform/vita/README.md "vitaGL build flags"):
-  release  the fastest flags that are safe for gpu_gl.cpp (default)
+  release  the fastest flags that are safe for render/renderer.cpp (default)
   debug    vitaGL defaults + error and shader compiler logs (sceClibPrintf)
 --flags adds flags to the profile or, with NAME=0, removes one, e.g.
   --flags "NO_SPLASHSCREEN=1 HAVE_SHADER_CACHE=0"
@@ -71,9 +71,9 @@ PROFILES = {
     },
 }
 
-# Flags gpu_gl.cpp cannot work with, and why.
+# Flags render/renderer.cpp cannot work with, and why.
 REJECTED = {
-    ("DRAW_SPEEDHACK", "1"): "glDrawArrays then ignores its first vertex and gpu_gl.cpp's indexed quads "
+    ("DRAW_SPEEDHACK", "1"): "glDrawArrays then ignores its first vertex and render/renderer.cpp's indexed quads "
                              "(glDrawElements) would read the wrong vertices; it also turns "
                              "HAVE_VERTEX_LAYOUT_CACHE off",
     ("SOFTFP_ABI", "1"): "VitaSDK and this project are built for the hard-float ABI",

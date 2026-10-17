@@ -1,5 +1,21 @@
 # Vita port handoff — 29 September 2026
 
+## Source tree by role — 17 October 2026
+
+Files moved with git mv, no code change: frontend/ (main.cpp, was
+main_gpu.cpp; controls.h), render/ (renderer.h/.cpp, were gpu_gl.h/.cpp;
+imgui_backend.h, was imgui_vita.h; text.h, was gpu_text.h; texel_index,
+flat_index, polygon_order, system24_upload), audio/, system/ (core_policy,
+core_profile, async_log, diagnostic_log), net/link.h, overrides/runtime/geo.*
+(was src/runtime/), docs/ (the notes) and docs/history/ (GPU04-06, OPT03).
+Includes name headers from platform/vita ("system/core_policy.h"); the Vita
+CMake and the host tests add that include root. Class and macro names are
+unchanged (GpuGlRenderer, DAYTONA_VITA_*): later steps. Left behind: an
+untracked scripts/__pycache__ (fast_gen.py moved away), to delete by hand.
+Checks: Vita host tests 14/14, scripts/test_vita_renderer.py, Python tests,
+VF2 VPK built (--fast-inaccuracy). Next: split render/renderer.cpp by its
+sections, then settings/storage/input out of frontend/main.cpp.
+
 ## Icon/LiveArea images and fixed app name — 12 October 2026
 
 `platform/vita/livearea.cmake` packages `icon0.png`, `bg.png`, `startup.png` and

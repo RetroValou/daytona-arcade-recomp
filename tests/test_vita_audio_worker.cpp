@@ -1,7 +1,7 @@
 // The production Audio queue/mixer (its own queues and resampler, audio.h) runs
 // against a mocked SDL device and real host threads.
-#include "../platform/vita/audio.h"
-#include "../platform/vita/sound_worker.h"
+#include "../platform/vita/audio/audio.h"
+#include "../platform/vita/audio/sound_worker.h"
 #include <array>
 #include <atomic>
 #include <condition_variable>

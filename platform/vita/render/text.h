@@ -1,5 +1,5 @@
 #pragma once
-#include "gpu_gl.h"
+#include "render/renderer.h"
 #include <cctype>
 #include <cstdint>
 #include <string_view>

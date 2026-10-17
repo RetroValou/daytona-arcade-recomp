@@ -95,7 +95,7 @@ void system24_upload_tests() {
 
 // The vitaGL index form (pen numbers + palette texture) against the colour form above:
 // decoded through the palette it gives the same texels, its incremental uploads match a
-// full one (two texture sets alternating, as gpu_gl.cpp's slots), a palette change
+// full one (two texture sets alternating, as render/renderer.cpp's slots), a palette change
 // rewrites no tile, and the run-based writer equals the per-tile reference.
 void system24_index_tests() {
     Memory mem; // random tile RAM, characters and palette
@@ -141,7 +141,7 @@ void system24_index_tests() {
     frame();
     check_decoded("index form through the palette equals the colour form");
 
-    // Two sets, each two frames behind, as gpu_gl.cpp's S24Slot pair.
+    // Two sets, each two frames behind, as render/renderer.cpp's S24Slot pair.
     std::array<std::array<std::vector<uint32_t>, 8>, 2> sets{planes(), planes()};
     std::array<uint64_t, 2> generation{UINT64_MAX, UINT64_MAX};
     auto upload_set = [&](unsigned s) {

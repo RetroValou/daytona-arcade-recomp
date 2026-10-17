@@ -1,8 +1,8 @@
-// The vitaGL branch of the Vita ImGui menu (imgui_vita.h, GPU_GL builds) against host
-// mocks of gpu_gl.h's menu entry points: font atlas upload, triangle lists with their
+// The vitaGL branch of the Vita ImGui menu (render/imgui_backend.h, GPU_GL builds) against host
+// mocks of render/renderer.h's menu entry points: font atlas upload, triangle lists with their
 // scissor rectangles and vertex colours, and texture release at shutdown.
 #define DAYTONA_VITA_GPU_GL 1
-#include "platform/vita/imgui_vita.h"
+#include "platform/vita/render/imgui_backend.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>

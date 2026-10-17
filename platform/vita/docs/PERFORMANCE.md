@@ -17,7 +17,7 @@ From a console perf.log with fine-grained probes (not kept in the sources):
   core 2. A silent block is no longer queued; the PCM stream sets the pace and the
   callback adds the FM that is queued. FM that starts again is padded with the silence
   it skipped so that it stays aligned on the PCM queue. Not silent FM is unchanged.
-* **Indexed quads (gpu_gl.cpp).** Polygons and
+* **Indexed quads (render/renderer.cpp).** Polygons and
   System 24 rectangles are written as groups of 4 vertices drawn through a static
   16-bit index buffer {4q, 4q+1, 4q+2, 4q, 4q+2, 4q+3}: same triangles as the fans (an
   odd fan ends with one degenerate triangle), 4 vertices per quad instead of 6 (95% of
@@ -226,7 +226,7 @@ fault requires routine logging to stay enabled.
 
 GPU22 adds the shared, opt-in native audio replacement used by both desktop
 and Vita. Select `AUDIO ENGINE: NATIVE (TEST)` in Options and reset the game.
-Reference remains the default. See [native audio](../../docs/native-audio.md)
+Reference remains the default. See [native audio](../../../docs/native-audio.md)
 for architecture, measured fidelity differences and reproduction commands.
 
 Native mode has no reference sound board or sound worker. The SDL device
@@ -247,7 +247,7 @@ voices. A one-second graphics stall still produced 48,000 audio frames and
 33 new note starts. ASan/UBSan checks passed; this is not Vita runtime proof.
 
 The sections below this one describe the original software-rendered diagnostic
-patch, not the current `main_gpu.cpp` path. Diagnostic-enabled builds write
+patch, not the current `frontend/main.cpp` path. Diagnostic-enabled builds write
 `ux0:data/daytona93/vita-diag.log`; copy it before relaunching.
 
 - `geo_ms` measures complete geometrizer execution, including lighting. It is

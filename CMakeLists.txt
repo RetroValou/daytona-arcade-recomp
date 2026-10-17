@@ -473,7 +473,7 @@ endif()
 # device frame rates. Off by default: not part of the desktop build.
 option(M2_VITA_TESTS "Build the PS Vita frontend's host tests" OFF)
 if(M2_VITA_TESTS)
-    # The menu through the vitaGL backend, gpu_gl.h mocked.
+    # The menu through the vitaGL backend, render/renderer.h mocked.
     add_executable(test_vita_imgui_gl tests/test_vita_imgui_gl.cpp
         extern/imgui/imgui.cpp extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_tables.cpp extern/imgui/imgui_widgets.cpp)
@@ -533,6 +533,16 @@ if(M2_VITA_TESTS)
     target_include_directories(test_vita_log PRIVATE tests/vita_log_shim)
     target_compile_definitions(test_vita_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     add_test(NAME vita_log COMMAND test_vita_log)
+
+    # platform/vita is the include root of its own headers ("system/core_policy.h").
+    foreach(t test_vita_imgui_gl test_vita_controls test_vita_core_policy test_vita_polygon_order
+              test_vita_texel_index test_vita_flat_index test_vita_audio_rate test_vita_native_audio
+              test_vita_sound_worker test_vita_audio_worker test_vita_async_log test_vita_log)
+        target_include_directories(${t} PRIVATE platform/vita)
+    endforeach()
+    if(TARGET test_vita_link)
+        target_include_directories(test_vita_link PRIVATE platform/vita)
+    endif()
 endif()
 
 # Measurement, not a test: where MAME's double FP disagrees with the model.

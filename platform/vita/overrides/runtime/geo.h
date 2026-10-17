@@ -1,6 +1,6 @@
 // PS Vita replacement of src/runtime/geo.h: the geometrizer on its own core.
 //
-// The Vita build puts platform/vita/src before src on the include path, so
+// The Vita build puts platform/vita/overrides before src on the include path, so
 // every "runtime/geo.h" of the shared runtime resolves here, and geo.cpp of
 // this directory replaces src/runtime/geo.cpp. The original header and
 // geo.cpp are used unmodified, compiled under the name rt::GeoCore. rt::Geo
@@ -22,7 +22,7 @@
 // Two modes, nothing in between:
 //   Sync       single core: the parse on the main core, the reference image
 //              (the CPU build, main.cpp, and the fallback without a thread).
-//   Pipelined  two cores (the GPU builds, main_gpu.cpp): shown list = the
+//   Pipelined  two cores (the GPU builds, frontend/main.cpp): shown list = the
 //              previous parse; the parse of frame N overlaps the whole next game
 //              frame. Game-visible state is unchanged; the vitaGL renderer shows
 //              the 2D layers (HUD, sky tilemap) one frame late too, in phase.

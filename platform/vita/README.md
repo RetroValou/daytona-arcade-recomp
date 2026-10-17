@@ -1,5 +1,22 @@
 # Native PS Vita target (experimental)
 
+## Source layout
+
+```
+frontend/   main.cpp (startup, launcher, the game loop), controls.h
+render/     vitaGL renderer (renderer.h/.cpp), the ImGui backend, text, and the
+            renderer's pure helpers (texel/flat index, polygon order, System 24 upload)
+audio/      reference and native audio output, the sound worker, rate conversion
+system/     core placement, per-core profiling, logs
+net/        LAN link (link.h)
+overrides/  runtime/geo.h/.cpp: replace the shared runtime's geometrizer (first on
+            the include path; the original is compiled unchanged inside)
+docs/       performance, optimization and diagnostics notes; history/: closed work
+```
+
+Headers are included from this folder: `#include "system/core_policy.h"`
+(CMake and the host tests add `platform/vita` to the include path).
+
 ## ImGui launcher (01.24)
 
 Options also includes **Hold Test button**: enable it, then Start/Resume.
@@ -33,7 +50,7 @@ are not recorded yet.
 
 ## Multicore flow
 
-The renderer is vitaGL (`main_gpu.cpp` + `gpu_gl.cpp`), the only one: the vita2d/GXM
+The renderer is vitaGL (`frontend/main.cpp` + `render/renderer.cpp`), the only one: the vita2d/GXM
 renderer (`--gpu-fast`) and the CPU frontend (`main.cpp`) were removed on 2026-10-16,
 and `--gpu-gl` with them (no flag needed). One multicore flow. The Vita has three
 application cores (0-2) and a fourth, system core (3) that a core-unlock plugin can open.
@@ -62,8 +79,8 @@ How one emulated frame N overlaps (each worker is joined before its data is touc
 
 Load, verified with `--diagnostics` (`perf.log`, one report per 5 s of gameplay, per core:
 busy %, ms per frame, worst frame; `core_profile.h`, details in
-[GEO_ASYNC.md](GEO_ASYNC.md)). Core 0 is the limit: about 16 ms of the 17.4 ms frame
-in a race with vitaGL (estimates in [PERFORMANCE.md](PERFORMANCE.md)). Core 2 comes next
+[GEO_ASYNC.md](docs/GEO_ASYNC.md)). Core 0 is the limit: about 16 ms of the 17.4 ms frame
+in a race with vitaGL (estimates in [PERFORMANCE.md](docs/PERFORMANCE.md)). Core 2 comes next
 with vitaGL (sound board + 2D worker, about 15 ms); the geometry parse leaves core 1 the
 most room. `--free-core` lets the scheduler, and the fourth core, use that room.
 
@@ -302,7 +319,7 @@ This slows wall-clock progress when the device cannot keep up; it does not
 skip guest instructions, increase the guest timestep, or make the simulation
 itself four times faster. The generic FrameClock default remains four steps.
 
-See [PERFORMANCE.md](PERFORMANCE.md) for the stage timings now written to
+See [PERFORMANCE.md](docs/PERFORMANCE.md) for the stage timings now written to
 `vita.log`. This is a diagnostic build, not a confirmed full-speed fix.
 
 ## Sound and saved data
@@ -382,7 +399,7 @@ See [HANDOFF.md](HANDOFF.md) for the port's status and
 ## Widescreen, draw distance and cabinet controls
 
 The Options page lists only what can be changed in this build, for this game
-(`option_available` in `main_gpu.cpp`): Aspect, HUD and Stretch Tile Background
+(`option_available` in `frontend/main.cpp`): Aspect, HUD and Stretch Tile Background
 with the GXM renderer only (vitaGL draws the original 4:3 picture); the audio
 engine for a game whose driver tables are known (`Game::native_sound`); Music
 and Effects when the sound board can tell them apart (`rt::has_music_effects`:
@@ -472,10 +489,10 @@ can increase geometry work. Hardware appearance/performance needs testing.
 
 ## vitaGL renderer
 
-`scripts/build_vita.py` builds `main_gpu.cpp` + `gpu_gl.cpp` against vitaGL, the only
+`scripts/build_vita.py` builds `frontend/main.cpp` + `render/renderer.cpp` against vitaGL, the only
 renderer (the libvita2d one, `--gpu-fast`, and the CPU-exact `main.cpp` were removed on
 2026-10-16). Same launcher, options, dual-ROM switching and link play as the GXM build (the ImGui
-menu is drawn through vitaGL, `imgui_vita.h`); widescreen stays a GXM feature for now
+menu is drawn through vitaGL, `render/imgui_backend.h`); widescreen stays a GXM feature for now
 (see "Multicore GPU builds" above).
 
 * Build requirements: vitaGL and its libraries, built pinned inside the project by
@@ -490,7 +507,7 @@ menu is drawn through vitaGL, `imgui_vita.h`); widescreen stays a GXM feature fo
 * System 24 layers are placed by the same depth buffer: foreground before the polygons
   (in front of every polygon), background after them (behind every polygon), so hidden
   pixels are rejected before their shader runs. `k2DLayersByDepth = false` in
-  `gpu_gl.cpp` restores the plain painter order (same image). The menu font never uses
+  `render/renderer.cpp` restores the plain painter order (same image). The menu font never uses
   the depth buffer.
 
 ### Performance on a Vita (vitaGL build)
@@ -548,7 +565,7 @@ nothing; `--force` rebuilds, `--print-flags` shows the make flags.
 
 #### Release flags (default, `--profile release`)
 
-Chosen from what `gpu_gl.cpp` actually does: GLSL shaders only (no fixed-function
+Chosen from what `render/renderer.cpp` actually does: GLSL shaders only (no fixed-function
 pipeline), `GL_TRIANGLES` only, 16-bit indices, no instancing, no framebuffer objects,
 no `glTexSubImage2D` (texture memory written in place after `sceGxmFinish`), one VBO
 pointing at our own GPU memory (`vglBufferData`), all GL calls on the main thread.
