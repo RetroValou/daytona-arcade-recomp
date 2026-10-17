@@ -14,7 +14,12 @@
 //     code: returns, indirect jumps, interrupt entries, budget boundaries;
 //     m2sndrecomp emits M2_SND_DISPATCH()), SCSP register reads and writes
 //     (each one first renders up to the current instruction count);
-//   - render_to calls (each a 64-bit division) and the ones that rendered.
+//   - render_to calls (each a 64-bit division) and the ones that rendered;
+//   - inside Scsp::render: the 32-slot loop of one sample in kSlotEvery timed
+//     (UpdateSlot and the slots' mix into the DSP inputs and the output), and
+//     on every sample the active slots and what they use (pitch LFO, amplitude
+//     LFO, modulation from the ring buffer, 8-bit samples): the rest of the
+//     render is the DSP and the output mix.
 // Counters never change what the board computes.
 #pragma once
 
@@ -23,14 +28,16 @@
 namespace snd {
 
 struct SoundProfile {
-    static constexpr uint32_t kDspEvery = 16, kRenderEvery = 16;
+    static constexpr uint32_t kDspEvery = 16, kRenderEvery = 16, kSlotEvery = 16;
     uint64_t (*clock)() = nullptr; // host ticks (set by the frontend); null: counts only
     uint64_t frames = 0, advance_ticks = 0;
     uint64_t m68k_instructions = 0, dispatches = 0, scsp_reads = 0, scsp_writes = 0;
     uint64_t render_calls = 0, render_runs = 0, samples = 0;
     uint64_t render_timed = 0, render_timed_samples = 0, render_ticks = 0;
     uint64_t dsp_timed = 0, dsp_ticks = 0, dsp_in_timed_render = 0;
-    uint32_t dsp_phase = 0, render_phase = 0;
+    uint64_t slot_timed = 0, slot_ticks = 0, slot_in_timed_render = 0;
+    uint64_t active_slots = 0, plfo_slots = 0, alfo_slots = 0, mod_slots = 0, pcm8_slots = 0; // summed per sample
+    uint32_t dsp_phase = 0, render_phase = 0, slot_phase = 0;
     bool timing_render = false;
 
     void clear() {

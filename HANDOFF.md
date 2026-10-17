@@ -1,5 +1,24 @@
 # Handoff
 
+## Sound probe: the SCSP render split into slots, DSP and output (2026-10-17)
+
+For VF2's sound on the Vita (the user's next target: find what costs).
+The last measurement (2026-10-16, before RateConv) had the sound board at
+12.6-17.5 ms a frame in a fight: 68000 3-4, SCSP render 9-12.6, of which
+DSP ~2.6 and "slots/mix" 6.5-10 as one block. Now (M2_SOUND_PROFILE only,
+Vita diagnostics builds): Scsp::render times the 32-slot loop of one
+sample in 16 (kSlotEvery, as the DSP), and counts on every sample the
+active slots and their pitch LFO, amplitude LFO, ring-buffer modulation
+and 8-bit samples. perf.log gets a line "SCSP render per sound frame:
+slots ~X ms (us a sample, active slots and their features), DSP ~Y ms,
+output mix and the rest ~Z ms"; the clock reads of the new timing are
+removed from advance and render as the DSP's are. Without the define
+nothing changes: PC vf2_fight 4,000 frames, last screen hash
+2e75355888f54820 as before.
+Built: build_virtuafighter2/vita_diag/virtuafighter2_diag.vpk (VFTR90095).
+Next: the user's perf.log of an attract and a fight, then optimise what
+it points at.
+
 ## Vita: the menu in vita::Launcher; main() 360 lines (2026-10-17)
 
 Step 4c, the last of the frontend refactor (platform/vita/HANDOFF.md).

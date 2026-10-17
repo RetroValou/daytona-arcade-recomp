@@ -133,12 +133,25 @@ void Scsp::render(float *stereo, int n) {
     const float gain = float(MVOL()) / 15.0f; // set_output_gain(MVOL() / 15.0)
     for (int s = 0; s < n; ++s) {
         int32_t smpl = 0, smpr = 0;
+#ifdef M2_SOUND_PROFILE
+        // One sample's slot loop in kSlotEvery timed; the slots counted on every sample.
+        snd::SoundProfile &prof = snd::sound_profile();
+        const bool time_slots = prof.clock && ++prof.slot_phase == prof.kSlotEvery;
+        const uint64_t slots_t0 = time_slots ? prof.clock() : 0;
+#endif
 
         for (int sl = 0; sl < 32; ++sl) {
             m_RBUFDST = m_RINGBUF + m_BUFPTR;
             if (m_Slots[sl].active) {
                 SCSP_SLOT *slot = m_Slots + sl;
                 uint16_t Enc;
+#ifdef M2_SOUND_PROFILE
+                ++prof.active_slots;
+                prof.plfo_slots += PLFOS(slot) != 0;
+                prof.alfo_slots += ALFOS(slot) != 0;
+                prof.mod_slots += MDL(slot) != 0 || MDXSL(slot) != 0 || MDYSL(slot) != 0;
+                prof.pcm8_slots += PCM8B(slot) != 0;
+#endif
 
                 int32_t sample = UpdateSlot(slot);
                 if (!unity_) sample = int32_t(float(sample) * (slot->effect ? effects_ : music_));
@@ -156,6 +169,14 @@ void Scsp::render(float *stereo, int n) {
             ++m_BUFPTR;
             m_BUFPTR &= 63;
         }
+#ifdef M2_SOUND_PROFILE
+        if (time_slots) {
+            prof.slot_phase = 0;
+            prof.slot_ticks += prof.clock() - slots_t0;
+            ++prof.slot_timed;
+            prof.slot_in_timed_render += prof.timing_render ? 1 : 0;
+        }
+#endif
 
 #ifdef M2_SOUND_PROFILE
         // One sample's DSP step in kDspEvery timed (sound_profile.h).

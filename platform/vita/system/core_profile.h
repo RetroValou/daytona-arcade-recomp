@@ -142,6 +142,10 @@ public:
             sound.render_ticks += p.render_ticks;
             sound.dsp_timed += p.dsp_timed; sound.dsp_ticks += p.dsp_ticks;
             sound.dsp_in_timed_render += p.dsp_in_timed_render;
+            sound.slot_timed += p.slot_timed; sound.slot_ticks += p.slot_ticks;
+            sound.slot_in_timed_render += p.slot_in_timed_render;
+            sound.active_slots += p.active_slots; sound.plfo_slots += p.plfo_slots; sound.alfo_slots += p.alfo_slots;
+            sound.mod_slots += p.mod_slots; sound.pcm8_slots += p.pcm8_slots;
         }
     };
 
@@ -293,8 +297,9 @@ public:
             // A timed render holds one read of its own and two per DSP step timed inside it;
             // advance holds one of its own and two per timed render and DSP step. Renders are
             // timed one in kRenderEvery: scaled by the samples rendered.
-            const double reads = double(1 + 2 * p.render_timed + 2 * p.dsp_timed); // inside advance, per window
-            const double render_timed = std::max(0.0, ms(p.render_ticks) - c * double(p.render_timed + 2 * p.dsp_in_timed_render));
+            const double reads = double(1 + 2 * p.render_timed + 2 * p.dsp_timed + 2 * p.slot_timed); // inside advance
+            const double render_timed = std::max(0.0, ms(p.render_ticks) -
+                c * double(p.render_timed + 2 * p.dsp_in_timed_render + 2 * p.slot_in_timed_render));
             const double render = p.render_timed_samples
                                       ? render_timed * double(p.samples) / double(p.render_timed_samples) : 0.0;
             const double advance = std::max(0.0, ms(p.advance_ticks) - c * reads);
@@ -305,6 +310,16 @@ public:
                   "~%.2f ms a frame of reads removed\n",
                   ull(p.frames), advance / sf, std::max(0.0, advance - render) / sf, render / sf, dsp / sf, dsp_sample * 1000.0,
                   ull(p.dsp_timed), std::max(0.0, render - dsp) / sf, counters.sound_clock_us, c * reads / sf);
+            const double slot_sample = p.slot_timed ? std::max(0.0, ms(p.slot_ticks) / double(p.slot_timed) - c) : 0.0;
+            const double slots = slot_sample * double(p.samples);
+            const double samples = p.samples ? double(p.samples) : 1.0, active = double(p.active_slots);
+            const auto share = [&](uint64_t n) { return active > 0 ? 100.0 * double(n) / active : 0.0; };
+            w.add("  SCSP render per sound frame: slots ~%.2f ms (%.2f us a sample from %llu timed, %.1f active: "
+                  "pitch LFO %.0f%%, amplitude LFO %.0f%%, modulation %.0f%%, 8-bit %.0f%%), DSP ~%.2f ms, "
+                  "output mix and the rest ~%.2f ms | %.0f samples a frame\n",
+                  slots / sf, slot_sample * 1000.0, ull(p.slot_timed), active / samples, share(p.plfo_slots),
+                  share(p.alfo_slots), share(p.mod_slots), share(p.pcm8_slots), dsp / sf,
+                  std::max(0.0, render - dsp - slots) / sf, double(p.samples) / sf);
             w.add("  68000 per sound frame: %.0f instructions, %.0f dispatches (switch entries), SCSP registers %.0f reads + "
                   "%.0f writes | render_to %.0f calls, %.0f rendering, %.1f samples each\n",
                   double(p.m68k_instructions) / sf, double(p.dispatches) / sf, double(p.scsp_reads) / sf,
