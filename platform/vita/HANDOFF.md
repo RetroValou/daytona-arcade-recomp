@@ -1,5 +1,24 @@
 # Vita port handoff — 29 September 2026
 
+## Frontend measurements out of main() — 17 October 2026
+
+On the console (user): the VF2 VPK of cleanup batch 1 works.
+frontend/diagnostics.h/.cpp: vita::Diagnostics holds what main() measured
+inline (about 330 lines): perf.log's per-core report (CoreProfiler,
+PerfLog, the TGP/i960 sections, the sound probe's clock), the periodic
+"gpu25:" vita-diag line and its 2 s window, gl.log's loop profile, the
+geometrizer's per-loop statistics. The loop calls begin_loop, input_done,
+frame_start/frame_done, sound_sync, sound_joined, presented, loop_done and
+window_done; the blocks are the old ones, moved as they were (window_done
+after the idle SDL_Delay, as before). Shared constants (kDiagnostics,
+kProfile, cores, kRendererName, ticks_us, geometry_of) are in
+diagnostics.h; DAYTONA_VITA_*_CORE/DIAGNOSTICS reach diagnostics.cpp too.
+main.cpp 1,320 -> 913 lines.
+Checks: VF2 VPK built; compile checks with --diagnostics and with
+--tgp-profile --i960-profile (every #ifdef path); Daytona compile check.
+Not run on the console: a diagnostics build's perf.log to compare.
+Next: Session (step 4b), then Launcher (4c).
+
 ## Cleanup batch 1 — 17 October 2026
 
 Removed, all unreachable in the vitaGL-only build:

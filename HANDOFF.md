@@ -1,5 +1,11 @@
 # Handoff
 
+## Vita: the frontend's measurements in vita::Diagnostics (2026-10-17)
+
+Step 4a of the frontend refactor (platform/vita/HANDOFF.md). The user ran
+the cleanup batch 1 VF2 VPK on the console: it works (the test menu fix of
+4f89e87 included).
+
 ## Vita cleanup, batch 1: dead widescreen and renderer leftovers (2026-10-17)
 
 Code the vitaGL-only build no longer reaches, removed (platform/vita/
