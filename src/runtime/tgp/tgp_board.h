@@ -7,7 +7,7 @@
 // tgp_board.cpp and THIRD_PARTY.md).
 #pragma once
 
-#include "runtime/rom/rom_source.h"
+#include "runtime/romset/rom_source.h"
 #include "runtime/tgp/tgp.h"
 #include "runtime/tgp/tgp_profile.h"
 

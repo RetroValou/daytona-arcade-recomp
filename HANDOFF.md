@@ -1,13 +1,15 @@
 # Handoff
 
-## .gitignore: src/runtime/rom/ is code, not ROM data (2026-10-17)
+## src/runtime/rom/ renamed romset/ (2026-10-17)
 
-The "rom/" line (any folder named rom: a safety net for ROM dumps, rule 6)
-also matched src/runtime/rom/, made by the runtime's reorganisation: its
-seven files were committed (git add of renames), but a new file there would
-have been ignored silently. Kept the rule, added !src/runtime/rom/.
-Checked: git check-ignore --no-index on a new file there: not ignored; a
-top-level rom/ still is.
+The "rom/" line of .gitignore (any folder named rom: a safety net for ROM
+dumps, rule 6) also matched src/runtime/rom/, made by the runtime's
+reorganisation: its seven files were committed (git add of renames), but a
+new file there would have been ignored silently. A first fix added an
+exception to .gitignore (d1d0cce); the user preferred the folder renamed:
+src/runtime/romset/ (git mv), every path and source list updated, the
+exception removed (.gitignore as before). Checked: git check-ignore
+--no-index, a new file in romset/ is not ignored, a rom/ folder still is.
 
 ## src/runtime cleanup: dead video options and unused functions (2026-10-17)
 

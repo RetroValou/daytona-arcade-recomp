@@ -154,7 +154,7 @@ set(RUNTIME_FILES
     sound/snd_cpu sound/model1_board sound/multipcm sound/scsp sound/scsp_board
     sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine
     io/comm_board
-    rom/zip rom/rom_import rom/archive)
+    romset/zip romset/rom_import romset/archive)
 set(RUNTIME_SOURCES)
 foreach(name IN LISTS RUNTIME_FILES)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")

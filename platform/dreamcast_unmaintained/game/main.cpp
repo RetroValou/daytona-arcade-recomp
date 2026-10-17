@@ -9,7 +9,7 @@
 // The runtime before kos.h: KOS defines a BIT(n) macro, the runtime a
 // BIT(x, n) function (cpu.h).
 #include "runtime/board/game_loop.h"
-#include "runtime/rom/rom_source.h"
+#include "runtime/romset/rom_source.h"
 
 #include "../../../tools/common/input_script.h"
 #include "audio.h"

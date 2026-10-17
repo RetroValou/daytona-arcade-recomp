@@ -9,7 +9,7 @@
 //              [--fill-upper] [--no-frame-buffer] [--no-scroll-layer] [--mask-green]
 
 #include "runtime/board/game_loop.h"
-#include "runtime/rom/rom_source.h"
+#include "runtime/romset/rom_source.h"
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"
 

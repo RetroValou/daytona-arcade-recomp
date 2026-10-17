@@ -1,7 +1,7 @@
-#include "runtime/rom/rom_import.h"
+#include "runtime/romset/rom_import.h"
 
-#include "runtime/rom/archive.h"
-#include "runtime/rom/zip.h"
+#include "runtime/romset/archive.h"
+#include "runtime/romset/zip.h"
 
 #include <cstdio>
 #include <cstring>

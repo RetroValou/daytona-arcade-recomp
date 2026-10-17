@@ -7,7 +7,7 @@
 #pragma once
 
 #include "app/config.h"
-#include "runtime/rom/rom_import.h"
+#include "runtime/romset/rom_import.h"
 
 #include <SDL3/SDL.h>
 

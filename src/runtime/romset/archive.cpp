@@ -1,6 +1,6 @@
-#include "runtime/rom/archive.h"
+#include "runtime/romset/archive.h"
 
-#include "runtime/rom/zip.h"
+#include "runtime/romset/zip.h"
 
 #include <cstring>
 #include <fstream>

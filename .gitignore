@@ -28,8 +28,6 @@ platform/vita/logo_livearea/*
 platform/vita/logo_livearea/*/*
 !platform/vita/logo_livearea/*/.gitkeep
 rom/
-# ...except the runtime's ROM import code (src/runtime/rom/: code, no ROM data).
-!src/runtime/rom/
 generated/
 extracted/
 

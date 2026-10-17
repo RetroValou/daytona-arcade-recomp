@@ -2,7 +2,7 @@
 
 #include "frontend/storage.h"
 #include "runtime/board/game.h"
-#include "runtime/rom/rom_import.h"
+#include "runtime/romset/rom_import.h"
 #include "system/core_policy.h"
 
 #include <SDL.h>

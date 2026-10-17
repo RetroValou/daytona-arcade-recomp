@@ -1,4 +1,4 @@
-// ROM set archives: zip (our reader, src/runtime/rom/zip.cpp) and 7z (the 7-Zip
+// ROM set archives: zip (our reader, src/runtime/romset/zip.cpp) and 7z (the 7-Zip
 // LZMA SDK's public-domain decoder), chosen by the file's signature.
 #pragma once
 

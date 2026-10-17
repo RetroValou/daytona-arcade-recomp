@@ -13,7 +13,7 @@
 #pragma once
 
 #include "runtime/board/fast_paths.h"
-#include "runtime/rom/rom_source.h"
+#include "runtime/romset/rom_source.h"
 
 #include <cstdint>
 #include <stdexcept>

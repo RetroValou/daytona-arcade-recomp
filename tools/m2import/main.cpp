@@ -3,15 +3,15 @@
 // the build: the recompilers read program.bin, tgp_program.bin and
 // sound_program.bin; the
 // checking tools read the rest. The same importer the game uses
-// (src/runtime/rom/rom_import.cpp); scripts/m2import.py is the zip-only
+// (src/runtime/romset/rom_import.cpp); scripts/m2import.py is the zip-only
 // reference it was checked against (identical images).
 //
 //   m2import ROMS.zip|ROMS.7z OUTDIR
 //
 // Output is game data: OUTDIR must be git-ignored (build/ is).
 
-#include "runtime/rom/rom_import.h"
-#include "runtime/rom/zip.h"
+#include "runtime/romset/rom_import.h"
+#include "runtime/romset/zip.h"
 
 #include <cstdio>
 #include <filesystem>

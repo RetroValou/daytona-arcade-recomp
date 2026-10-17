@@ -114,9 +114,9 @@ add_library(runtime STATIC
     src/runtime/video/video.cpp
     src/runtime/board/m2_board.cpp
     src/runtime/board/game_loop.cpp
-    src/runtime/rom/zip.cpp
-    src/runtime/rom/rom_import.cpp
-    src/runtime/rom/archive.cpp
+    src/runtime/romset/zip.cpp
+    src/runtime/romset/rom_import.cpp
+    src/runtime/romset/archive.cpp
     src/runtime/cpu/replay_bus.cpp
     src/runtime/cpu/lockstep.cpp
     src/runtime/sound/snd_cpu.cpp

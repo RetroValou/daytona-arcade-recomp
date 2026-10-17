@@ -79,7 +79,7 @@ GAME_DEFS := -DM2_ROMSET='"$(SET)"' -DM2_DC_MEMORY -DM2_SPIN_SKIP -DM2_DC_SPEED 
 O3FLAGS = $(subst -O2,-O3,$(CXXFLAGS)) -funroll-loops
 GEN_FLAGS := $(subst -O2,-Os,$(CXXFLAGS)) $(GAME_DEFS) -Wno-unused-label
 
-RUNTIME := cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop rom/zip rom/rom_import rom/archive cpu/replay_bus \
+RUNTIME := cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop romset/zip romset/rom_import romset/archive cpu/replay_bus \
            cpu/lockstep sound/snd_cpu sound/multipcm sound/model1_board sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine \
            io/comm_board
 # The games' records and hooks (src/games/).

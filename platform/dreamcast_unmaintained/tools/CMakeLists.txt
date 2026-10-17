@@ -120,8 +120,8 @@ else()
 
     # The same native runtime as the desktop; 7z is left out (the tools read
     # the importer's images, not archives).
-    set(RUNTIME_FILES cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop rom/zip rom/rom_import
-        rom/archive cpu/replay_bus cpu/lockstep sound/snd_cpu sound/multipcm sound/model1_board sound/native/native_sample_mixer sound/native/native_sound_sequencer
+    set(RUNTIME_FILES cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop romset/zip romset/rom_import
+        romset/archive cpu/replay_bus cpu/lockstep sound/snd_cpu sound/multipcm sound/model1_board sound/native/native_sample_mixer sound/native/native_sound_sequencer
         sound/native/native_sound_engine io/comm_board)
     set(RUNTIME_SOURCES ${GAME_SOURCES})
     foreach(name IN LISTS RUNTIME_FILES)
@@ -180,7 +180,7 @@ target_link_libraries(soundusage PRIVATE dc_game)
 option(DC_SPEED "dcmemcheck with M2_DC_SPEED" ON)
 if(HOST_FILES)
     set(DCMEM_SOURCES ${GAME_SOURCES})
-    foreach(name cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop rom/zip rom/rom_import rom/archive cpu/replay_bus
+    foreach(name cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop romset/zip romset/rom_import romset/archive cpu/replay_bus
             cpu/lockstep sound/snd_cpu sound/multipcm sound/model1_board sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine
             io/comm_board)
         list(APPEND DCMEM_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
