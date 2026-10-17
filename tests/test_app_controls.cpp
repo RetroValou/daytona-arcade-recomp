@@ -110,6 +110,25 @@ int main() {
     check(in.accel == 0xe0, "accelerator floored");
     check(std::abs(int(in.brake) - 0x80) <= 1, "brake half way");
 
+    SDL_SetJoystickVirtualAxis(wheel, 0, 4096);
+    pump(devices);
+    const auto linear = c.sample(no_keys, devices);
+    c.wheel_sensitivity = 0.5f;
+    const auto gentle = c.sample(no_keys, devices);
+    c.wheel_sensitivity = 2.0f;
+    const auto sensitive = c.sample(no_keys, devices);
+    check(gentle.steer < linear.steer && sensitive.steer > linear.steer,
+          "wheel sensitivity changes intermediate steering response");
+    check(gentle.accel == linear.accel && sensitive.brake == linear.brake,
+          "wheel sensitivity leaves pedals unchanged");
+    SDL_SetJoystickVirtualAxis(wheel, 0, 0);
+    pump(devices);
+    check(c.sample(no_keys, devices).steer == 0x80, "sensitivity preserves centre");
+    SDL_SetJoystickVirtualAxis(wheel, 0, 8192);
+    pump(devices);
+    check(c.sample(no_keys, devices).steer == 0xe0, "sensitivity preserves full right lock");
+    c.wheel_sensitivity = 1.0f;
+
     SDL_SetJoystickVirtualAxis(wheel, 0, -32768); // past the bound lock: clamps
     pump(devices);
     in = c.sample(no_keys, devices);

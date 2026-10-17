@@ -71,6 +71,7 @@ struct Controls {
     Binding bind[kNumActions];
     float deadzone = 0.08f;       // stick and trigger dead zone (fraction of travel)
     float joy_deadzone = 0.02f;   // joystick (wheel, pedal) axis dead zone
+    float wheel_sensitivity = 1.0f; // response curve, 0.25..3; 1 is linear
     bool steer_invert = false;
 
     void set_defaults();

@@ -14,7 +14,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
-
+#include "../src/compat/bit_cast.h"
 #if defined(_MSC_VER)
 #define TEST_NOINLINE __declspec(noinline)
 #else
@@ -83,9 +83,9 @@ TEST_NOINLINE bool cached_triangle(Vertex *out, const Point &a, const Point &b,
 }
 
 std::array<std::uint32_t, 5> bits(const Vertex &v) {
-    return {std::bit_cast<std::uint32_t>(v.x), std::bit_cast<std::uint32_t>(v.y),
-            std::bit_cast<std::uint32_t>(v.z), std::bit_cast<std::uint32_t>(v.u),
-            std::bit_cast<std::uint32_t>(v.v)};
+    return {compat::bit_cast<std::uint32_t>(v.x), compat::bit_cast<std::uint32_t>(v.y),
+            compat::bit_cast<std::uint32_t>(v.z), compat::bit_cast<std::uint32_t>(v.u),
+            compat::bit_cast<std::uint32_t>(v.v)};
 }
 
 void check(const Point &a, const Point &b, const Point &c, float sw, float sh) {
@@ -111,8 +111,8 @@ void check(const Point &a, const Point &b, const Point &c, float sw, float sh) {
             for (std::size_t field = 0; field < actual_bits.size(); ++field) {
                 if (expected_bits[field] != actual_bits[field]) {
                     if (!expected_valid &&
-                        std::isnan(std::bit_cast<float>(expected_bits[field])) &&
-                        std::isnan(std::bit_cast<float>(actual_bits[field]))) {
+                        std::isnan(compat::bit_cast<float>(expected_bits[field])) &&
+                        std::isnan(compat::bit_cast<float>(actual_bits[field]))) {
                         ++rejected_nan_payload_differences;
                         continue;
                     }
@@ -165,7 +165,7 @@ void regression_tests() {
                                       {800.0f, -60.0f, 128.0f, 0.0f, 0.03125f},
                                       {70.5f, 600.0f, 4.0f, 128.0f, 2.0f}}};
     for (auto raw : unusual) {
-        const float value = std::bit_cast<float>(raw);
+        const float value = compat::bit_cast<float>(raw);
         for (int vertex = 0; vertex < 3; ++vertex) {
             for (int field = 0; field < 5; ++field) {
                 auto points = base;
@@ -183,9 +183,9 @@ void regression_tests() {
         std::array<Point, 3> points;
         for (auto &p : points)
             for (int field = 0; field < 5; ++field)
-                set_field(p, field, std::bit_cast<float>(next_random()));
-        const float sw = std::bit_cast<float>(next_random());
-        const float sh = std::bit_cast<float>(next_random());
+                set_field(p, field, compat::bit_cast<float>(next_random()));
+        const float sw = compat::bit_cast<float>(next_random());
+        const float sh = compat::bit_cast<float>(next_random());
         check(points[0], points[1], points[2], sw, sh);
     }
 
@@ -214,7 +214,7 @@ double benchmark(Emitter emitter, int subdiv) {
     for (unsigned iteration = 0; iteration < iterations; ++iteration) {
         a.x = 20.0f + float(iteration & 31u);
         checksum += emitter(out.data(), a, b, c, subdiv, 128.0f, 256.0f);
-        checksum += std::bit_cast<std::uint32_t>(out[(iteration % unsigned(3 * subdiv * subdiv))].u);
+        checksum += compat::bit_cast<std::uint32_t>(out[(iteration % unsigned(3 * subdiv * subdiv))].u);
     }
     const std::clock_t end = std::clock();
     benchmark_sink = checksum;

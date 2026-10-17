@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cmath>
 
 #include <SDL3/SDL.h>
 
@@ -63,6 +64,10 @@ void Config::read(std::istream &f) {
         else if (k == "native_audio") native_audio = v == "1";
         else if (k == "deadzone") controls.deadzone = std::strtof(v.c_str(), nullptr);
         else if (k == "joy_deadzone") controls.joy_deadzone = std::clamp(std::strtof(v.c_str(), nullptr), 0.0f, 0.4f);
+        else if (k == "wheel_sensitivity") {
+            const float value = std::strtof(v.c_str(), nullptr);
+            controls.wheel_sensitivity = std::isfinite(value) ? std::clamp(value, 0.25f, 3.0f) : 1.0f;
+        }
         else if (k == "steer_invert") controls.steer_invert = v == "1";
         else if (k == "link") link = v == "1";
         else if (k == "link_port") link_port = std::clamp(std::atoi(v.c_str()), 1, 65535);
@@ -114,6 +119,7 @@ void Config::write(std::ostream &f) const {
     f << "native_audio=" << (native_audio ? 1 : 0) << "\n";
     f << "deadzone=" << controls.deadzone << "\n";
     f << "joy_deadzone=" << controls.joy_deadzone << "\n";
+    f << "wheel_sensitivity=" << controls.wheel_sensitivity << "\n";
     f << "steer_invert=" << (controls.steer_invert ? 1 : 0) << "\n";
     f << "link=" << (link ? 1 : 0) << "\n";
     f << "link_port=" << link_port << "\n";

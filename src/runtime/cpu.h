@@ -11,7 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-
+#include "compat/bit_cast.h"
 #include "runtime/fast_paths.h"
 
 // M2_AL(p, n): p, known n-aligned. With M2_DC_SPEED on GCC (the Dreamcast)
@@ -130,10 +130,10 @@ template <typename T> constexpr std::make_signed_t<T> sext(T value, unsigned bit
     const unsigned shift = sizeof(T) * 8 - bits;
     return S(value << shift) >> shift;
 }
-inline float u2f(uint32_t v) { return std::bit_cast<float>(v); }
-inline uint32_t f2u(float f) { return std::bit_cast<uint32_t>(f); }
-inline double u2d(uint64_t v) { return std::bit_cast<double>(v); }
-inline uint64_t d2u(double d) { return std::bit_cast<uint64_t>(d); }
+inline float u2f(uint32_t v) { return compat::bit_cast<float>(v); }
+inline uint32_t f2u(float f) { return compat::bit_cast<uint32_t>(f); }
+inline double u2d(uint64_t v) { return compat::bit_cast<double>(v); }
+inline uint64_t d2u(double d) { return compat::bit_cast<uint64_t>(d); }
 #define DWORD_ALIGNED(a) (((a) & 3) == 0)
 #define WORD_ALIGNED(a) (((a) & 1) == 0)
 

@@ -22,7 +22,7 @@
 #include <vector>
 
 #include "runtime/fast_paths.h"
-
+#include "compat/bit_cast.h"
 // M2_DC_SPEED (Dreamcast): the one-line status helpers inline even at -Os,
 // where the generated code otherwise calls them (a call is as big as they are).
 #if defined(M2_DC_SPEED) && defined(__GNUC__)
@@ -116,8 +116,8 @@ struct Tgp {
         throw TgpFatal(buf);
     }
 
-    static float u2f(uint32_t v) { return std::bit_cast<float>(v); }
-    static uint32_t f2u(float f) { return std::bit_cast<uint32_t>(f); }
+    static float u2f(uint32_t v) { return compat::bit_cast<float>(v); }
+    static uint32_t f2u(float f) { return compat::bit_cast<uint32_t>(f); }
     static uint32_t sext24(uint32_t v) { return uint32_t(int32_t(v << 8) >> 8); }
     static uint32_t set_exp(uint32_t val, uint32_t exp) { return (val & 0x807fffff) | ((exp & 0xff) << 23); }
     static uint32_t set_mant(uint32_t val, uint32_t mant) { return (val & 0x07f800000) | ((mant & 0x00800000) << 8) | (mant & 0x007fffff); }

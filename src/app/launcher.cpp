@@ -535,6 +535,14 @@ Launcher::Result Launcher::draw(bool game_running, const Devices &devices) {
             if (ImGui::Checkbox("Invert steering", &c.steer_invert)) cfg_.save();
             ImGui::SetNextItemWidth(200);
             if (ImGui::SliderFloat("Wheel dead zone (Experimental)", &c.joy_deadzone, 0.0f, 0.4f, "%.2f")) cfg_.save();
+            ImGui::SetNextItemWidth(200);
+            int wheel_sensitivity = int(c.wheel_sensitivity * 100.0f + 0.5f);
+            if (ImGui::SliderInt("Wheel steering sensitivity", &wheel_sensitivity, 25, 300, "%d%%")) {
+                c.wheel_sensitivity = float(wheel_sensitivity) / 100.0f;
+                cfg_.save();
+            }
+            ImGui::TextDisabled("100%%: linear. Lower: gentler near centre. Higher: more responsive.\n"
+                                "Wheel/joystick steering-axis bindings only; full lock is preserved.");
             ImGui::TextDisabled("Triggers, sticks, wheels and pedals are analogue. To bind a wheel or pedal axis,\n"
                                 "click its button, then turn the wheel or press the pedal as far as you want full\n"
                                 "lock or full travel to be, and let go: that sets its range.");

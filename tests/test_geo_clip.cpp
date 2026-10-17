@@ -4,7 +4,7 @@
 
 #include <cstdio>
 #include <random>
-
+#include "../src/compat/bit_cast.h"
 namespace {
 int reference_clip(rt::GeoVertex *v, int count, rt::GeoVertex *out, rt::Geo::plane plane) {
     int n = 0;
@@ -31,10 +31,10 @@ int reference_clip(rt::GeoVertex *v, int count, rt::GeoVertex *out, rt::Geo::pla
 }
 
 bool same(const rt::GeoVertex &a, const rt::GeoVertex &b) {
-    if (std::bit_cast<uint32_t>(a.x) != std::bit_cast<uint32_t>(b.x) ||
-        std::bit_cast<uint32_t>(a.y) != std::bit_cast<uint32_t>(b.y)) return false;
+    if (compat::bit_cast<uint32_t>(a.x) != compat::bit_cast<uint32_t>(b.x) ||
+        compat::bit_cast<uint32_t>(a.y) != compat::bit_cast<uint32_t>(b.y)) return false;
     for (int p = 0; p < 3; ++p)
-        if (std::bit_cast<uint32_t>(a.p[p]) != std::bit_cast<uint32_t>(b.p[p])) return false;
+        if (compat::bit_cast<uint32_t>(a.p[p]) != compat::bit_cast<uint32_t>(b.p[p])) return false;
     return true;
 }
 } // namespace

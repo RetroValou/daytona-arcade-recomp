@@ -12,7 +12,7 @@
 #include "runtime/geo.h"
 #undef private
 #include "../src/runtime/geo.cpp"
-
+#include "../src/compat/bit_cast.h"
 namespace {
 bool same_poly(const rt::GeoPoly &a, const rt::GeoPoly &b) {
     if (a.z != b.z || a.luma != b.luma || a.texlod != b.texlod || a.window != b.window ||
@@ -21,10 +21,10 @@ bool same_poly(const rt::GeoPoly &a, const rt::GeoPoly &b) {
         if (a.texheader[i] != b.texheader[i] || a.viewport[i] != b.viewport[i]) return false;
     for (unsigned i = 0; i < 2; ++i) if (a.center[i] != b.center[i]) return false;
     for (unsigned i = 0; i < a.num_vertices; ++i) {
-        if (std::bit_cast<uint32_t>(a.v[i].x) != std::bit_cast<uint32_t>(b.v[i].x) ||
-            std::bit_cast<uint32_t>(a.v[i].y) != std::bit_cast<uint32_t>(b.v[i].y)) return false;
+        if (compat::bit_cast<uint32_t>(a.v[i].x) != compat::bit_cast<uint32_t>(b.v[i].x) ||
+            compat::bit_cast<uint32_t>(a.v[i].y) != compat::bit_cast<uint32_t>(b.v[i].y)) return false;
         for (unsigned j = 0; j < 3; ++j)
-            if (std::bit_cast<uint32_t>(a.v[i].p[j]) != std::bit_cast<uint32_t>(b.v[i].p[j])) return false;
+            if (compat::bit_cast<uint32_t>(a.v[i].p[j]) != compat::bit_cast<uint32_t>(b.v[i].p[j])) return false;
     }
     return true;
 }
@@ -44,9 +44,9 @@ void reset(rt::Geo &geo, unsigned trial, unsigned index, bool triangle) {
     r.command_buffer[9] = (trial & 255u) << 15;
     r.command_buffer[10] = 0x3f8000;
     auto point = [&](unsigned at, float x, float y) {
-        r.command_buffer[at] = std::bit_cast<uint32_t>(x) >> 8;
-        r.command_buffer[at + 1] = std::bit_cast<uint32_t>(y) >> 8;
-        r.command_buffer[at + 2] = std::bit_cast<uint32_t>(10.0f) >> 8;
+        r.command_buffer[at] = compat::bit_cast<uint32_t>(x) >> 8;
+        r.command_buffer[at + 1] = compat::bit_cast<uint32_t>(y) >> 8;
+        r.command_buffer[at + 2] = compat::bit_cast<uint32_t>(10.0f) >> 8;
     };
     point(2, -20.0f, -20.0f); point(5, -20.0f, 20.0f);
     point(11, 20.0f, -20.0f); point(14, 20.0f, 20.0f);
@@ -78,14 +78,14 @@ int main() {
             scalar->raster_.cur_command = batch->raster_.cur_command = 3;
             scalar->raster_.command_index = batch->raster_.command_index = 3;
         }
-        scalar->model2_3d_push(&scalar->raster_, std::bit_cast<uint32_t>(point.x) >> 8);
-        scalar->model2_3d_push(&scalar->raster_, std::bit_cast<uint32_t>(point.y) >> 8);
-        scalar->model2_3d_push(&scalar->raster_, std::bit_cast<uint32_t>(point.p[0]) >> 8);
+        scalar->model2_3d_push(&scalar->raster_, compat::bit_cast<uint32_t>(point.x) >> 8);
+        scalar->model2_3d_push(&scalar->raster_, compat::bit_cast<uint32_t>(point.y) >> 8);
+        scalar->model2_3d_push(&scalar->raster_, compat::bit_cast<uint32_t>(point.p[0]) >> 8);
         batch->model2_3d_push_point(&batch->raster_, point);
         const auto &a = scalar->raster_, &b = batch->raster_;
         bool same = a.cur_command == b.cur_command && a.command_index == b.command_index &&
                     a.poly_list_index == b.poly_list_index && a.min_z == b.min_z && a.max_z == b.max_z &&
-                    std::bit_cast<uint32_t>(a.polygon_z) == std::bit_cast<uint32_t>(b.polygon_z) &&
+                    compat::bit_cast<uint32_t>(a.polygon_z) == compat::bit_cast<uint32_t>(b.polygon_z) &&
                     std::memcmp(a.command_buffer, b.command_buffer, sizeof(a.command_buffer)) == 0 &&
                     scalar->pushed == batch->pushed && scalar->polys.size() == batch->polys.size();
         for (size_t i = 0; same && i < scalar->polys.size(); ++i) same = same_poly(scalar->polys[i], batch->polys[i]);

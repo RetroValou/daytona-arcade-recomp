@@ -16,12 +16,12 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
-
+#include "compat/bit_cast.h"
 namespace rt {
 
 namespace {
-inline float u2f(uint32_t v) { return std::bit_cast<float>(v); }
-inline uint32_t f2u(float f) { return std::bit_cast<uint32_t>(f); }
+inline float u2f(uint32_t v) { return compat::bit_cast<float>(v); }
+inline uint32_t f2u(float f) { return compat::bit_cast<uint32_t>(f); }
 using u8 = uint8_t;
 using u64 = uint64_t;
 } // namespace
