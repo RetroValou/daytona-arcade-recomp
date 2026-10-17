@@ -4,8 +4,12 @@
 
 ```
 frontend/   main.cpp (startup, launcher, the game loop), controls.h
-render/     vitaGL renderer (renderer.h/.cpp), the ImGui backend, text, and the
-            renderer's pure helpers (texel/flat index, polygon order, System 24 upload)
+render/     vitaGL renderer: renderer.h (the frontend's API), renderer.cpp (set-up,
+            frame entry), model2_textures, model2_polygons, layers_2d (the System 24
+            worker), gl_context (vitaGL, frame API, gl.log), shaders, draw_list,
+            ui_draw (the menu's triangles), gl_internal.h (what they share); the
+            ImGui backend, text, and pure helpers (texel/flat index, polygon order,
+            System 24 upload)
 audio/      reference and native audio output, the sound worker, rate conversion
 system/     core placement, per-core profiling, logs
 net/        LAN link (link.h)
@@ -514,7 +518,7 @@ menu is drawn through vitaGL, `render/imgui_backend.h`); widescreen stays a GXM 
 * System 24 layers are placed by the same depth buffer: foreground before the polygons
   (in front of every polygon), background after them (behind every polygon), so hidden
   pixels are rejected before their shader runs. `k2DLayersByDepth = false` in
-  `render/renderer.cpp` restores the plain painter order (same image). The menu font never uses
+  `render/gl_internal.h` restores the plain painter order (same image). The menu font never uses
   the depth buffer.
 
 ### Performance on a Vita (vitaGL build)

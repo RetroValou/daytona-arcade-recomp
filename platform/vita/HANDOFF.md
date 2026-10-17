@@ -1,5 +1,23 @@
 # Vita port handoff — 29 September 2026
 
+## render/renderer.cpp split by its sections — 17 October 2026
+
+The 1,789-line file is now: renderer.cpp (constructor, materials, draw()),
+model2_textures.cpp (source_for, palette_row, mark_rewritten_sources,
+solid_color), model2_polygons.cpp (draw_polygons), layers_2d.cpp (s24_*,
+the worker thread), gl_context.cpp (vitaGL init, gl_begin/end_frame,
+gl_profile_loop, gl_fini, gl.log and its report, the frame State g),
+shaders.cpp (the shader source, kPrograms, build_program), draw_list.cpp
+(flush_batches, execute and its draw calls), ui_draw.cpp (gl_ui_* for the
+menu). What they share is render/gl_internal.h, namespace vita::gldraw: the
+screen mapping and depth constants, the draw list types, State and `extern
+State g`, and the per-vertex helpers (push, push_quad, add_clip, batch_for,
+append_quads, write_fan_quads, le16, argb_to_rgba) made inline so they
+still inline into their callers without LTO. The CMake per-file defines
+(DIAGNOSTICS, 2D_CORE) now apply to every render/*.cpp (VITA_RENDER_SOURCES).
+Checks: VF2 VPK built (3,710,787 bytes, +1.4 KB), Vita host tests 15/15.
+Not run on the console: frame times to compare with the last perf.log.
+
 ## Link play a build option — 17 October 2026
 
 DAYTONA_VITA_LINK (scripts/games.py vita_link: Daytona only; build_vita.py

@@ -17,7 +17,7 @@ From a console perf.log with fine-grained probes (not kept in the sources):
   core 2. A silent block is no longer queued; the PCM stream sets the pace and the
   callback adds the FM that is queued. FM that starts again is padded with the silence
   it skipped so that it stays aligned on the PCM queue. Not silent FM is unchanged.
-* **Indexed quads (render/renderer.cpp).** Polygons and
+* **Indexed quads (render/draw_list.cpp).** Polygons and
   System 24 rectangles are written as groups of 4 vertices drawn through a static
   16-bit index buffer {4q, 4q+1, 4q+2, 4q, 4q+2, 4q+3}: same triangles as the fans (an
   odd fan ends with one degenerate triangle), 4 vertices per quad instead of 6 (95% of

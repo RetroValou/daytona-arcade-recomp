@@ -27,7 +27,9 @@ option(DAYTONA_VITA_COMPILE_CHECK "Compile runtime and frontend without ROM-deri
 # Sources by role: frontend/ (main loop, launcher, controls), render/ (vitaGL),
 # audio/, system/ (cores, profiling, logs), net/ (link), overrides/ (the shared
 # runtime's geo.h/.cpp replaced). Includes name them from here: "system/core_policy.h".
-set(VITA_FRONTEND_SOURCES frontend/main.cpp render/renderer.cpp)
+set(VITA_RENDER_SOURCES render/renderer.cpp render/model2_textures.cpp render/model2_polygons.cpp
+    render/layers_2d.cpp render/gl_context.cpp render/shaders.cpp render/draw_list.cpp render/ui_draw.cpp)
+set(VITA_FRONTEND_SOURCES frontend/main.cpp ${VITA_RENDER_SOURCES})
 option(DAYTONA_VITA_DIAGNOSTICS "GXM startup/performance file logging (faults always recorded)" OFF)
 # Link-time optimization (scripts/build_vita.py --release): the generated i960/TGP
 # code can inline the runtime's small memory and bus accessors (cpu.cpp,
@@ -70,7 +72,7 @@ endforeach()
 # Keep the switch frontend-only; audio/render/game code is identical in both builds.
 # DAYTONA_VITA_DIAGNOSTICS (build_vita.py --diagnostics) enables every log file:
 # vita-diag.log periodic lines, perf.log (per-core report) and gl.log.
-set_source_files_properties(render/renderer.cpp PROPERTIES COMPILE_DEFINITIONS
+set_source_files_properties(${VITA_RENDER_SOURCES} PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${VITA_2D_CORE}")
 set_source_files_properties(frontend/main.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE};DAYTONA_VITA_LINK=$<BOOL:${DAYTONA_VITA_LINK}>")

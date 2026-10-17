@@ -58,8 +58,8 @@
 //   geometry thread  the geometrizer, always pipelined: the 3D of frame N-1 is drawn
 //                    with frame N (platform/vita/overrides/runtime/geo.h)        core 1
 //   sound worker     the reference (emulated) sound board                  core 2
-//   vitaGL 2D worker System 24 uploads + layer rectangles (render/renderer.cpp)     core 2
-// vitaGL draws the 2D layers of frame N-1 too (two texture sets, render/renderer.cpp): the picture
+//   vitaGL 2D worker System 24 uploads + layer rectangles (render/layers_2d.cpp)    core 2
+// vitaGL draws the 2D layers of frame N-1 too (two texture sets, render/layers_2d.cpp): the picture
 // is the exact one, one frame late, in phase with the 3D. -1 = unpinned: scripts/build_vita.py --free-core leaves every thread
 // free, and the optional fourth core usable by all of them (core_policy.h). If the
 // geometry thread cannot be created, Geo stays on the main core and the fault is logged.
@@ -1381,7 +1381,7 @@ int main(int, char **) {
                 } else {
                     core_profile.add(P::Upload, draw_total); // the menu
                 }
-                // The gl.log write is diagnostics, not frame end (render/renderer.cpp).
+                // The gl.log write is diagnostics, not frame end (render/gl_context.cpp).
                 const uint64_t gl_diagnostic = std::min<uint64_t>(vita::gl_last_diagnostic_us(), gfx_ended - drawn);
                 core_profile.add(P::GfxEnd, gfx_ended - drawn - gl_diagnostic);
                 core_profile.add(P::Log, gl_diagnostic);

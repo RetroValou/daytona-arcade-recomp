@@ -73,7 +73,7 @@ PROFILES = {
 
 # Flags render/renderer.cpp cannot work with, and why.
 REJECTED = {
-    ("DRAW_SPEEDHACK", "1"): "glDrawArrays then ignores its first vertex and render/renderer.cpp's indexed quads "
+    ("DRAW_SPEEDHACK", "1"): "glDrawArrays then ignores its first vertex and render/draw_list.cpp's indexed quads "
                              "(glDrawElements) would read the wrong vertices; it also turns "
                              "HAVE_VERTEX_LAYOUT_CACHE off",
     ("SOFTFP_ABI", "1"): "VitaSDK and this project are built for the hard-float ABI",

@@ -1,5 +1,12 @@
 # Handoff
 
+## Vita: render/renderer.cpp split by its sections (2026-10-17)
+
+No code change (platform/vita/HANDOFF.md): 1,789 lines into renderer.cpp
+(set-up, frame entry), model2_textures, model2_polygons, layers_2d,
+gl_context, shaders, draw_list, ui_draw and gl_internal.h. VF2 VPK built,
+Vita host tests 15/15.
+
 ## Vita: link play a build option, only Daytona's packages by default (2026-10-17)
 
 Link play was tested on Vitas with Daytona only. scripts/games.py vita_link
