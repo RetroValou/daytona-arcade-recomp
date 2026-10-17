@@ -184,6 +184,7 @@ void Controls::set_defaults() {
     b(Service, SDL_SCANCODE_F3, PadInput::None, 0);
     deadzone = 0.08f;
     joy_deadzone = 0.02f;
+    wheel_sensitivity = 1.0f;
     steer_invert = false;
 }
 
@@ -198,7 +199,14 @@ float Controls::value(Action a, const bool *keys, const Devices &d) const {
         x = x <= deadzone ? 0.f : (x - deadzone) / (1.f - deadzone); // rescale past the dead zone: full travel still reaches 1
         v = std::max(v, x);
     }
-    return std::max({v, b.joy.value(d, joy_deadzone), touch[a]});
+    float joy = b.joy.value(d, joy_deadzone);
+    if ((a == SteerLeft || a == SteerRight) && b.joy.kind == JoyInput::Axis) {
+        const float sensitivity = std::isfinite(wheel_sensitivity)
+            ? std::clamp(wheel_sensitivity, 0.25f, 3.0f) : 1.0f;
+        // Apply after calibration/dead zone, preserving centre and full lock.
+        if (sensitivity != 1.0f) joy = std::pow(joy, 1.0f / sensitivity);
+    }
+    return std::max({v, joy, touch[a]});
 }
 
 bool Controls::analog_source(Action a, const Devices &d) const {
