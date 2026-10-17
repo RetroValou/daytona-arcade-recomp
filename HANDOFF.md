@@ -1,5 +1,27 @@
 # Handoff
 
+## VF2 sound: MAME vs sm2-emu vs ours; the end-of-fight speech (2026-10-17)
+
+extern/sm2-emu (https://github.com/dmanlfc/sm2-emu, df14ed4, BSD-3; added
+to .vscode git.ignoredRepositories): its SCSP is MAME's too. Differences
+from MAME: pitch-LFO depth table and a rewritten modulation (VF2 uses
+neither: 0 % in the slot probe), an 8 kHz output low-pass computed but never
+applied (dead code), a flat per-game gain (VF2 840/256, +10 dB, "a
+mastering choice, not a hardware-accuracy claim"); DSP identical to MAME.
+So for VF2 the three compute the same mix: no MAME error found behind the
+balance; no hardware recording to go further.
+Key-on trace (temporary, not committed; desktop game, the user playing to
+the end of a fight): VF2's driver streams every sound into 32 per-slot 8 KB
+RAM buffers (SA 0x10000-0x4e000): addresses do not identify sounds. Effects
+key with TL 0-4, music notes TL 13-25, all DISDL 3, direct out. The
+end-of-fight speech (t 55.3 s): one slot, TL 7 (-2.7 dB), direct out, no
+DSP, and the driver's voice table marks it as music (owner 0): the MUSIC
+setting lowers it, not EFFECTS. Next if wanted: a speech class (a third
+owner or another table field) to give it its own gain (off by default).
+Vita-only suspect for "strange" sound: when core 2 saturates the reference
+audio slows to 97-98 % (pitch down) with gaps; the SCSP speed-up (21c7984)
+should reduce it. Diagnostics VPK with it built, not yet run.
+
 ## SCSP slots: registers decoded per write, a plain-slot path (2026-10-17)
 
 From the user's perf.log (extern/result_perf_vita/vf2/perf_sound.log, 30
