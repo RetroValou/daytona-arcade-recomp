@@ -25,5 +25,5 @@ Not performed:
 
 The temporary frontend API declarations are only a syntax check, not a native
 SDK or a fake game build. They are not included in the application sources.
-The supplied tests/vita_log_shim header is used only by the host logger tests;
+The supplied tests/vita/shims/log header is used only by the host logger tests;
 production CMake does not add it to an include path.

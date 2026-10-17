@@ -5,7 +5,7 @@
 // 0 <= r < D), so a step d forward costs a multiply and a 32-bit division by
 // the constant D (a multiply by its inverse). A count that goes back, or a
 // step too large for 32 bits, takes the original 64-bit expression: every
-// result is count * N0 / D0's (tests/test_rate_conv.cpp).
+// result is count * N0 / D0's (tests/runtime/board/test_rate_conv.cpp).
 #pragma once
 
 #include <cstdint>

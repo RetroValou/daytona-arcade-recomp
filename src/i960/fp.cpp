@@ -83,7 +83,7 @@ Result ref_scaler(uint32_t n_bits, uint32_t x, Round rm) {
 }
 
 // ---------------------------------------------------------------------------
-// Native paths. Every line here is justified only by tests/test_fp.
+// Native paths. Every line here is justified only by tests/i960/test_fp.
 
 uint32_t fast_cvtri(uint32_t x) {
     const float f = std::bit_cast<float>(x);

@@ -246,7 +246,7 @@ if(EXISTS ${CMAKE_SOURCE_DIR}/extern/sdl3/CMakeLists.txt)
 
     # Dear ImGui (launcher UI), with its SDL3 and SDL_GPU backends
     if(NOT ANDROID AND NOT IOS)
-        add_executable(test_gpu_startup tests/test_gpu_startup.cpp)
+        add_executable(test_gpu_startup tests/app/test_gpu_startup.cpp)
         target_include_directories(test_gpu_startup PRIVATE src ${CMAKE_SOURCE_DIR}/extern/sdl3/include)
         add_test(NAME gpu_startup COMMAND test_gpu_startup)
     endif()
@@ -390,79 +390,79 @@ foreach(kind random random-return)
     add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp
                        COMMAND m2dsprecomp --${kind} 20261015 128 ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp
                        DEPENDS m2dsprecomp VERBATIM)
-    add_executable(test_scsp_dsp_${kind} tests/test_scsp_dsp.cpp ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp)
+    add_executable(test_scsp_dsp_${kind} tests/runtime/sound/test_scsp_dsp.cpp ${CMAKE_BINARY_DIR}/test_dsp_gen_${kind}.cpp)
     target_link_libraries(test_scsp_dsp_${kind} PRIVATE runtime)
     add_test(NAME scsp_dsp_${kind} COMMAND test_scsp_dsp_${kind})
 endforeach()
 
 # RateConv (the sound boards' instruction count to samples) against count * N / D.
-add_executable(test_rate_conv tests/test_rate_conv.cpp)
+add_executable(test_rate_conv tests/runtime/board/test_rate_conv.cpp)
 target_include_directories(test_rate_conv PRIVATE src)
 add_test(NAME rate_conv COMMAND test_rate_conv)
 
 # The DSP's PACK against MAME's loop, on every 24-bit value.
-add_executable(test_scsp_pack tests/test_scsp_pack.cpp)
+add_executable(test_scsp_pack tests/runtime/sound/test_scsp_pack.cpp)
 target_include_directories(test_scsp_pack PRIVATE src)
 add_test(NAME scsp_pack COMMAND test_scsp_pack)
 
 # Geometrizer clipping and display-list streaming (shared runtime code).
-add_executable(test_geo_clip tests/test_geo_clip.cpp)
+add_executable(test_geo_clip tests/runtime/video/test_geo_clip.cpp)
 target_include_directories(test_geo_clip PRIVATE src)
 add_test(NAME geo_clip COMMAND test_geo_clip)
 
-add_executable(test_geo_stream tests/test_geo_stream.cpp)
+add_executable(test_geo_stream tests/runtime/video/test_geo_stream.cpp)
 target_include_directories(test_geo_stream PRIVATE src)
 add_test(NAME geo_stream COMMAND test_geo_stream)
 
-add_executable(test_decode tests/test_decode.cpp)
+add_executable(test_decode tests/i960/test_decode.cpp)
 target_link_libraries(test_decode PRIVATE i960)
 add_test(NAME decode COMMAND test_decode)
 
-add_executable(test_m68k tests/test_m68k.cpp)
+add_executable(test_m68k tests/m68k/test_m68k.cpp)
 target_link_libraries(test_m68k PRIVATE m68k runtime)
 add_test(NAME m68k COMMAND test_m68k)
 
-add_executable(test_fp tests/test_fp.cpp)
+add_executable(test_fp tests/i960/test_fp.cpp)
 target_link_libraries(test_fp PRIVATE i960)
 find_package(Threads REQUIRED)
 target_link_libraries(test_fp PRIVATE Threads::Threads)
 add_test(NAME fp COMMAND test_fp)
 
-add_executable(test_native_sample_mixer tests/test_native_sample_mixer.cpp src/runtime/sound/native/native_sample_mixer.cpp)
+add_executable(test_native_sample_mixer tests/runtime/sound/test_native_sample_mixer.cpp src/runtime/sound/native/native_sample_mixer.cpp)
 target_include_directories(test_native_sample_mixer PRIVATE src)
 add_test(NAME native_sample_mixer COMMAND test_native_sample_mixer)
 
-add_executable(test_multipcm_volumes tests/test_multipcm_volumes.cpp src/runtime/sound/multipcm.cpp)
+add_executable(test_multipcm_volumes tests/runtime/sound/test_multipcm_volumes.cpp src/runtime/sound/multipcm.cpp)
 target_include_directories(test_multipcm_volumes PRIVATE src)
 add_test(NAME multipcm_volumes COMMAND test_multipcm_volumes)
 
-add_executable(test_app_pacing tests/test_app_pacing.cpp src/app/pacing.cpp)
+add_executable(test_app_pacing tests/app/test_app_pacing.cpp src/app/pacing.cpp)
 target_include_directories(test_app_pacing PRIVATE src)
 add_test(NAME app_pacing COMMAND test_app_pacing)
 
-add_executable(test_test_hold tests/test_test_hold.cpp)
+add_executable(test_test_hold tests/runtime/board/test_test_hold.cpp)
 target_include_directories(test_test_hold PRIVATE src)
 add_test(NAME test_hold COMMAND test_test_hold)
 
-add_executable(test_native_sound_sequencer tests/test_native_sound_sequencer.cpp src/runtime/sound/native/native_sound_sequencer.cpp)
+add_executable(test_native_sound_sequencer tests/runtime/sound/test_native_sound_sequencer.cpp src/runtime/sound/native/native_sound_sequencer.cpp)
 target_include_directories(test_native_sound_sequencer PRIVATE src)
 add_test(NAME native_sound_sequencer COMMAND test_native_sound_sequencer)
 
 # Link play's communication board, two boards wired in memory (no ROM, no network).
-add_executable(test_comm_board tests/test_comm_board.cpp src/runtime/io/comm_board.cpp)
+add_executable(test_comm_board tests/runtime/io/test_comm_board.cpp src/runtime/io/comm_board.cpp)
 target_include_directories(test_comm_board PRIVATE src)
 add_test(NAME comm_board COMMAND test_comm_board)
 
 # Wheel and pedal bindings against SDL virtual joysticks.
 if(TARGET SDL3::SDL3-static)
-    add_executable(test_app_controls tests/test_app_controls.cpp src/app/controls.cpp src/app/ffb.cpp)
+    add_executable(test_app_controls tests/app/test_app_controls.cpp src/app/controls.cpp src/app/ffb.cpp)
     target_include_directories(test_app_controls PRIVATE src)
     target_link_libraries(test_app_controls PRIVATE runtime SDL3::SDL3-static)
     add_test(NAME app_controls COMMAND test_app_controls)
 endif()
 
 if(EXISTS ${CMAKE_SOURCE_DIR}/extern/sdl3/include/SDL3/SDL_audio.h)
-    add_executable(test_app_native_audio tests/test_app_native_audio.cpp)
+    add_executable(test_app_native_audio tests/app/test_app_native_audio.cpp)
     target_include_directories(test_app_native_audio PRIVATE extern/sdl3/include)
     target_link_libraries(test_app_native_audio PRIVATE Threads::Threads)
     add_test(NAME app_native_audio COMMAND test_app_native_audio)
@@ -474,68 +474,68 @@ endif()
 option(M2_VITA_TESTS "Build the PS Vita frontend's host tests" OFF)
 if(M2_VITA_TESTS)
     # The menu through the vitaGL backend, render/renderer.h mocked.
-    add_executable(test_vita_imgui_gl tests/test_vita_imgui_gl.cpp
+    add_executable(test_vita_imgui_gl tests/vita/test_vita_imgui_gl.cpp
         extern/imgui/imgui.cpp extern/imgui/imgui_draw.cpp
         extern/imgui/imgui_tables.cpp extern/imgui/imgui_widgets.cpp)
-    target_include_directories(test_vita_imgui_gl PRIVATE . tests/vita_gl_shim tests/vita_gpu_shim src platform/vita extern/imgui)
+    target_include_directories(test_vita_imgui_gl PRIVATE . tests/vita/shims/gl tests/vita/shims/gpu src platform/vita extern/imgui)
     add_test(NAME vita_imgui_gl COMMAND test_vita_imgui_gl)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        add_executable(test_vita_link tests/test_vita_link.cpp src/app/link_socket.cpp src/runtime/io/comm_board.cpp)
-        target_include_directories(test_vita_link PRIVATE tests/vita_link_shim src)
+        add_executable(test_vita_link tests/vita/test_vita_link.cpp src/app/link_socket.cpp src/runtime/io/comm_board.cpp)
+        target_include_directories(test_vita_link PRIVATE tests/vita/shims/link src)
         add_test(NAME vita_link COMMAND test_vita_link)
     endif()
-    add_executable(test_vita_controls tests/test_vita_controls.cpp)
-    add_executable(test_vita_core_policy tests/test_vita_core_policy.cpp)
+    add_executable(test_vita_controls tests/vita/test_vita_controls.cpp)
+    add_executable(test_vita_core_policy tests/vita/test_vita_core_policy.cpp)
     add_test(NAME vita_core_policy COMMAND test_vita_core_policy)
     add_test(NAME vita_controls COMMAND test_vita_controls)
     # The tile cache's write tracking against comparing everything (video.cpp, Vita path).
-    add_executable(test_vita_tile_cache tests/test_vita_tile_cache.cpp src/runtime/video/video.cpp src/runtime/video/raster.cpp)
+    add_executable(test_vita_tile_cache tests/vita/test_vita_tile_cache.cpp src/runtime/video/video.cpp src/runtime/video/raster.cpp)
     target_include_directories(test_vita_tile_cache PRIVATE src)
     target_compile_definitions(test_vita_tile_cache PRIVATE M2_VITA_RENDER_OPT=1)
     add_test(NAME vita_tile_cache COMMAND test_vita_tile_cache)
 
-    add_executable(test_vita_polygon_order tests/test_vita_polygon_order.cpp)
+    add_executable(test_vita_polygon_order tests/vita/test_vita_polygon_order.cpp)
     target_include_directories(test_vita_polygon_order PRIVATE platform/vita src)
     add_test(NAME vita_polygon_order COMMAND test_vita_polygon_order)
 
     # The multicore/vitaGL helpers: texel index, flat index, reference audio pacing.
-    add_executable(test_vita_texel_index tests/test_vita_texel_index.cpp)
+    add_executable(test_vita_texel_index tests/vita/test_vita_texel_index.cpp)
     target_include_directories(test_vita_texel_index PRIVATE src)
     add_test(NAME vita_texel_index COMMAND test_vita_texel_index)
-    add_executable(test_vita_flat_index tests/test_vita_flat_index.cpp)
+    add_executable(test_vita_flat_index tests/vita/test_vita_flat_index.cpp)
     add_test(NAME vita_flat_index COMMAND test_vita_flat_index)
-    add_executable(test_vita_audio_rate tests/test_vita_audio_rate.cpp)
+    add_executable(test_vita_audio_rate tests/vita/test_vita_audio_rate.cpp)
     add_test(NAME vita_audio_rate COMMAND test_vita_audio_rate)
 
-    add_executable(test_vita_native_audio tests/test_vita_native_audio.cpp)
-    target_include_directories(test_vita_native_audio PRIVATE tests/vita_audio_shim)
+    add_executable(test_vita_native_audio tests/vita/test_vita_native_audio.cpp)
+    target_include_directories(test_vita_native_audio PRIVATE tests/vita/shims/audio)
     target_link_libraries(test_vita_native_audio PRIVATE Threads::Threads)
     add_test(NAME vita_native_audio COMMAND test_vita_native_audio)
 
-    add_executable(test_vita_sound_worker tests/test_vita_sound_worker.cpp)
-    target_include_directories(test_vita_sound_worker PRIVATE tests/vita_audio_shim)
+    add_executable(test_vita_sound_worker tests/vita/test_vita_sound_worker.cpp)
+    target_include_directories(test_vita_sound_worker PRIVATE tests/vita/shims/audio)
     target_link_libraries(test_vita_sound_worker PRIVATE Threads::Threads)
     add_test(NAME vita_sound_worker COMMAND test_vita_sound_worker)
 
-    add_executable(test_vita_audio_worker tests/test_vita_audio_worker.cpp)
-    target_include_directories(test_vita_audio_worker PRIVATE tests/vita_audio_shim)
+    add_executable(test_vita_audio_worker tests/vita/test_vita_audio_worker.cpp)
+    target_include_directories(test_vita_audio_worker PRIVATE tests/vita/shims/audio)
     target_link_libraries(test_vita_audio_worker PRIVATE Threads::Threads)
     add_test(NAME vita_audio_worker COMMAND test_vita_audio_worker)
 
-    add_executable(test_vita_async_log tests/test_vita_async_log.cpp)
-    target_include_directories(test_vita_async_log PRIVATE tests/vita_log_shim)
+    add_executable(test_vita_async_log tests/vita/test_vita_async_log.cpp)
+    target_include_directories(test_vita_async_log PRIVATE tests/vita/shims/log)
     target_compile_definitions(test_vita_async_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     target_link_libraries(test_vita_async_log PRIVATE Threads::Threads)
     add_test(NAME vita_async_log COMMAND test_vita_async_log)
     set_tests_properties(vita_async_log PROPERTIES TIMEOUT 20)
 
-    add_executable(test_vita_log tests/test_vita_log.cpp)
-    target_include_directories(test_vita_log PRIVATE tests/vita_log_shim)
+    add_executable(test_vita_log tests/vita/test_vita_log.cpp)
+    target_include_directories(test_vita_log PRIVATE tests/vita/shims/log)
     target_compile_definitions(test_vita_log PRIVATE M2_ROMSET="${M2_ROMSET}") # the log goes to ux0:data/<set>/
     add_test(NAME vita_log COMMAND test_vita_log)
 
     # The launcher's settings (vita.cfg) against the game records.
-    add_executable(test_vita_settings tests/test_vita_settings.cpp platform/vita/frontend/settings.cpp
+    add_executable(test_vita_settings tests/vita/test_vita_settings.cpp platform/vita/frontend/settings.cpp
         platform/vita/frontend/storage.cpp)
     target_link_libraries(test_vita_settings PRIVATE runtime)
     add_test(NAME vita_settings COMMAND test_vita_settings ${CMAKE_CURRENT_BINARY_DIR})
@@ -552,14 +552,14 @@ if(M2_VITA_TESTS)
 endif()
 
 # Measurement, not a test: where MAME's double FP disagrees with the model.
-add_executable(fp_vs_mame tests/fp_vs_mame.cpp)
+add_executable(fp_vs_mame tests/i960/fp_vs_mame.cpp)
 target_link_libraries(fp_vs_mame PRIVATE i960 Threads::Threads)
 
-add_executable(test_reach tests/test_reach.cpp)
+add_executable(test_reach tests/i960/test_reach.cpp)
 target_link_libraries(test_reach PRIVATE i960)
 add_test(NAME reach COMMAND test_reach)
 
-add_executable(test_trace tests/test_trace.cpp)
+add_executable(test_trace tests/trace/test_trace.cpp)
 target_link_libraries(test_trace PRIVATE trace)
 add_test(NAME trace COMMAND test_trace ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -567,18 +567,18 @@ add_test(NAME trace COMMAND test_trace ${CMAKE_CURRENT_BINARY_DIR})
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_FOUND)
     add_test(NAME lua_core
-        COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/lua_core_test.py
+        COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/trace/lua_core_test.py
                 ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/lua_core)
     set_tests_properties(lua_core PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME lua_plugin_mock
-        COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/lua_plugin_mock_test.py
+        COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/trace/lua_plugin_mock_test.py
                 ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/lua_plugin_mock)
     set_tests_properties(lua_plugin_mock PROPERTIES SKIP_RETURN_CODE 77)
     # Second decode reference: Ghidra SLEIGH (third-party i960 module via
     # pypcode). Needs scripts/fetch_ghidra_i960.sh and pip install pypcode.
     if(EXISTS ${CMAKE_SOURCE_DIR}/extern/ghidra_i960/data/languages/i960.slaspec)
         add_test(NAME ghidra_oracle
-            COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/ghidra_oracle.py
+            COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tests/oracles/ghidra_oracle.py
                     ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR}/extern/ghidra_i960 --random 200000)
         set_tests_properties(ghidra_oracle PROPERTIES SKIP_RETURN_CODE 77)
     endif()
@@ -588,11 +588,11 @@ endif()
 set(MAME_DIR ${CMAKE_SOURCE_DIR}/extern/mame CACHE PATH "Pinned MAME checkout")
 if(EXISTS ${MAME_DIR}/src/devices/cpu/i960/i960dis.cpp)
     add_executable(mame_oracle
-        tests/mame_oracle.cpp
+        tests/oracles/mame_oracle.cpp
         ${MAME_DIR}/src/devices/cpu/i960/i960dis.cpp
     )
     target_include_directories(mame_oracle PRIVATE
-        tests/mame_shim
+        tests/oracles/mame_shim
         ${MAME_DIR}/src/devices
         ${MAME_DIR}/src/devices/cpu/i960
     )

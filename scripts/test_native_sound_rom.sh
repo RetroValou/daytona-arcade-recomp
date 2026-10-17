@@ -35,7 +35,7 @@ libraries+=("$build_dir/libtrace.a" "$build_dir/libi960.a"
 "${CXX:-c++}" -std=c++20 -O2 -fno-fast-math -ffp-contract=off \
     -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL=__thread \
     -I"$repo_root/src" -I"$repo_root/extern/ymfm/src" \
-    "$repo_root/tests/test_native_sound_rom.cpp" \
+    "$repo_root/tests/runtime/sound/test_native_sound_rom.cpp" \
     "$repo_root/src/runtime/sound/native/native_sample_mixer.cpp" \
     "$repo_root/src/runtime/sound/native/native_sound_sequencer.cpp" \
     "$repo_root/src/runtime/sound/native/native_sound_engine.cpp" \

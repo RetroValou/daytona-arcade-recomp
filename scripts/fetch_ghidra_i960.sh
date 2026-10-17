@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Fetch the third-party Ghidra i960 processor module (mumbel/ghidra_i960,
 # Apache-2.0) at the pinned commit into extern/ghidra_i960 (git-ignored).
-# Mainline Ghidra has no i960 module. Used by tests/ghidra_oracle.py through
+# Mainline Ghidra has no i960 module. Used by tests/oracles/ghidra_oracle.py through
 # pypcode (pip install pypcode), and loadable into Ghidra itself by copying the
 # directory into <ghidra>/Ghidra/Processors/.
 set -eu

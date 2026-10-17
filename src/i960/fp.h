@@ -11,7 +11,7 @@
 //           can reach memory or a compare goes through extF80), in any of the
 //           four AC rounding modes, reporting IEEE exception flags;
 //   fast_*  native host arithmetic for round-to-nearest only. Recompiled code
-//           may use these ONLY because tests/test_fp proves them bit-identical
+//           may use these ONLY because tests/i960/test_fp proves them bit-identical
 //           to ref_* (exhaustively where the input space allows). They assume
 //           the host FPU is in its default round-to-nearest mode and that the
 //           build does not use -ffast-math.

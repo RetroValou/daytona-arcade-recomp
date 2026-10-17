@@ -95,7 +95,6 @@ bash scripts/test_native_sound_rom.sh build 6000
 bash scripts/test_native_sound_oracle.sh build 6000 build/rom_cache/daytona93 build/native-oracle-race race
 bash scripts/test_native_sound_oracle.sh build 6000 build/rom_cache/daytona93 build/native-oracle-attract attract
 bash scripts/test_vita_sound_pipeline.sh build 6000
-python3 scripts/test_vita_gpu_lifetime.py --sanitize
 python3 scripts/test_vita_renderer.py --sanitize
 ```
 

@@ -1,5 +1,24 @@
 # Handoff
 
+## tests/ sorted by subject (2026-10-17)
+
+tests/ was 62 entries in one folder. Now: i960/, m68k/, runtime/{board,
+video,sound,io}/ (as src/runtime), trace/ (+ the Lua plugin tests), app/
+(desktop frontend), mobile/ (unmaintained port), oracles/ (MAME, Ghidra),
+scripts/ (the Python tests of scripts/: unittest discover -s tests/scripts),
+vita/ (+ vita/shims/{audio,gl,gpu,link,log}). Moved with git mv; relative
+includes recomputed, Python tests' repository root one level up, every
+reference (CMake, scripts, CI, docs, comments) rewritten. Removed on the way,
+all dead: tests/vita_sdl_shim (its only user, test_vita_text, went on
+2026-10-16), scripts/test_vita_gpu_lifetime.py (its test file was already
+gone), PERFORMANCE.md's commands for those tests. .github/workflows/vita.yml's
+host job compiled the two removed tests (broken since 2026-10-16): it now
+configures the root build with -DM2_VITA_TESTS=ON and runs ctest -R vita and
+the Vita Python tests (not run on GitHub here).
+Checks: ctest 23/23 (vf2 build), Vita host tests 15/15, Python tests 44 OK,
+test_vita_renderer.py. tests/mobile/test_mobile_rom_file.sh fails, as it did
+before the move (a compile error in the test, mobile is not maintained).
+
 ## Vita: the frontend's measurements in vita::Diagnostics (2026-10-17)
 
 Step 4a of the frontend refactor (platform/vita/HANDOFF.md). The user ran

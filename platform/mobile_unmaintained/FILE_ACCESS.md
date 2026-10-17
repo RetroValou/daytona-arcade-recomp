@@ -53,8 +53,8 @@ copied it there.
 ## ROM-free tests
 
 ```sh
-bash tests/test_mobile_rom_file.sh
-CXX=clang++ bash tests/test_mobile_rom_file.sh
+bash tests/mobile/test_mobile_rom_file.sh
+CXX=clang++ bash tests/mobile/test_mobile_rom_file.sh
 ```
 
 These test short/partial reads, byte preservation, keeping the old import

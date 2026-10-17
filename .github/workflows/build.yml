@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup regression tests
-        run: python -m unittest discover -s tests -p test_setup.py -v
+        run: python -m unittest discover -s tests/scripts -p test_setup.py -v
       # The runners have no winget, so setup.ps1 cannot run here; check it parses.
       - name: setup.ps1 parses
         if: runner.os == 'Windows'

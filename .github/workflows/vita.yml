@@ -1,29 +1,27 @@
 name: Vita compile check
 on:
   push:
-    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
+    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/vita/**', 'tests/scripts/test_build_vita.py', 'CMakeLists.txt', '.github/workflows/vita.yml']
   pull_request:
-    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/test_vita_*.cpp', 'tests/vita_sdl_shim/**', 'tests/test_build_vita.py', '.github/workflows/vita.yml']
+    paths: ['platform/vita/**', 'src/**', 'cmake/**', 'scripts/setup.py', 'scripts/build_vita.py', 'scripts/games.py', 'tests/vita/**', 'tests/scripts/test_build_vita.py', 'CMakeLists.txt', '.github/workflows/vita.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  input-and-build-tests:
+  host-tests:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Input and timing tests
+      - name: Fetch the pinned dependencies of the root build
+        run: python3 scripts/setup.py --no-build
+      - name: Vita host tests (platform/vita code against host mocks)
         run: |
-          mkdir -p build
-          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined tests/test_vita_controls.cpp -o build/test_vita_controls
-          build/test_vita_controls
-          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc tests/test_vita_performance.cpp -o build/test_vita_performance
-          build/test_vita_performance
-          g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -Itests/vita_sdl_shim tests/test_vita_text.cpp -o build/test_vita_text
-          build/test_vita_text
-          python3 -m unittest discover -s tests -p test_build_vita.py -v
+          cmake -S . -B build/vita-tests -DM2_VITA_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/vita-tests --parallel 4
+          ctest --test-dir build/vita-tests -R vita --output-on-failure
+          python3 -m unittest discover -s tests/scripts -p 'test_*vita*.py' -v
   arm-compile:
     runs-on: ubuntu-24.04
     container: vitasdk/vitasdk:2026.08-20260815

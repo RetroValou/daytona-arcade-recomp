@@ -74,7 +74,7 @@ From a console perf.log with fine-grained probes (not kept in the sources):
   +0.5%, and down to -5% only while the emulation stays below full speed: the
   sound follows the game's speed instead of crackling). After an underrun the
   output stays silent until the cushion is back: one short gap instead of a
-  crackle at every callback. Simulated (`tests/test_vita_audio_rate.cpp`): no gap
+  crackle at every callback. Simulated (`tests/vita/test_vita_audio_rate.cpp`): no gap
   with 30 ms late frames every 1.7 s, 20 ms every 0.5 s, or 96-97.5% speed for two
   minutes; one gap per 100 ms hitch; rare gaps at 94% speed. Latency ~75 ms
   (was ~64 ms at start-up). perf.log: `reference audio: N gaps, playback speed,
@@ -399,17 +399,7 @@ No geometry, sound, floating-point results or game instructions are skipped.
 
 ## Host checks
 
-```sh
-mkdir -p build
-g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined -Isrc \
-  tests/test_vita_performance.cpp -o build/test_vita_performance
-build/test_vita_performance
-g++ -std=c++20 -Wall -Wextra -Werror -fsanitize=address,undefined \
-  -Itests/vita_sdl_shim tests/test_vita_text.cpp -o build/test_vita_text
-build/test_vita_text
-```
-
-The SDL shim is a unit-test drawing recorder only; do not include it in any
-game target. Unit tests use synthetic timer values, not synthetic game code.
+The Vita host tests: see "Tests" in ../README.md (the root build with
+`-DM2_VITA_TESTS=ON`, `ctest -R vita`).
 The real ROM-generated game, ARM compilation/linking, device performance,
 audio, suspend/resume and race parity remain to be tested for this patch.

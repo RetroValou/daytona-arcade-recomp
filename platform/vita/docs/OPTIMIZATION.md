@@ -98,9 +98,9 @@ are components of video time, not extra work to add on top of `video_ms`.
 python3 scripts/test_vita_renderer.py
 python3 scripts/test_vita_renderer.py --sanitize
 python3 scripts/test_vita_renderer.py --bench
-c++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc tests/test_vita_texel.cpp -o build/test_vita_texel
+c++ -std=c++20 -O2 -Wall -Wextra -Werror -Isrc tests/vita/test_vita_texel.cpp -o build/test_vita_texel
 build/test_vita_texel
-python3 -m unittest discover -s tests -p test_build_vita.py -v
+python3 -m unittest discover -s tests/scripts -p test_build_vita.py -v
 ```
 
 The renderer test compiles separate reference and optimized translation units.

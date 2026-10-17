@@ -305,7 +305,7 @@ rm -rf /tmp/vitasdk-nogl /tmp/daytona-clean      # the real SDK is untouched
 
 Host tests (no ROM or SDK): configure the root build with `-DM2_VITA_TESTS=ON`, then
 `ctest -R vita`; `python3 scripts/test_vita_renderer.py` (the optimized rasterizer and
-tile cache against their reference); `python3 -m unittest discover -s tests -p
+tile cache against their reference); `python3 -m unittest discover -s tests/scripts -p
 'test_*vita*.py'`. `build_vita.py --compile-check` builds the ARM objects without a
 ROM: it does not link game code, produce a VPK, or test anything on the console.
 

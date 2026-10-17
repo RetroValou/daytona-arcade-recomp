@@ -1,6 +1,6 @@
 // One 4-bit Model 2 texel index from packed texture RAM, for the vitaGL index
 // textures: rt::read_texel_quad(bx, by, u, u, v, v, sheet).t00 >> 4 without the
-// quad's three other reads (tests/test_vita_texel_index.cpp checks they agree).
+// quad's three other reads (tests/vita/test_vita_texel_index.cpp checks they agree).
 #pragma once
 
 #include <cstdint>
@@ -43,7 +43,7 @@ inline uint64_t index_texture_hash(uint32_t bx, uint32_t by, uint32_t w, uint32_
 
 // The vitaGL index texture (GL_LUMINANCE_ALPHA: L = index * 16, A = 0 for index 15 when
 // transparent_alpha is 0, else 255) of a w x h texture, a word at a time: texel_index's
-// result for every texel (tests/test_vita_texel_index.cpp). w a multiple of 4, h even.
+// result for every texel (tests/vita/test_vita_texel_index.cpp). w a multiple of 4, h even.
 // Returns index_texture_hash.
 inline uint64_t decode_index_texture(uint32_t bx, uint32_t by, uint32_t w, uint32_t h, const uint32_t *sheet,
                                      uint8_t transparent_alpha, uint8_t *la) {

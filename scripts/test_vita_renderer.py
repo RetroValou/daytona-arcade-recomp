@@ -34,6 +34,6 @@ def main():
         subprocess.run(compiler+flags+(['-DM2_VITA_RENDER_OPT=1'] if opt else [])+['-c',str(source),'-o',str(obj)],check=True)
         objects.append(str(obj))
     exe=dest/'test_vita_renderer'
-    subprocess.run(compiler+flags+['-DM2_VITA_RENDER_OPT=1',str(ROOT/'tests/test_vita_renderer.cpp')]+objects+['-o',str(exe)],check=True)
+    subprocess.run(compiler+flags+['-DM2_VITA_RENDER_OPT=1',str(ROOT/'tests/vita/test_vita_renderer.cpp')]+objects+['-o',str(exe)],check=True)
     subprocess.run([str(exe)]+(['--bench'] if args.bench else []),check=True)
 if __name__=='__main__':main()
