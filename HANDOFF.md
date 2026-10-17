@@ -1,5 +1,18 @@
 # Handoff
 
+## Vita: link play a build option, only Daytona's packages by default (2026-10-17)
+
+Link play was tested on Vitas with Daytona only. scripts/games.py vita_link
+(Daytona True, Sega Rally and VF2 False) sets DAYTONA_VITA_LINK;
+build_vita.py --link / --no-link override it; the build summary prints
+"Link play: in / left out". Off: frontend/main.cpp compiles no net/link.h
+(TcpLink, SceNet), the SceNet/SceNetCtl stubs are not linked, the link rows
+stay hidden; the link_* keys of vita.cfg are still read and written. The
+menu rows still also need Game::link (daytona93 only), as before.
+Checks: tests/test_build_vita.py (+2: the default per game, the flags);
+Daytona compile check (link in); VF2 VPK built, link left out, no SceNet in
+its link line. Not run on the console.
+
 ## Vita: platform/vita sorted by role (2026-10-17)
 
 Pure moves (platform/vita/HANDOFF.md): frontend/, render/, audio/, system/,

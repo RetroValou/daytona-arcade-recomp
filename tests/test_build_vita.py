@@ -111,6 +111,21 @@ class BuildVitaTests(unittest.TestCase):
         self.assertIn("-DDAYTONA_VITA_FREE_CORES=ON", configure)
         self.assertFalse(any("GPU_GL" in str(a) or "GPU_FAST" in str(a) for a in configure))
 
+    def test_link_play_follows_the_game(self):
+        # Only Daytona's link play was tested on Vitas: in for it, out for the others.
+        for game, expected in (("daytona", "ON"), ("segarally", "OFF"), ("virtuafighter2", "OFF")):
+            with patch.object(BUILD.subprocess, "run") as run:
+                self.call("--compile-check", "--game", game)
+            self.assertIn(f"-DDAYTONA_VITA_LINK={expected}", run.call_args_list[0].args[0])
+
+    def test_link_play_override(self):
+        for flag, game, expected in (("--link", "virtuafighter2", "ON"), ("--no-link", "daytona", "OFF")):
+            with patch.object(BUILD.subprocess, "run") as run:
+                self.call("--compile-check", "--game", game, flag)
+            self.assertIn(f"-DDAYTONA_VITA_LINK={expected}", run.call_args_list[0].args[0])
+        with self.assertRaises(SystemExit):
+            self.call("--compile-check", "--link", "--no-link")
+
     def test_renderer_flags_are_gone(self):
         # vitaGL is the only renderer: --gpu-gl and --gpu-fast no longer exist.
         for flag in ("--gpu-gl", "--gpu-fast"):

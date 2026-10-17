@@ -217,6 +217,10 @@ def main(argv=None):
     ap.add_argument("--free-core", action="store_true",
                     help="leave the main, geometry, sound and 2D threads unpinned (default: one core each); "
                          "the 4TH CORE option can then take any of them")
+    link = ap.add_mutually_exclusive_group()
+    link.add_argument("--link", dest="link", action="store_const", const=True,
+                      help="compile link play in (default: only for the games it was tested on, scripts/games.py vita_link)")
+    link.add_argument("--no-link", dest="link", action="store_const", const=False, help="leave link play out")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
     mode.add_argument("--release", action="store_true", help="fastest build: no diagnostic logging + link-time optimization (LTO; longer link, more host memory)")
@@ -239,6 +243,8 @@ def main(argv=None):
     except ValueError as error:
         ap.error(str(error))
     game = dict(games.GAMES[args.game], **SETS[args.set])
+    if args.link is None:
+        args.link = game["vita_link"]
     if args.tgp_profile or args.i960_profile:
         args.diagnostics = True  # checked against --release below
     if args.build_dir is None:  # diagnostics: its own build directory, the release one is left as it is
@@ -327,6 +333,7 @@ def main(argv=None):
          f"-DDAYTONA_VITA_I960_PROFILE={'ON' if args.i960_profile else 'OFF'}",
          f"-DDAYTONA_VITA_LTO={'ON' if args.release else 'OFF'}",
          f"-DDAYTONA_VITA_FREE_CORES={'ON' if args.free_core else 'OFF'}",
+         f"-DDAYTONA_VITA_LINK={'ON' if args.link else 'OFF'}",
          f"-DDAYTONA_VITA_COMPILE_CHECK={'ON' if args.compile_check else 'OFF'}",
          "-DDAYTONA_VITA_TEXT_PAD=0",
          f"-DDAYTONA_VITAGL_DIR={vitagl_dir}"], env)
@@ -354,8 +361,9 @@ def main(argv=None):
         cores = "free (--free-core)" if args.free_core else "pinned: main 0, geometry 1, sound 2"
         kind = "release (LTO, no logs)" if args.release else ("diagnostics (logs)" if args.diagnostics else "normal (no logs)")
         paths = "off (--no-fast-paths)" if args.no_fast_paths else "on (M2_FAST_BUS/TGP/CPU/GEO)"
+        link_play = "in" if args.link else "left out"
         print(f"VPK: {package}\nRenderer build: {mode}\nvitaGL: {vitagl}\nCores: {cores}\nBuild: {kind}\nGame code: {code}\n"
-              f"Runtime fast paths: {paths}\nLiveArea images: {livearea_summary(args.game)}\nTitle ID: {title_id}\n"
+              f"Runtime fast paths: {paths}\nLink play: {link_play}\nLiveArea images: {livearea_summary(args.game)}\nTitle ID: {title_id}\n"
               f"ROM location on Vita: ux0:data/{args.set}/{args.set}.zip")
     return 0
 

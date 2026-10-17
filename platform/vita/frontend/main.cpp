@@ -1,9 +1,16 @@
 #define SDL_MAIN_HANDLED
+// Link play compiled in (build_vita.py: the games it was tested on, scripts/games.py
+// vita_link). Off: no SceNet code, no link rows, link_* settings kept in vita.cfg.
+#ifndef DAYTONA_VITA_LINK
+#define DAYTONA_VITA_LINK 1
+#endif
 #include "audio/audio.h"
 #include "audio/native_audio.h"
 #include "runtime/native_sound_engine.h"
 #include "audio/sound_worker.h"
+#if DAYTONA_VITA_LINK
 #include "net/link.h"
+#endif
 #include "frontend/controls.h"
 #include "system/diagnostic_log.h"
 #include "system/async_log.h"
@@ -389,6 +396,9 @@ bool rom_switch_packaged() {
 // engine nor the sound board can tell them apart, the draw distance without its hook,
 // link play without the communication board, the ROM switch without a second
 // executable).
+// Link play: compiled in, and the set has the communication board.
+bool link_play() { return DAYTONA_VITA_LINK && rt::game().link; }
+
 bool option_available(Option o, const VitaSettings &s) {
     const bool native = rt::game().native_sound != nullptr;
     switch (o) {
@@ -398,9 +408,9 @@ bool option_available(Option o, const VitaSettings &s) {
     case OptRom: return rom_switch_packaged();
     case OptAspect: case OptHud: case OptStretch: return kWidescreen;
     case OptDistance: return rt::game().draw_distance;
-    case OptLink: return rt::game().link;
+    case OptLink: return link_play();
     case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
-        return rt::game().link && s.link_enabled;
+        return link_play() && s.link_enabled;
     case OptInvert: case OptSteerCurve: return has_steering(); // a wheel to invert or shape
     default: return true;
     }
@@ -608,7 +618,11 @@ int main(int, char **) {
     audio.mute(settings.mute);
     log.literal("GPU25 stage: audio done; main loop ready\n");
 
+#if DAYTONA_VITA_LINK
     std::unique_ptr<vita::TcpLink> link; // outlives the board's transport pointer
+#else
+    std::unique_ptr<rt::LinkTransport> link; // no link play in this build: always empty
+#endif
     std::unique_ptr<rt::GameLoop> game;
     // Destruction order keeps the detached packet, game and audio alive until
     // the worker has drained. Only one sound packet may be in flight.
@@ -855,7 +869,7 @@ int main(int, char **) {
         ImGui::End(); ui.render();
         gfx_end();
         try {
-            if (settings.link_enabled && !rt::game().link)
+            if (DAYTONA_VITA_LINK && settings.link_enabled && !rt::game().link)
                 throw std::runtime_error(std::string("LINK PLAY: ") + rt::game().set +
                                          " HAS NO COMMUNICATION BOARD. SELECT ANOTHER ROM OR TURN LINK OFF.");
             auto images = rt::import_rom_set(kRom);
@@ -904,11 +918,13 @@ int main(int, char **) {
 #endif
             load_nv("ioboard_eeprom.bin", game->board().io().eeprom);
             if (settings.save_backup) load_nv("backup_ram.bin", game->board().backup_ram());
+#if DAYTONA_VITA_LINK
             if (settings.link_enabled) {
                 link = std::make_unique<vita::TcpLink>(settings.link_port, settings.next_address(), settings.next_port);
                 if (!link->error().empty()) throw std::runtime_error("LINK: " + link->error());
                 game->board().set_link(link.get(), settings.link_sync);
             }
+#endif
             game->board().video().set_profile_clock(kProfile ? ticks_us : nullptr);
             apply_mode();
             apply_geometry();
@@ -1304,6 +1320,7 @@ int main(int, char **) {
             const uint64_t gfx_begun = diagnostic_ticks_us();
             if (menu) {
                 std::string shown_status = status;
+#if DAYTONA_VITA_LINK
                 if (link && game && !options) {
                     const auto *comm = game->board().comm_board();
                     shown_status += "\nIP " + link->local_ip() + " RX " + (link->rx_open() ? "YES" : "WAIT") +
@@ -1311,6 +1328,7 @@ int main(int, char **) {
                     if (comm) shown_status += " CABINET " + std::to_string(comm->id()) + "/" +
                         std::to_string(comm->count()) + (comm->link() == rt::CommBoard::Link::Lost ? " LOST" : "");
                 }
+#endif
                 ui.frame(float(elapsed));
                 draw_menu(bool(game), options, binds, selection, capture, settings, shown_status, display_fps);
                 ui.render();

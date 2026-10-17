@@ -1,5 +1,11 @@
 # Vita port handoff — 29 September 2026
 
+## Link play a build option — 17 October 2026
+
+DAYTONA_VITA_LINK (scripts/games.py vita_link: Daytona only; build_vita.py
+--link/--no-link). Off: no net/link.h, no SceNet stubs, no link rows. VF2
+VPK built without it, Daytona compile check with it.
+
 ## Source tree by role — 17 October 2026
 
 Files moved with git mv, no code change: frontend/ (main.cpp, was

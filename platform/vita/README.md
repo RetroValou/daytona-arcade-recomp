@@ -243,6 +243,13 @@ python3 scripts/build_vita.py --game daytona --revision-a-self build_daytona/vit
 The second VPK contains both executables. Actual Vita-to-Vita/Vita-to-desktop
 Wi-Fi operation and executable switching require hardware validation.
 
+Link play is a build option: `build_vita.py` compiles it in only for the games
+it was tested on (`vita_link` in `scripts/games.py`: Daytona). Sega Rally and
+Virtua Fighter 2 packages leave it out (no SceNet code, no link rows in the
+menu); `--link` puts it in anyway, `--no-link` leaves it out of Daytona's. The
+menu rows still need a set with the communication board (`Game::link`:
+daytona93).
+
 ### Sega Rally Championship (srallyc), a separate app
 
 Sega Rally is its own package with its own title ID, SRAL00094 (Daytona's is

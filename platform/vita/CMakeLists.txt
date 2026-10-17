@@ -51,6 +51,10 @@ endif()
 # cores (0-2) of the busy threads; -1 =
 # unpinned. DAYTONA_VITA_FREE_CORES (build_vita.py --free-core) leaves them all
 # unpinned: they then follow the fourth-core setting (system/core_policy.h).
+# Link play (net/link.h, SceNet): build_vita.py turns it on only for the games it
+# was tested on (scripts/games.py vita_link: Daytona). Off: no link code, no
+# link rows in the menu.
+option(DAYTONA_VITA_LINK "Compile LAN link play in (net/link.h)" ON)
 option(DAYTONA_VITA_FREE_CORES "Leave the main, geometry, sound and 2D threads unpinned (the 4th core can take them)" OFF)
 set(DAYTONA_VITA_MAIN_CORE 0 CACHE STRING "Core of the main thread (i960, TGP, video, GPU submission)")
 set(DAYTONA_VITA_GEO_CORE 1 CACHE STRING "Core of the geometry thread")
@@ -69,7 +73,7 @@ endforeach()
 set_source_files_properties(render/renderer.cpp PROPERTIES COMPILE_DEFINITIONS
     "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_2D_CORE=${VITA_2D_CORE}")
 set_source_files_properties(frontend/main.cpp PROPERTIES COMPILE_DEFINITIONS
-    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE}")
+    "DAYTONA_VITA_DIAGNOSTICS=$<BOOL:${DAYTONA_VITA_DIAGNOSTICS}>;DAYTONA_VITA_MAIN_CORE=${VITA_MAIN_CORE};DAYTONA_VITA_GEO_CORE=${VITA_GEO_CORE};DAYTONA_VITA_SOUND_CORE=${VITA_SOUND_CORE};DAYTONA_VITA_LINK=$<BOOL:${DAYTONA_VITA_LINK}>")
 set(DAYTONA_GEN_ROOT "${DAYTONA_ROOT}/build_daytona/recomp/daytona93/gen" CACHE PATH
     "Host-generated i960, TGP and 68000 C++ root (scripts/games.py gen_root: build_<game>/recomp/<set>/gen)")
 # The game: any set of scripts/games.py (its seeds/<set>.txt must exist).
@@ -268,7 +272,7 @@ set(VITAGL_LINK_LIBS ${VITAGL_LIBRARIES}
     SceShaccCg_stub SceKernelDmacMgr_stub SceKernelModulemgr_stub
     SceGxm_stub SceDisplay_stub SceSysmodule_stub SceCommonDialog_stub
     SceCtrl_stub SceAppMgr_stub SceIofilemgr_stub SceProcessmgr_stub ScePower_stub
-    SceNet_stub SceNetCtl_stub SceTouch_stub
+    $<$<BOOL:${DAYTONA_VITA_LINK}>:SceNet_stub> $<$<BOOL:${DAYTONA_VITA_LINK}>:SceNetCtl_stub> SceTouch_stub
     SceLibKernel_stub pthread m)
 # The ImGui menu (render/imgui_backend.h, through vitaGL).
 set(IMGUI_DIR "${DAYTONA_ROOT}/extern/imgui")

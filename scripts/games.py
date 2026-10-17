@@ -18,6 +18,10 @@ Per game (GAMES):
   vita_title_id the Vita package's title ID (4 capital letters, 5 digits);
                 one per game, so the games install side by side
   vita_name     the Vita package's name
+  vita_link     link play compiled into the Vita package (build_vita.py
+                --link/--no-link override it): only where it was tested on
+                Vitas, Daytona. The menu also needs a set with the
+                communication board (Game::link)
   The Vita's LiveArea images: platform/vita/logo_livearea/<game>/.
 
 Per set (SETS):
@@ -60,15 +64,15 @@ CONTROLS = {
 GAMES = {
     "daytona": {
         "title": "Daytona USA", "sets": ("daytona93", "daytona"),
-        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA",
+        "vita_title_id": "DAYT00093", "vita_name": "Daytona USA", "vita_link": True,
     },
     "segarally": {
         "title": "Sega Rally Championship", "sets": ("srallyc",),
-        "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship",
+        "vita_title_id": "SRAL00094", "vita_name": "Sega Rally Championship", "vita_link": False,
     },
     "virtuafighter2": {
         "title": "Virtua Fighter 2", "sets": ("vf2",),
-        "vita_title_id": "VFTR00095", "vita_name": "Virtua Fighter 2",
+        "vita_title_id": "VFTR00095", "vita_name": "Virtua Fighter 2", "vita_link": False,
     },
 }
 
