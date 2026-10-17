@@ -1,5 +1,14 @@
 # Handoff
 
+## .gitignore: src/runtime/rom/ is code, not ROM data (2026-10-17)
+
+The "rom/" line (any folder named rom: a safety net for ROM dumps, rule 6)
+also matched src/runtime/rom/, made by the runtime's reorganisation: its
+seven files were committed (git add of renames), but a new file there would
+have been ignored silently. Kept the rule, added !src/runtime/rom/.
+Checked: git check-ignore --no-index on a new file there: not ignored; a
+top-level rom/ still is.
+
 ## src/runtime cleanup: dead video options and unused functions (2026-10-17)
 
 Removed, none of it ran: Video's gpu_background option (set_gpu_background
