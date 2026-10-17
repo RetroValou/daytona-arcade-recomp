@@ -3,7 +3,7 @@
 // comparing everything every frame (no tracking): the same layer pixels and tile
 // generations after every frame of random writes (scroll registers every frame, tiles,
 // sometimes characters, sometimes nothing), as the board reports them (changed bytes only).
-#include "runtime/video.h"
+#include "runtime/video/video.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

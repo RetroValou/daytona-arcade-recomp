@@ -2,7 +2,7 @@
 // 24-bit val and a few int32_t values outside that range.
 #include <cstdint>
 #include <cstdio>
-#include "runtime/scsp.h"
+#include "runtime/sound/scsp.h"
 
 static uint16_t pack_loop(int32_t val) {
     int const sign = (val >> 23) & 1;

@@ -1,7 +1,7 @@
 // The MultiPCM's music and effects volumes (the launcher's Audio tab) on a
 // synthetic sample: at 1 and 1 the output is the chip's own, bit for bit; a
 // volume of 0 leaves exactly the other kind's voices. No game ROM data.
-#include "runtime/multipcm.h"
+#include "runtime/sound/multipcm.h"
 
 #include <array>
 #include <cmath>

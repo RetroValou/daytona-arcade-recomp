@@ -240,7 +240,7 @@ def rewrite_tgp(source):
     head = ("#ifdef M2TGP_WITH_HOOK\n"
             "#error \"fast_gen.py's TGP code keeps the count in a local: a hook would not see it\"\n"
             "#endif\n")
-    return (source[:start].replace('#include "runtime/tgp.h"\n', '#include "runtime/tgp.h"\n' + head, 1) +
+    return (source[:start].replace('#include "runtime/tgp/tgp.h"\n', '#include "runtime/tgp/tgp.h"\n' + head, 1) +
             "    uint64_t count = t.count; // (fast_gen.py) Tgp::count, stored back at every return\n" + body +
             source[end:])
 

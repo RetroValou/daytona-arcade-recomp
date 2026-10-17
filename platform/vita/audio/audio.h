@@ -1,7 +1,7 @@
 #pragma once
 #include "system/core_policy.h"
 #include <SDL.h>
-#include "runtime/sound_board.h"
+#include "runtime/sound/model1_board.h"
 #include "audio/audio_rate.h"
 #include <algorithm>
 #include <cmath>

@@ -1,5 +1,12 @@
 # Vita port handoff — 29 September 2026
 
+## The runtime's new paths — 17 October 2026
+
+src/runtime is sorted by subsystem (root HANDOFF.md). Here: the geometrizer
+override moved to overrides/runtime/video/geo.h/.cpp (it must mirror
+"runtime/video/geo.h"), RUNTIME_FILES in CMakeLists.txt lists the files
+with their subsystem. VF2 VPK built.
+
 ## Settings, storage and input out of main.cpp — 17 October 2026
 
 frontend/settings (VitaSettings; load/save take a path, default kConfig;

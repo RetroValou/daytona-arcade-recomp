@@ -1,5 +1,5 @@
 // Packed texture helper against the original scalar address/nibble equations.
-#include "runtime/raster_texel.h"
+#include "runtime/video/raster_texel.h"
 #include <array>
 #include <cstdio>
 #include <cstdlib>

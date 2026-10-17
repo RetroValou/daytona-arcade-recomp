@@ -1,5 +1,5 @@
 #pragma once
-#include "runtime/comm_board.h"
+#include "runtime/io/comm_board.h"
 #include <psp2/net/net.h>
 #include <psp2/net/netctl.h>
 #include <psp2/sysmodule.h>

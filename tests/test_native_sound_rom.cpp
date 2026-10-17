@@ -1,8 +1,8 @@
 // Opt-in real-ROM health test. Requires the user's imported ROM directory and
 // generated main/TGP code. No reference sound board or sound CPU is instantiated.
 // Usage: test_native_sound_rom ROM_CACHE_DIR [FRAMES=6000] [OUTPUT.wav]
-#include "runtime/game_loop.h"
-#include "runtime/native_sound_engine.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/sound/native/native_sound_engine.h"
 
 #include <algorithm>
 #include <array>

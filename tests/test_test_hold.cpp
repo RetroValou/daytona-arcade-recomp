@@ -1,6 +1,6 @@
 // rt::TestHold: waits for frame 240, holds Test (in0 0x04) for 173 frames,
 // says when it is done, and leaves the other inputs alone.
-#include "runtime/test_hold.h"
+#include "runtime/board/test_hold.h"
 
 #include <cstdio>
 

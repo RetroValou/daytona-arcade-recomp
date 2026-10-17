@@ -6,7 +6,7 @@
 // POSIX sockets, or Winsock on Windows.
 #pragma once
 
-#include "runtime/comm_board.h"
+#include "runtime/io/comm_board.h"
 
 #include <cstdint>
 #include <string>

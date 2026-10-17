@@ -7,7 +7,7 @@
 //
 //   ftzcheck IMAGES_DIR FRAMES [--inputs FILE] [--nvram DIR]
 
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"
 

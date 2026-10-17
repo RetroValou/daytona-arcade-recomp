@@ -144,11 +144,17 @@ target_include_directories(vita_ymfm SYSTEM PUBLIC "${YMFM_DIR}")
 target_compile_options(vita_ymfm PRIVATE -w)
 
 # The same native runtime as the desktop; no refcore or interpreter is linked.
-# geo.cpp is replaced by its Vita version (platform/vita/overrides/runtime/geo.cpp),
+# video/geo.cpp is replaced by its Vita version (platform/vita/overrides/runtime/video/geo.cpp),
 # which compiles the original unchanged and runs it on its own core.
-set(RUNTIME_FILES cpu tgp tgp_profile i960_profile m2_tgp_board raster video m2_board game_loop zip rom_import
-    archive m2_replay_bus lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine
-    scsp scsp_board comm_board)
+set(RUNTIME_FILES
+    board/m2_board board/game_loop
+    cpu/cpu cpu/i960_profile cpu/replay_bus cpu/lockstep
+    tgp/tgp tgp/tgp_board tgp/tgp_profile
+    video/raster video/video
+    sound/snd_cpu sound/model1_board sound/multipcm sound/scsp sound/scsp_board
+    sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine
+    io/comm_board
+    rom/zip rom/rom_import rom/archive)
 set(RUNTIME_SOURCES)
 foreach(name IN LISTS RUNTIME_FILES)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/runtime/${name}.cpp")
@@ -156,10 +162,10 @@ endforeach()
 foreach(name games daytona srallyc vf2) # every game's record and hooks (src/games/)
     list(APPEND RUNTIME_SOURCES "${DAYTONA_ROOT}/src/games/${name}.cpp")
 endforeach()
-# Vita replacement of the geometrizer (platform/vita/overrides/runtime/geo.h/.cpp).
+# Vita replacement of the geometrizer (platform/vita/overrides/runtime/video/geo.h/.cpp).
 # Nothing in src/ is modified: platform/vita/overrides comes FIRST on the include
-# path, so the shared runtime's "runtime/geo.h" resolves to the Vita one.
-add_library(vita_runtime STATIC ${RUNTIME_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/overrides/runtime/geo.cpp")
+# path, so the shared runtime's "runtime/video/geo.h" resolves to the Vita one.
+add_library(vita_runtime STATIC ${RUNTIME_SOURCES} "${CMAKE_CURRENT_SOURCE_DIR}/overrides/runtime/video/geo.cpp")
 target_compile_options(vita_runtime PRIVATE -fno-math-errno)
 target_include_directories(vita_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/overrides" "${DAYTONA_ROOT}/src"
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -171,7 +177,7 @@ target_compile_definitions(vita_runtime PUBLIC M2_ROMSET="${DAYTONA_VITA_ROMSET}
 # not rewritten (default or --fast_inaccuracy output) unchanged. PUBLIC: the generated
 # code must see the same Cpu and Lockstep layouts as the runtime.
 target_compile_definitions(vita_runtime PUBLIC M2_FAST_GEN=1)
-# The shared runtime's fast paths from the Dreamcast port (src/runtime/fast_paths.h):
+# The shared runtime's fast paths from the Dreamcast port (src/runtime/board/fast_paths.h):
 # bus decode of the TGP ports and remembered RAM pages, the TGP's FIFOs as a ring read
 # directly, register frames copied through work RAM, the geometrizer's block reads and
 # culled-polygon shortcuts. The same results; the Dreamcast's display-specific ones
@@ -181,13 +187,13 @@ option(DAYTONA_VITA_FAST_PATHS "Shared runtime fast paths (M2_FAST_BUS/TGP/CPU/G
 if(DAYTONA_VITA_FAST_PATHS)
     target_compile_definitions(vita_runtime PUBLIC M2_FAST_BUS=1 M2_FAST_TGP=1 M2_FAST_CPU=1 M2_FAST_GEO=1)
 endif()
-# TGP profiling (build_vita.py --tgp-profile, src/runtime/tgp_profile.h): a TGP section
+# TGP profiling (build_vita.py --tgp-profile, src/runtime/tgp/tgp_profile.h): a TGP section
 # in perf.log (diagnostics builds); the TGP code is generated with m2tgprecomp --profile.
 option(DAYTONA_VITA_TGP_PROFILE "TGP time, work and hot blocks in perf.log" OFF)
 if(DAYTONA_VITA_TGP_PROFILE)
     target_compile_definitions(vita_runtime PUBLIC M2_TGP_PROFILE=1)
 endif()
-# i960 profiling (build_vita.py --i960-profile, src/runtime/i960_profile.h): an i960 section
+# i960 profiling (build_vita.py --i960-profile, src/runtime/cpu/i960_profile.h): an i960 section
 # in perf.log (diagnostics builds); the i960 code is generated with m2recomp --profile.
 option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in perf.log" OFF)
 if(DAYTONA_VITA_I960_PROFILE)
@@ -199,14 +205,14 @@ option(DAYTONA_VITA_SPIN_SKIP "Skip whole passes of the game's wait loop (same r
 if(DAYTONA_VITA_SPIN_SKIP)
     target_compile_definitions(vita_runtime PUBLIC M2_SPIN_SKIP=1)
 endif()
-# Sound board probe (src/runtime/sound_profile.h), diagnostics builds only: the
+# Sound board probe (src/runtime/sound/sound_profile.h), diagnostics builds only: the
 # 68000, SCSP render and DSP times and the 68000's dispatches and register
 # accesses, in perf.log's core 2 section (~0.1 ms a frame of clock reads on core 2).
 # The 68000 code's M2_SND_DISPATCH() counts only with it.
 if(DAYTONA_VITA_DIAGNOSTICS)
     target_compile_definitions(vita_runtime PUBLIC M2_SOUND_PROFILE=1)
 endif()
-# The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem): with
+# The bus inlined in the i960 code (src/runtime/cpu/i960_gen_support.h gen::BoardMem): with
 # build_vita.py --inline-bus, its fast modes' i960 code is generated with m2recomp --board
 # (the set's board, scripts/games.py). The host's own code (the default mode) runs on it
 # unchanged. OFF by default: no measurable gain on the Vita (HANDOFF.md, 15 Oct 2026).

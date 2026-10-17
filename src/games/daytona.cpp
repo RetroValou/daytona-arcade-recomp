@@ -3,8 +3,8 @@
 // is the runtime's. Seeds: seeds/daytona93.txt, seeds/daytona.txt; hooks:
 // seeds/daytona93_hooks.txt, seeds/daytona_hooks.txt.
 #include "games/hooks.h"
-#include "runtime/enhance.h"
-#include "runtime/game.h"
+#include "runtime/board/enhance.h"
+#include "runtime/board/game.h"
 
 #include <algorithm>
 #include <cstdlib>

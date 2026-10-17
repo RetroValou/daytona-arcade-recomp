@@ -1,10 +1,10 @@
 // Unit tests for the sound CPU's 68000 decoder (src/m68k) and the flag
-// arithmetic recompiled code uses (src/runtime/snd_cpu.h). Encodings are
+// arithmetic recompiled code uses (src/runtime/sound/snd_cpu.h). Encodings are
 // built by hand; expected text is MAME's m68kdasm format. The recompiled
 // program as a whole is held to MAME by the lockstep check (m2sndcheck).
 
 #include "m68k/decode.h"
-#include "runtime/snd_cpu.h"
+#include "runtime/sound/snd_cpu.h"
 
 #include <cstdio>
 #include <map>

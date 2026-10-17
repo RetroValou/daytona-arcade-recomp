@@ -5,7 +5,7 @@
 // --save-nvram DIR writes them back at the end of a run.
 #pragma once
 
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 
 #include <algorithm>
 #include <cstdint>

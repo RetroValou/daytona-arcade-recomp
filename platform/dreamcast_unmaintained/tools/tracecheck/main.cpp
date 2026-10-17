@@ -10,7 +10,7 @@
 // --draw-distance: as the Dreamcast frontend's (it changes the game's draw
 // list, so the instruction counts with it).
 
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"
 

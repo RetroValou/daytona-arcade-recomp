@@ -10,7 +10,7 @@ the frontend (game/audio.h) loads them into sound RAM from, as needed.
 Layout (little-endian): "DSP1", u32 count, then per sample u8 rom, u8 bank,
 u16 sample, u32 frames, u32 loop_start, u32 offset, u32 bytes; then the data
 (each sample from its offset, 32-byte aligned). Sample decoding follows
-src/runtime/native_sample_mixer.cpp (NativeSampleBank): 12-byte headers, the
+src/runtime/sound/native/native_sample_mixer.cpp (NativeSampleBank): 12-byte headers, the
 address's bit 22 selects packed 12-bit samples, logical 0x100000-0x1fffff
 the data bank.
 """

@@ -7,11 +7,11 @@
 //    the whole screen ("scr") must hash equal to MAME's.
 #pragma once
 
-#include "runtime/geo.h"
-#include "runtime/lockstep.h"
-#include "runtime/m2_replay_bus.h"
-#include "runtime/m2_tgp_board.h"
-#include "runtime/video.h"
+#include "runtime/video/geo.h"
+#include "runtime/cpu/lockstep.h"
+#include "runtime/cpu/replay_bus.h"
+#include "runtime/tgp/tgp_board.h"
+#include "runtime/video/video.h"
 
 #include <bit>
 #include <cinttypes>

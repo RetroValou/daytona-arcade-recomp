@@ -1,5 +1,5 @@
 // Hardware renderer (SDL_GPU): draws a frame on the GPU instead of the CPU
-// rasterizer (src/runtime/raster.cpp, the exact reference) and tilemap
+// rasterizer (src/runtime/video/raster.cpp, the exact reference) and tilemap
 // drawing (Video::draw): the back tilemap layers, the Model 2 3D layer, the
 // front tilemap layers (Video's external-3D desktop mode).
 //
@@ -17,7 +17,7 @@
 // the colour translation from storage buffers.
 #pragma once
 
-#include "runtime/video.h"
+#include "runtime/video/video.h"
 
 #include <SDL3/SDL.h>
 

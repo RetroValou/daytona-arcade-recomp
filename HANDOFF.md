@@ -1,5 +1,28 @@
 # Handoff
 
+## src/runtime sorted by subsystem (2026-10-17)
+
+64 files moved with git mv into board/, cpu/, tgp/, video/, sound/
+(+ native/), io/, rom/ (the design doc's "Runtime layout" paragraph has the
+list). Renamed on the way: gen_support.h -> cpu/i960_gen_support.h,
+m2_replay_bus -> cpu/replay_bus, m2_tgp_board -> tgp/tgp_board, snd_board.h
+(the interface) -> sound/sound_board.h, sound_board (Model 1) ->
+sound/model1_board. Class and namespace names unchanged. Every include,
+CMake list, recompiler's emitted include (m2recomp, m2tgprecomp,
+m2sndrecomp, m2dsprecomp; fast_gen.py's), doc and comment path rewritten by
+script; older HANDOFF entries keep the old paths. Also moved: the Vita
+override (platform/vita/overrides/runtime/video/geo.*, its relative
+includes one level deeper) and the test shim
+tests/vita_audio_shim/runtime/sound/model1_board.h;
+scripts/test_vita_renderer.py's reference copy follows the new paths.
+Dreamcast and mobile ports: only their source lists rewritten so the paths
+stay valid (not built, as before).
+Checks, before and after on the same tree: m2run 4,000 frames, daytona93
+race_basic, srallyc srallyc_race, vf2 vf2_fight: same i960/TGP/68000
+counts, interrupts, last screen hashes (4ee8eddc7ce92bc2, 520443b3648918e3,
+2e75355888f54820) and WAV md5. ctest 23/23 for each game; Vita host tests
+15/15; test_vita_renderer.py; Python tests; VF2 VPK built.
+
 ## Vita: settings, storage and input out of frontend/main.cpp (2026-10-17)
 
 frontend/settings.h/.cpp (VitaSettings: vita.cfg load/save/sanitize, now

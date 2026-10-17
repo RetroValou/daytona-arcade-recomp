@@ -104,31 +104,31 @@ if(NOT M2_GAME MATCHES "^[a-z0-9_]+$")
 endif()
 
 add_library(runtime STATIC
-    src/runtime/cpu.cpp
-    src/runtime/tgp.cpp
-    src/runtime/tgp_profile.cpp
-    src/runtime/i960_profile.cpp
-    src/runtime/m2_tgp_board.cpp
-    src/runtime/geo.cpp
-    src/runtime/raster.cpp
-    src/runtime/video.cpp
-    src/runtime/m2_board.cpp
-    src/runtime/game_loop.cpp
-    src/runtime/zip.cpp
-    src/runtime/rom_import.cpp
-    src/runtime/archive.cpp
-    src/runtime/m2_replay_bus.cpp
-    src/runtime/lockstep.cpp
-    src/runtime/snd_cpu.cpp
-    src/runtime/multipcm.cpp
-    src/runtime/sound_board.cpp
-    src/runtime/native_sample_mixer.cpp
-    src/runtime/native_sound_sequencer.cpp
-    src/runtime/native_sound_engine.cpp
-    src/runtime/scsp.cpp
-    src/runtime/scsp_board.cpp
-    src/runtime/comm_board.cpp
-    # every game's record and hooks (runtime/game.h)
+    src/runtime/cpu/cpu.cpp
+    src/runtime/tgp/tgp.cpp
+    src/runtime/tgp/tgp_profile.cpp
+    src/runtime/cpu/i960_profile.cpp
+    src/runtime/tgp/tgp_board.cpp
+    src/runtime/video/geo.cpp
+    src/runtime/video/raster.cpp
+    src/runtime/video/video.cpp
+    src/runtime/board/m2_board.cpp
+    src/runtime/board/game_loop.cpp
+    src/runtime/rom/zip.cpp
+    src/runtime/rom/rom_import.cpp
+    src/runtime/rom/archive.cpp
+    src/runtime/cpu/replay_bus.cpp
+    src/runtime/cpu/lockstep.cpp
+    src/runtime/sound/snd_cpu.cpp
+    src/runtime/sound/multipcm.cpp
+    src/runtime/sound/model1_board.cpp
+    src/runtime/sound/native/native_sample_mixer.cpp
+    src/runtime/sound/native/native_sound_sequencer.cpp
+    src/runtime/sound/native/native_sound_engine.cpp
+    src/runtime/sound/scsp.cpp
+    src/runtime/sound/scsp_board.cpp
+    src/runtime/io/comm_board.cpp
+    # every game's record and hooks (runtime/board/game.h)
     src/games/games.cpp
     src/games/daytona.cpp
     src/games/srallyc.cpp
@@ -136,7 +136,7 @@ add_library(runtime STATIC
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
-# TGP profiling (src/runtime/tgp_profile.h; recompile.py --tgp-profile): needs TGP
+# TGP profiling (src/runtime/tgp/tgp_profile.h; recompile.py --tgp-profile): needs TGP
 # code generated with m2tgprecomp --profile. m2run prints the report.
 option(M2_TGP_PROFILE "TGP time, work and hot blocks (m2tgprecomp --profile code)" OFF)
 if(M2_TGP_PROFILE)
@@ -148,13 +148,13 @@ option(M2_SPIN_SKIP "Skip whole passes of the game's wait loop (same results)" O
 if(M2_SPIN_SKIP)
     target_compile_definitions(runtime PUBLIC M2_SPIN_SKIP=1)
 endif()
-# i960 profiling (src/runtime/i960_profile.h; recompile.py --i960-profile): needs i960
+# i960 profiling (src/runtime/cpu/i960_profile.h; recompile.py --i960-profile): needs i960
 # code generated with m2recomp --profile. m2run prints the report.
 option(M2_I960_PROFILE "i960 time, work, bus calls and hot blocks (m2recomp --profile code)" OFF)
 if(M2_I960_PROFILE)
     target_compile_definitions(runtime PUBLIC M2_I960_PROFILE=1)
 endif()
-# The bus inlined in the i960 code (src/runtime/gen_support.h gen::BoardMem; recompile.py
+# The bus inlined in the i960 code (src/runtime/cpu/i960_gen_support.h gen::BoardMem; recompile.py
 # --inline-bus): needs code generated with m2recomp --board. Off everywhere by default:
 # no measurable gain on the Vita (HANDOFF.md, 15 Oct 2026).
 option(M2_INLINE_BUS "i960 code with the board's bus inlined (m2recomp --board code)" OFF)
@@ -201,7 +201,7 @@ add_library(refcore STATIC src/refcore/i960_ref.cpp)
 target_link_libraries(refcore PUBLIC runtime)
 if(NOT MSVC)
     # Upstream MAME code: keep its own warnings out of ours.
-    set_source_files_properties(src/runtime/cpu.cpp src/refcore/i960_ref.cpp src/runtime/geo.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-attributes")
+    set_source_files_properties(src/runtime/cpu/cpu.cpp src/refcore/i960_ref.cpp src/runtime/video/geo.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-attributes")
 endif()
 
 add_executable(m2replay tools/m2replay/main.cpp)
@@ -428,11 +428,11 @@ find_package(Threads REQUIRED)
 target_link_libraries(test_fp PRIVATE Threads::Threads)
 add_test(NAME fp COMMAND test_fp)
 
-add_executable(test_native_sample_mixer tests/test_native_sample_mixer.cpp src/runtime/native_sample_mixer.cpp)
-target_include_directories(test_native_sample_mixer PRIVATE src/runtime)
+add_executable(test_native_sample_mixer tests/test_native_sample_mixer.cpp src/runtime/sound/native/native_sample_mixer.cpp)
+target_include_directories(test_native_sample_mixer PRIVATE src)
 add_test(NAME native_sample_mixer COMMAND test_native_sample_mixer)
 
-add_executable(test_multipcm_volumes tests/test_multipcm_volumes.cpp src/runtime/multipcm.cpp)
+add_executable(test_multipcm_volumes tests/test_multipcm_volumes.cpp src/runtime/sound/multipcm.cpp)
 target_include_directories(test_multipcm_volumes PRIVATE src)
 add_test(NAME multipcm_volumes COMMAND test_multipcm_volumes)
 
@@ -444,12 +444,12 @@ add_executable(test_test_hold tests/test_test_hold.cpp)
 target_include_directories(test_test_hold PRIVATE src)
 add_test(NAME test_hold COMMAND test_test_hold)
 
-add_executable(test_native_sound_sequencer tests/test_native_sound_sequencer.cpp src/runtime/native_sound_sequencer.cpp)
+add_executable(test_native_sound_sequencer tests/test_native_sound_sequencer.cpp src/runtime/sound/native/native_sound_sequencer.cpp)
 target_include_directories(test_native_sound_sequencer PRIVATE src)
 add_test(NAME native_sound_sequencer COMMAND test_native_sound_sequencer)
 
 # Link play's communication board, two boards wired in memory (no ROM, no network).
-add_executable(test_comm_board tests/test_comm_board.cpp src/runtime/comm_board.cpp)
+add_executable(test_comm_board tests/test_comm_board.cpp src/runtime/io/comm_board.cpp)
 target_include_directories(test_comm_board PRIVATE src)
 add_test(NAME comm_board COMMAND test_comm_board)
 
@@ -480,7 +480,7 @@ if(M2_VITA_TESTS)
     target_include_directories(test_vita_imgui_gl PRIVATE . tests/vita_gl_shim tests/vita_gpu_shim src platform/vita extern/imgui)
     add_test(NAME vita_imgui_gl COMMAND test_vita_imgui_gl)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        add_executable(test_vita_link tests/test_vita_link.cpp src/app/link_socket.cpp src/runtime/comm_board.cpp)
+        add_executable(test_vita_link tests/test_vita_link.cpp src/app/link_socket.cpp src/runtime/io/comm_board.cpp)
         target_include_directories(test_vita_link PRIVATE tests/vita_link_shim src)
         add_test(NAME vita_link COMMAND test_vita_link)
     endif()
@@ -489,7 +489,7 @@ if(M2_VITA_TESTS)
     add_test(NAME vita_core_policy COMMAND test_vita_core_policy)
     add_test(NAME vita_controls COMMAND test_vita_controls)
     # The tile cache's write tracking against comparing everything (video.cpp, Vita path).
-    add_executable(test_vita_tile_cache tests/test_vita_tile_cache.cpp src/runtime/video.cpp src/runtime/raster.cpp)
+    add_executable(test_vita_tile_cache tests/test_vita_tile_cache.cpp src/runtime/video/video.cpp src/runtime/video/raster.cpp)
     target_include_directories(test_vita_tile_cache PRIVATE src)
     target_compile_definitions(test_vita_tile_cache PRIVATE M2_VITA_RENDER_OPT=1)
     add_test(NAME vita_tile_cache COMMAND test_vita_tile_cache)

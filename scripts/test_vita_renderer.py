@@ -13,21 +13,23 @@ def main():
     if args.sanitize: dest=ROOT/'build/renderer-tests-sanitize'
     dest.mkdir(parents=True,exist_ok=True);ref=dest/'reference';ref.mkdir(exist_ok=True)
     base=args.reference_root/'src/runtime'
-    for name in ('geo.h','raster.h','video.h','video_profile.h','frame_profile.h','raster.cpp','video.cpp'):
+    for name in ('video/geo.h','video/raster.h','video/video.h','video/video_profile.h','board/frame_profile.h',
+                 'video/raster.cpp','video/video.cpp'):
         path=base/name
+        name=Path(name).name
         if not path.exists():continue
         text=path.read_text().replace('namespace rt {','namespace reference {')
         # The harness itself enables optimization. Its reference headers must
         # nevertheless have the same layout as the non-optimized objects.
         text=text.replace('M2_VITA_RENDER_OPT','M2_VITA_REFERENCE_NEVER_ENABLE')
-        text=re.sub(r'"runtime/(geo|raster|video|video_profile|frame_profile)\.h"',r'"reference/\1.h"',text)
+        text=re.sub(r'"runtime/(?:video|board)/(geo|raster|video|video_profile|frame_profile)\.h"',r'"reference/\1.h"',text)
         (ref/name).write_text(text)
     compiler=shlex.split(os.environ.get('CXX','c++'))
     flags=['-std=c++20','-fno-fast-math','-ffp-contract=off','-Wall','-Wextra','-Werror','-I',str(ROOT/'src'),'-I',str(dest)]
     flags+=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'] if args.sanitize else ['-O3']
     objects=[]
     for name,opt in [('raster',False),('video',False),('raster',True),('video',True)]:
-        source=ROOT/'src/runtime'/f'{name}.cpp' if opt else ref/f'{name}.cpp'
+        source=ROOT/'src/runtime/video'/f'{name}.cpp' if opt else ref/f'{name}.cpp'
         obj=dest/(name+('-opt' if opt else '-ref')+'.o')
         subprocess.run(compiler+flags+(['-DM2_VITA_RENDER_OPT=1'] if opt else [])+['-c',str(source),'-o',str(obj)],check=True)
         objects.append(str(obj))

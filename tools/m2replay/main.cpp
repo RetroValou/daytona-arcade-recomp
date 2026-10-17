@@ -15,8 +15,8 @@
 //   M2REPLAY_DUMP_DIR=d  write our copy of a region whose hash differs
 
 #include "refcore/i960_ref.h"
-#include "runtime/lockstep.h"
-#include "runtime/m2_replay_bus.h"
+#include "runtime/cpu/lockstep.h"
+#include "runtime/cpu/replay_bus.h"
 
 #include <chrono>
 #include <cinttypes>

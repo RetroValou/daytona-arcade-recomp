@@ -143,7 +143,7 @@ after a while, and feels like constant crash rumble; no centring, grip, kerb or
 contact effects.
 
 **How it works now:** the game's drive-board command bytes are decoded in
-[drive_board.h](../src/runtime/drive_board.h) (high nibble: 0x1 centring, 0x2
+[drive_board.h](../src/runtime/io/drive_board.h) (high nibble: 0x1 centring, 0x2
 friction, 0x3 vibration, 0x5/0x6 force right/left, 0x8/0xC reset) and played
 by [ffb.cpp](../src/app/ffb.cpp) as SDL haptic effects: spring, friction, a
 60 ms sine and a constant force, each infinite, each only if the device
@@ -330,7 +330,7 @@ drown it out.
 
 **Reference audio** (the default): the mix matches MAME's Model 1 sound board:
 the YM3438 at 0.30 and each MultiPCM at 0.5
-([sound_board.cpp](../src/runtime/sound_board.cpp)). The MultiPCM code matches
+([model1_board.cpp](../src/runtime/sound/model1_board.cpp)). The MultiPCM code matches
 MAME's, and the output was checked against MAME's recordings (HANDOFF.md). So
 MAME has the same balance, and MAME's gains may not match a real cabinet. Music
 and effects share both MultiPCM chips, and the driver hands out voices as they
@@ -342,15 +342,15 @@ the effects alone 0.195, the music alone 0.059, about 10 dB apart.
 **Native audio:** a real problem.
 
 - The master gain is 1.95 (`kDefaultMasterGain` in
-  [native_sample_mixer.h](../src/runtime/native_sample_mixer.h)) against MAME's
+  [native_sample_mixer.h](../src/runtime/sound/native/native_sample_mixer.h)) against MAME's
   0.5 per chip, so the peak limiter turns the whole mix down, music included, on
   every loud effect.
 - Notes never get their sample's envelope
-  ([native_sound_engine.cpp](../src/runtime/native_sound_engine.cpp), `NoteOn`),
+  ([native_sound_engine.cpp](../src/runtime/sound/native/native_sound_engine.cpp), `NoteOn`),
   so effects do not fade the way the game intends.
 - A music/effects balance setting would be easy: the sequencer already tells
   them apart by channel
-  ([native_sound_sequencer.cpp](../src/runtime/native_sound_sequencer.cpp)).
+  ([native_sound_sequencer.cpp](../src/runtime/sound/native/native_sound_sequencer.cpp)).
 
 ### Done: Music and Effects volumes
 

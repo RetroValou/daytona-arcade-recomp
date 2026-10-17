@@ -23,7 +23,7 @@
 // semantics inline, with registers, literals and effective-address forms
 // resolved here, at recompile time. Known branch targets are direct gotos; an
 // indirect transfer (bx, callx, ret, an interrupt) re-dispatches on the
-// address. The semantics are MAME's (src/refcore/i960_ref.cpp, src/runtime/cpu.cpp), expression
+// address. The semantics are MAME's (src/refcore/i960_ref.cpp, src/runtime/cpu/cpu.cpp), expression
 // for expression, so the lockstep harness can hold the output to MAME.
 //
 // --fast_inaccuracy (off by default) groups the speed options for slow targets
@@ -60,13 +60,13 @@
 // --fast_inaccuracy would make, also without it, for the counters only), the
 // dispatches, the chunk entries and the lockstep slow paths, and writes a
 // table of what each block holds (bus loads and stores, ALU, multiplies,
-// divides, branches, calls, FP; I960BlockInfo in src/runtime/i960_profile.h).
+// divides, branches, calls, FP; I960BlockInfo in src/runtime/cpu/i960_profile.h).
 // The code must be built with M2_I960_PROFILE, whose runtime reports them.
 // Results and counts are unchanged.
 //
 // --board model2o|model2a (scripts/games.py "board"; recompile.py --inline-bus,
 // build_vita.py --inline-bus; off by default, no measurable gain on the Vita): loads and stores go through
-// gen::BoardMem<board> (src/runtime/gen_support.h), the board's bus inlined: work
+// gen::BoardMem<board> (src/runtime/cpu/i960_gen_support.h), the board's bus inlined: work
 // RAM, program ROM and main RAM read and written in place, the rest through
 // direct (not virtual) calls to rt::M2Board. Same results as the bus; the
 // code then runs only on an M2Board of that board, built with M2_INLINE_BUS
@@ -86,7 +86,7 @@
 
 #include "i960/decode.h"
 #include "i960/reach.h"
-#include "runtime/i960_profile.h"
+#include "runtime/cpu/i960_profile.h"
 
 #include <algorithm>
 #include <array>
@@ -492,7 +492,7 @@ struct Emitter {
             case 0x655: body = "{ const uint32_t t1 = c.m_PC, t2 = " + s2(in) + "; c.m_PC = (c.m_PC & ~t2) | (" + d + " & t2); " + d +
                                " = t1; c.m_IP = " + hex(next) + "; if ((t1 >> 16 & 0x1f) > (c.m_PC >> 16 & 0x1f)) c.check_pending_irqs(); }";
                         exit = "if (c.m_IP != " + hex(next) + ") goto dispatch;"; break; // modpc
-            case 0x66d: body = "c.flushreg();"; break; // flushreg (MAME's, src/runtime/cpu.cpp)
+            case 0x66d: body = "c.flushreg();"; break; // flushreg (MAME's, src/runtime/cpu/cpu.cpp)
             case 0x670: body = "{ const uint64_t p = uint64_t(" + s1(in) + ") * uint64_t(" + s2(in) + "); " + d + " = uint32_t(p); " +
                                R(in.dst + 1) + " = uint32_t(p >> 32); }"; break; // emul
             case 0x671: {                                                  // ediv
@@ -638,7 +638,7 @@ i960::InlineHelpers load_inline(const std::string &path) {
     return h;
 }
 
-// --board's name as rt::BoardType (src/runtime/game.h).
+// --board's name as rt::BoardType (src/runtime/board/game.h).
 std::string board_type(const std::string &name) { return name == "model2o" ? "rt::BoardType::Model2o" : "rt::BoardType::Model2a"; }
 
 std::vector<uint32_t> load_seeds(const std::string &path) {
@@ -792,8 +792,8 @@ int main(int argc, char **argv) {
         if (blocks) em.o << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
         if (profile) em.o << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
         if (em.inline_bus) em.o << "// --board " << board << ": the board's bus inlined (gen::BoardMem).\n";
-        em.o << "#include \"runtime/gen_support.h\"\n";
-        if (profile) em.o << "#include \"runtime/i960_profile.h\"\n";
+        em.o << "#include \"runtime/cpu/i960_gen_support.h\"\n";
+        if (profile) em.o << "#include \"runtime/cpu/i960_profile.h\"\n";
         if (em.inline_bus)
             em.o << "#ifndef M2_INLINE_BUS\n#error \"i960 code generated with m2recomp --board: build with M2_INLINE_BUS\"\n#endif\n";
         em.o << "\nnamespace gen {\n\n";
@@ -853,8 +853,8 @@ int main(int argc, char **argv) {
     if (blocks) t << "// --fast_inaccuracy: interrupt/event checks and the instruction count once per basic block.\n";
     if (chain) t << "// --fast_inaccuracy: gen::run chains chunks itself.\n";
     if (profile) t << "// --profile: block, dispatch and slow-path counters (M2_I960_PROFILE).\n";
-    t << "#include \"runtime/gen_support.h\"\n";
-    if (profile) t << "#include \"runtime/i960_profile.h\"\n";
+    t << "#include \"runtime/cpu/i960_gen_support.h\"\n";
+    if (profile) t << "#include \"runtime/cpu/i960_profile.h\"\n";
     if (!board.empty())
         t << "#ifndef M2_INLINE_BUS\n#error \"i960 code generated with m2recomp --board: build with M2_INLINE_BUS\"\n#endif\n";
     t << "\n#include <algorithm>\n\n";

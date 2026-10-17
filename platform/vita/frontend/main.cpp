@@ -6,7 +6,7 @@
 #endif
 #include "audio/audio.h"
 #include "audio/native_audio.h"
-#include "runtime/native_sound_engine.h"
+#include "runtime/sound/native/native_sound_engine.h"
 #include "audio/sound_worker.h"
 #if DAYTONA_VITA_LINK
 #include "net/link.h"
@@ -24,12 +24,12 @@
 #include "render/renderer.h"
 #include "render/text.h"
 #include "render/imgui_backend.h"
-#include "runtime/game_loop.h"
-#include "runtime/i960_profile.h"
-#include "runtime/tgp_profile.h"
-#include "runtime/game.h"
-#include "runtime/test_hold.h"
-#include "runtime/rom_import.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/cpu/i960_profile.h"
+#include "runtime/tgp/tgp_profile.h"
+#include "runtime/board/game.h"
+#include "runtime/board/test_hold.h"
+#include "runtime/rom/rom_import.h"
 
 #include <SDL.h>
 #include <psp2/ctrl.h>

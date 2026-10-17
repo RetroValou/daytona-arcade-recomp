@@ -2,11 +2,11 @@
 // "ADDRESS name" lines (m2recomp --hooks); just before the instruction at a
 // hook's address the generated code calls rt::hook_<name>(c). Each hook is
 // defined in its game's file in src/games/ and does nothing while the option
-// it serves (runtime/enhance.h) is off, so the game runs exactly as
+// it serves (runtime/board/enhance.h) is off, so the game runs exactly as
 // recompiled (rules.md: parity runs that way).
 #pragma once
 
-#include "runtime/cpu.h"
+#include "runtime/cpu/cpu.h"
 
 namespace rt {
 

@@ -2,7 +2,7 @@
 #include "app/rom_file.h"
 #ifdef SDL_PLATFORM_IOS
 #include "rom_picker.h"
-#include "runtime/game.h"
+#include "runtime/board/game.h"
 #endif
 
 #include "imgui.h"

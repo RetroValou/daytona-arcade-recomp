@@ -32,7 +32,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "runtime/sound_profile.h"
+#include "runtime/sound/sound_profile.h"
 
 namespace vita {
 
@@ -127,7 +127,7 @@ public:
         uint64_t tex_builds = 0, tex_texels = 0, tex_rewritten = 0, tex_kept = 0, tex_changed = 0, tex_defers = 0, tex_resets = 0;
         uint64_t tex_frames_with_builds = 0, tex_builds_max = 0;
         uint64_t tiles_rebuilt = 0, characters_changed = 0, tile_frames = 0;
-        // Sound board probe (diagnostics builds, runtime/sound_profile.h): summed
+        // Sound board probe (diagnostics builds, runtime/sound/sound_profile.h): summed
         // over the window's sound frames; sound_clock_us is one clock read (removed).
         bool sound_probe = false;
         snd::SoundProfile sound{};

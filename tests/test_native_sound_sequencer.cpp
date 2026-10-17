@@ -1,5 +1,5 @@
 // Synthetic, redistributable format fixtures: no game code or ROM data.
-#include "runtime/native_sound_sequencer.h"
+#include "runtime/sound/native/native_sound_sequencer.h"
 
 #ifdef NDEBUG
 #undef NDEBUG

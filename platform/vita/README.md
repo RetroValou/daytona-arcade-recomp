@@ -15,7 +15,7 @@ render/     vitaGL renderer: renderer.h (the frontend's API), renderer.cpp (set-
 audio/      reference and native audio output, the sound worker, rate conversion
 system/     core placement, per-core profiling, logs
 net/        LAN link (link.h)
-overrides/  runtime/geo.h/.cpp: replace the shared runtime's geometrizer (first on
+overrides/  runtime/video/geo.h/.cpp: replace the shared runtime's geometrizer (first on
             the include path; the original is compiled unchanged inside)
 docs/       performance, optimization and diagnostics notes; history/: closed work
 ```
@@ -116,7 +116,7 @@ most room. `--free-core` lets the scheduler, and the fourth core, use that room.
   block + direct work-RAM accesses, TGP counted per block; the fastest) or `--fast-gen`
   (the Dreamcast's `scripts/fast_gen.py` pass, exact), made from the
   host tools into `BUILD_DIR/gen_vita`; the shared runtime's fast paths
-  (`src/runtime/fast_paths.h`) are on unless `--no-fast-paths`; `--release` adds link-time optimization and
+  (`src/runtime/board/fast_paths.h`) are on unless `--no-fast-paths`; `--release` adds link-time optimization and
   drops the logs; `--diagnostics` writes `vita-diag.log`, `perf.log` (per-core report,
   `core_profile.h`) and, with vitaGL, `gl.log`.
 

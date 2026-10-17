@@ -2,7 +2,7 @@
 
 #include "render/gl_internal.h"
 #include "render/texel_index.h"
-#include "runtime/raster_texel.h"
+#include "runtime/video/raster_texel.h"
 
 namespace vita {
 using namespace gldraw;

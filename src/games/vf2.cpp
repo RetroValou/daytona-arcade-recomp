@@ -3,7 +3,7 @@
 // Everything the runtime needs to know about this game; the board is the
 // runtime's. Seeds: seeds/vf2.txt; recompiler options: scripts/games.py.
 // Played as one player: player 2's controls stay released.
-#include "runtime/game.h"
+#include "runtime/board/game.h"
 
 namespace rt {
 

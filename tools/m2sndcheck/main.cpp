@@ -15,7 +15,7 @@
 //
 // Test-only: the log comes from a MAME run on the user's ROMs (git-ignored).
 
-#include "runtime/snd_gen_support.h"
+#include "runtime/sound/snd_gen_support.h"
 
 #include <algorithm>
 #include <cinttypes>

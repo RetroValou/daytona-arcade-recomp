@@ -1,6 +1,6 @@
 // ROM-free clipping parity against the original modulo-based edge walk.
 // Include the implementation so its file-local clipper is exercised directly.
-#include "../src/runtime/geo.cpp"
+#include "../src/runtime/video/geo.cpp"
 
 #include <cstdio>
 #include <random>

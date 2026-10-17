@@ -29,8 +29,8 @@ and in `cores:` of every report.
 
 | File | Role |
 | --- | --- |
-| `src/runtime/geo.h` (this directory) | Replaces `src/runtime/geo.h`: the Vita CMake puts `platform/vita/overrides` **before** `src` on the include path. It includes the original header unchanged, its class renamed `rt::GeoCore`, then declares `rt::Geo`, a wrapper with exactly the interface `M2Board` uses (constructor, `zclip_w`, `parse`, `polys`, `windows`, `set_wide_margin`). |
-| `src/runtime/geo.cpp` (this directory) | Replaces `src/runtime/geo.cpp` in the Vita runtime: compiles the original unchanged as `rt::GeoCore`, plus the wrapper and its thread. |
+| `src/runtime/video/geo.h` (this directory) | Replaces `src/runtime/video/geo.h`: the Vita CMake puts `platform/vita/overrides` **before** `src` on the include path. It includes the original header unchanged, its class renamed `rt::GeoCore`, then declares `rt::Geo`, a wrapper with exactly the interface `M2Board` uses (constructor, `zclip_w`, `parse`, `polys`, `windows`, `set_wide_margin`). |
+| `src/runtime/video/geo.cpp` (this directory) | Replaces `src/runtime/video/geo.cpp` in the Vita runtime: compiles the original unchanged as `rt::GeoCore`, plus the wrapper and its thread. |
 | `core_profile.h` | Per-core accounting and the `perf.log` writer. |
 | `frontend/main.cpp` | Shared by both GPU builds: core placement (geometry always pipelined), profiling. |
 | `render/renderer.cpp/.h` | vitaGL: single drawing path (GPU System 24 layers + polygons), sort/texture-build timings, gl.log only in the `--diagnostics` build. |
@@ -161,7 +161,7 @@ Reading it:
   the main core: `CORE 1` is the limit.
 * `i960+TGP game logic` dominant: recompiled guest code; `work per emulated
   frame` gives the instruction volumes. (TGP time alone is not separated: that
-  would need a change in `src/runtime/m2_tgp_board.cpp`.)
+  would need a change in `src/runtime/tgp/tgp_board.cpp`.)
 * `polygon priority sort` / `polygon recording`: renderer CPU work, the next
   candidates to move to the geometry core.
 * `frame end` large while `idle` is small: GPU-bound or vsync-limited; see the

@@ -11,7 +11,7 @@
 // event the TGP makes must be MAME's next event, bit for bit. TGP.pc
 // (M2TRACE_TGPPC) adds a per-instruction check of PC, A, B, D, P and ST.
 
-#include "runtime/tgp.h"
+#include "runtime/tgp/tgp.h"
 
 #include <chrono>
 #include <cinttypes>

@@ -20,7 +20,7 @@ game builds goes in its folder, `build_<game>/`, and its Vita package is
 ## 1. The game's record: `src/games/<game>.cpp`
 
 Define one `extern const rt::Game <set>_game = {...};` per set
-(`src/runtime/game.h` describes every field):
+(`src/runtime/board/game.h` describes every field):
 
 - `board`: `Model2o` (original) or `Model2a` (2A-CRX). The 2B and 2C boards
   are not built yet.

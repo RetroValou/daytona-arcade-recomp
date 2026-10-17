@@ -15,7 +15,7 @@
 // of the game.
 #pragma once
 
-#include "runtime/native_sound_sequencer.h"
+#include "runtime/sound/native/native_sound_sequencer.h"
 
 #include <kos.h>
 #include <dc/g2bus.h>

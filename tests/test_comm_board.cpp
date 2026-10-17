@@ -1,11 +1,11 @@
-// The communication board (src/runtime/comm_board.cpp) with two boards wired
+// The communication board (src/runtime/io/comm_board.cpp) with two boards wired
 // to each other in memory: a master and a slave, as the game sets them (fg 1
 // on the master, 0 on the slave; cn starts the board). No ROM, no network.
 // Checks the numbering token round the ring (cabinet 1 of 2, 2 of 2), that
 // race data crosses each way into the frame offset, that frames split into
 // small pieces still arrive whole, and that a closed line loses the link.
 
-#include "runtime/comm_board.h"
+#include "runtime/io/comm_board.h"
 
 #include <algorithm>
 #include <cstdio>

@@ -29,7 +29,7 @@
 // After the runtime's headers (KOS's BIT macro; see main.cpp).
 #include <kos.h>
 
-#include "runtime/raster_texel.h"
+#include "runtime/video/raster_texel.h"
 
 #include <algorithm>
 #include <cmath>

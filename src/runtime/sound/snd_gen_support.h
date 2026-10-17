@@ -1,0 +1,32 @@
+// Support for the recompiled sound 68000 (tools/m2sndrecomp output): the
+// generated code is native C++ with every instruction's operands resolved at
+// recompile time; it calls the snd::Cpu68k helpers for memory, flags and
+// interrupts, and snd::Sched at instruction boundaries.
+#pragma once
+
+#include "runtime/sound/snd_cpu.h"
+#include "runtime/sound/snd_sched.h"
+
+#include <cstdint>
+
+// Every entry into the dispatch switch, counted with M2_SOUND_PROFILE
+// (runtime/sound/sound_profile.h); nothing otherwise.
+#ifdef M2_SOUND_PROFILE
+#include "runtime/sound/sound_profile.h"
+#define M2_SND_DISPATCH() (++snd::sound_profile().dispatches)
+#else
+#define M2_SND_DISPATCH() ((void)0)
+#endif
+
+namespace sndgen {
+
+struct Env {
+    snd::Cpu68k &c;
+    snd::Sched &s;
+};
+
+bool has_code(uint32_t addr);   // generated
+void run(Env &e);               // generated: runs from c.pc until it leaves recompiled code or the schedule ends
+uint64_t native_instructions(); // generated: instructions recompiled (all of them)
+
+} // namespace sndgen

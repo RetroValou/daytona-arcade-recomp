@@ -1,6 +1,6 @@
 // ROM-free differential renderer tests and synthetic host benchmark.
 // The reference translation units are built without M2_VITA_RENDER_OPT.
-#include "runtime/video.h"
+#include "runtime/video/video.h"
 #include "reference/video.h"
 #include "../platform/vita/render/system24_upload.h"
 #include <array>

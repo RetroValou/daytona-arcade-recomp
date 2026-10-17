@@ -18,7 +18,7 @@
 // SDL_GPU without a window: an offscreen texture is drawn and read back.
 
 #include "app/gpu/gpu_renderer.h"
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 #include "../common/input_script.h"
 #include "../common/nvram.h"
 

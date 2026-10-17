@@ -7,8 +7,8 @@
 //
 //   soundusage IMAGES_DIR OUT.txt [--nvram DIR] SCRIPT [SCRIPT ...]
 
-#include "runtime/game_loop.h"
-#include "runtime/native_sound_sequencer.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/sound/native/native_sound_sequencer.h"
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"
 

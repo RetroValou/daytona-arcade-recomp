@@ -2,8 +2,8 @@
 // Exit success verifies note identities and native health, NOT exact waveform,
 // envelope, voice-slot allocation, pitch transient, or event-time equivalence.
 // Remaining scalar/time differences are explicitly reported for review.
-#include "runtime/game_loop.h"
-#include "runtime/native_sound_engine.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/sound/native/native_sound_engine.h"
 #include <array>
 #include <algorithm>
 #include <cmath>

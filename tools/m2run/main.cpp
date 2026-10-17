@@ -27,11 +27,11 @@
 // waits for the display's vsync at that point; the frame rate is the only
 // limit.
 
-#include "runtime/game_loop.h"
-#include "runtime/i960_profile.h"
-#include "runtime/tgp_profile.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/cpu/i960_profile.h"
+#include "runtime/tgp/tgp_profile.h"
 #include "../common/input_script.h"
-#include "runtime/native_sound_engine.h"
+#include "runtime/sound/native/native_sound_engine.h"
 #include "../common/nvram.h"
 #include "app/link_socket.h"
 

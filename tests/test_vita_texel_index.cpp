@@ -1,7 +1,7 @@
 // vita::texel_index (vitaGL index textures) against rt::read_texel_quad, the
 // CPU rasterizer's texel fetch, on random and edge positions (x >= 1024 fold).
 #include "../platform/vita/render/texel_index.h"
-#include "runtime/raster_texel.h"
+#include "runtime/video/raster_texel.h"
 #include <cstdio>
 #include <cstdlib>
 #include <random>

@@ -1,7 +1,7 @@
 // rt::RateConv against the 64-bit expression it replaces, count * N0 / D0:
 // counts that grow by random steps (0 to 100,000, and past the 32-bit fast
 // path), go back, and jump, for the fractions the boards use.
-#include "runtime/rate_conv.h"
+#include "runtime/board/rate_conv.h"
 
 #include <algorithm>
 #include <cstdint>

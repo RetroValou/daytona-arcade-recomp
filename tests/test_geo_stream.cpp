@@ -9,9 +9,9 @@
 #include <stdexcept>
 #include <vector>
 #define private public
-#include "runtime/geo.h"
+#include "runtime/video/geo.h"
 #undef private
-#include "../src/runtime/geo.cpp"
+#include "../src/runtime/video/geo.cpp"
 
 namespace {
 bool same_poly(const rt::GeoPoly &a, const rt::GeoPoly &b) {

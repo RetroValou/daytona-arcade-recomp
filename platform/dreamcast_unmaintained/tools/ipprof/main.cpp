@@ -26,7 +26,7 @@
 
 #define _ALLOW_KEYWORD_MACROS
 #define private public
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 #undef private
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"

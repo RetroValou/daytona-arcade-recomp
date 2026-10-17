@@ -5,7 +5,7 @@
 // The TGP has no ROM of its own: at boot the i960 uploads a program (2,024
 // words for Daytona, stored in the game's data ROM; scripts/m2import.py
 // extracts it). This tool turns that program into native C++: one label per
-// word, each instruction's semantics inlined from src/runtime/tgp.h with its
+// word, each instruction's semantics inlined from src/runtime/tgp/tgp.h with its
 // operand fields as template constants, direct gotos for constant branch
 // targets and a dispatch switch for computed ones (brul/bsul/rtif).
 //
@@ -39,14 +39,14 @@
 // the executions of every basic block (one increment at its end) and of the
 // dispatch switch, and writes a table of what each block holds (FIFO words,
 // I/O and memory accesses, ALU operations by kind, branches; TgpBlockInfo in
-// src/runtime/tgp_profile.h). The code must be built with M2_TGP_PROFILE,
+// src/runtime/tgp/tgp_profile.h). The code must be built with M2_TGP_PROFILE,
 // whose runtime reports them. Results and counts are unchanged.
 //
 // The output is derived from the game: write it under build/ (git-ignored),
 // never commit it.
 
-#include "runtime/tgp.h"
-#include "runtime/tgp_profile.h"
+#include "runtime/tgp/tgp.h"
+#include "runtime/tgp/tgp_profile.h"
 
 #include <array>
 #include <cstdio>
@@ -459,8 +459,8 @@ int main(int argc, char **argv) {
          "// Derived from the game: never commit.\n";
     if (fast) o << "// --fast_inaccuracy: block-counted copy for the calls without a budget.\n";
     if (profile) o << "// --profile: block and dispatch counters (M2_TGP_PROFILE).\n";
-    o << "#include \"runtime/tgp.h\"\n";
-    if (profile) o << "#include \"runtime/tgp_profile.h\"\n";
+    o << "#include \"runtime/tgp/tgp.h\"\n";
+    if (profile) o << "#include \"runtime/tgp/tgp_profile.h\"\n";
     o << "\n"
          "// Test builds (M2TGP_WITH_HOOK) call Tgp::hook after every instruction.\n"
          "#ifdef M2TGP_WITH_HOOK\n#define M2TGP_HOOK(pc) if (t.hook) t.hook(t, pc)\n#else\n#define M2TGP_HOOK(pc)\n#endif\n\n"

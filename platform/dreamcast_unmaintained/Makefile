@@ -79,9 +79,9 @@ GAME_DEFS := -DM2_ROMSET='"$(SET)"' -DM2_DC_MEMORY -DM2_SPIN_SKIP -DM2_DC_SPEED 
 O3FLAGS = $(subst -O2,-O3,$(CXXFLAGS)) -funroll-loops
 GEN_FLAGS := $(subst -O2,-Os,$(CXXFLAGS)) $(GAME_DEFS) -Wno-unused-label
 
-RUNTIME := cpu tgp m2_tgp_board geo raster video m2_board game_loop zip rom_import archive m2_replay_bus \
-           lockstep snd_cpu multipcm sound_board native_sample_mixer native_sound_sequencer native_sound_engine \
-           comm_board
+RUNTIME := cpu/cpu tgp/tgp tgp/tgp_board video/geo video/raster video/video board/m2_board board/game_loop rom/zip rom/rom_import rom/archive cpu/replay_bus \
+           cpu/lockstep sound/snd_cpu sound/multipcm sound/model1_board sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine \
+           io/comm_board
 # The games' records and hooks (src/games/).
 GAMES := games daytona srallyc
 # SoftFloat's file list, from the main tree's CMake list.
@@ -108,7 +108,7 @@ $(OUT)/game/libgen.a: $(GEN_OBJ)
 	@test -n "$(GEN)" || { echo "GEN must be the host recompile's gen directory"; exit 1; }
 	cd $(OUT)/game && rm -f libgen.a && $(KOS_AR) rcs libgen.a gen/*.o gen_tgp/*.o gen_snd/*.o
 $(OUT)/game/libruntime.a: $(GAME_OBJ)
-	cd $(OUT)/game && rm -f libruntime.a && $(KOS_AR) rcs libruntime.a runtime/*.o i960/*.o trace/*.o ymfm/*.o \
+	cd $(OUT)/game && rm -f libruntime.a && $(KOS_AR) rcs libruntime.a $(RUNTIME:%=runtime/%.o) i960/*.o trace/*.o ymfm/*.o \
 	    softfloat/*.o softfloat/8086-SSE/*.o
 
 # The game: the frontend (game/main.cpp) linked with both archives (they
@@ -158,12 +158,12 @@ game-sizes: game-objects
 # bit-exact). The driver rewrites game/native_geo.txt when the setting
 # changes, which rebuilds geo.o.
 NATIVE_GEO ?= 1
-$(OUT)/game/runtime/geo.o: $(ROOT)/src/runtime/geo.cpp $(wildcard $(OUT)/game/native_geo.txt)
+$(OUT)/game/runtime/video/geo.o: $(ROOT)/src/runtime/video/geo.cpp $(wildcard $(OUT)/game/native_geo.txt)
 	@mkdir -p $(dir $@)
 	kos-c++ $(subst -O2,-O3,$(CXXFLAGS)) -funroll-loops -fno-tree-loop-distribute-patterns $(GAME_DEFS) \
 	        $(if $(filter 1,$(NATIVE_GEO)),-DM2_DC_NATIVE_GEO) -c $< -o $@ && $(FIXDEP)
 # The tile layers' pixel loops unrolled.
-$(OUT)/game/runtime/video.o: $(ROOT)/src/runtime/video.cpp
+$(OUT)/game/runtime/video/video.o: $(ROOT)/src/runtime/video/video.cpp
 	@mkdir -p $(dir $@)
 	kos-c++ $(subst -O2,-O3,$(CXXFLAGS)) -funroll-loops $(GAME_DEFS) -c $< -o $@ && $(FIXDEP)
 $(OUT)/game/runtime/%.o: $(ROOT)/src/runtime/%.cpp

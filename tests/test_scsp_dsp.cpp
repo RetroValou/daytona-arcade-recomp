@@ -1,10 +1,10 @@
 // The SCSP DSP recompiler (tools/m2dsprecomp) against MAME's interpreter
-// (src/runtime/scsp.cpp ScspDsp::Step): a synthetic program (m2dsprecomp
+// (src/runtime/sound/scsp.cpp ScspDsp::Step): a synthetic program (m2dsprecomp
 // --random, built into test_dsp_gen.cpp, which registers it), the same random
 // state in two DSPs, one held to the interpreter, the other running the
 // recompiled program; every sample, with new inputs, the whole state and the
 // sound RAM must stay identical. No ROM.
-#include "runtime/scsp.h"
+#include "runtime/sound/scsp.h"
 
 #include <cstdio>
 #include <cstring>

@@ -1,7 +1,7 @@
 // Scripted inputs for the headless tools (m2run, m2gpushot): scripts/inputs.
 #pragma once
 
-#include "runtime/game_loop.h"
+#include "runtime/board/game_loop.h"
 
 #include <cstdint>
 #include <fstream>

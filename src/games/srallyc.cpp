@@ -2,7 +2,7 @@
 // runtime needs to know about this game; the board is the runtime's. Seeds:
 // seeds/srallyc.txt; recompiler options (the boot copies its program to work
 // RAM): scripts/games.py.
-#include "runtime/game.h"
+#include "runtime/board/game.h"
 
 #include <algorithm>
 

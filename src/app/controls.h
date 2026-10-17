@@ -8,7 +8,7 @@
 // short of full range; how far a wheel turns to full lock).
 #pragma once
 
-#include "runtime/m2_board.h"
+#include "runtime/board/m2_board.h"
 
 #include <SDL3/SDL.h>
 

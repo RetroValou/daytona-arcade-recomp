@@ -215,7 +215,7 @@ float4 ps_quad(QuadOut i) : SV_Target {
     return float4(c.rgb, 1.0);
 }
 
-// The System 24 tilemap layers (runtime/video.cpp), composed per pixel:
+// The System 24 tilemap layers (runtime/video/video.cpp), composed per pixel:
 // segaic24 draw_common for one layer at one screen pixel, the window masks,
 // per-line scroll and the split modes included, then screen_update's order.
 // Two read-only storage buffers (space2):

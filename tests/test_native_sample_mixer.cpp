@@ -2,7 +2,7 @@
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
-#include "native_sample_mixer.h"
+#include "runtime/sound/native/native_sample_mixer.h"
 
 #include <algorithm>
 #include <array>

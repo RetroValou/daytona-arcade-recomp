@@ -1,6 +1,6 @@
 # Native audio backend (experimental)
 
-The shared C++ backend in `src/runtime/native_sound_*` and
+The shared C++ backend in `src/runtime/sound/native/native_sound_*` and
 `native_sample_mixer.*` is used by the desktop (Linux, macOS, Windows) and
 native GXM Vita frontends. It decodes the supplied Daytona93 music/command
 data directly and mixes the original samples at 48 kHz. It does not construct

@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-#include "../../src/runtime/cabinet_controls.h"
+#include "../../src/runtime/board/cabinet_controls.h"
 
 namespace vita {
 enum Button : uint32_t {
@@ -29,7 +29,7 @@ inline float axis(uint8_t value, float deadzone = 0.12f) {
     return std::copysign((magnitude - deadzone) / (1.f - deadzone), x);
 }
 
-// The game's controls (rt::Game::control_list; src/runtime/cabinet_controls.h), each
+// The game's controls (rt::Game::control_list; src/runtime/board/cabinet_controls.h), each
 // bound to one button and listed on the Controls page; the indices are rt::Control's
 // (the first twelve in the order vita.cfg has always saved them). The analog sticks
 // and the system chords (Start+Select menu, Select+Triangle test, Select+Square
@@ -159,7 +159,7 @@ public:
         in.brake = uint8_t(std::lround(32.f + 192.f * brake));
         if (joystick_) {
             // The joystick: its directions as the wheel and pedals at their ends
-            // (runtime/cabinet_controls.h), from the buttons or the left stick.
+            // (runtime/board/cabinet_controls.h), from the buttons or the left stick.
             const float x = axis(pad.lx, deadzone_), y = axis(pad.ly, deadzone_);
             const bool left = held(Control::Left) || x < -0.5f, right = held(Control::Right) || x > 0.5f;
             const bool up = held(Control::Up) || y < -0.5f, down = held(Control::Down) || y > 0.5f;

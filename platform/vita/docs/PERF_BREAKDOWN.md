@@ -80,7 +80,7 @@ From the TGP probe (identical behaviour to the base run):
 
 FP, table, bank and FIFO costs explain ~6 % of that time; **the remaining
 94 % is the code around each instruction**. Likely causes, read from the
-generated code (`m2tgprecomp` output, `src/runtime/tgp.h`) but not yet
+generated code (`m2tgprecomp` output, `src/runtime/tgp/tgp.h`) but not yet
 confirmed in ARM assembly:
 
 - the TGP's registers (`a, b, d, p, st`) and `data[]` are `uint32_t` fields of

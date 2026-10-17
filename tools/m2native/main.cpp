@@ -6,10 +6,10 @@
 //
 //   m2native IMAGES_DIR TRACE.m2tr IRQ.log
 
-#include "runtime/gen_support.h"
-#include "runtime/lockstep.h"
-#include "runtime/m2_replay_bus.h"
-#include "runtime/m2_tgp_board.h"
+#include "runtime/cpu/i960_gen_support.h"
+#include "runtime/cpu/lockstep.h"
+#include "runtime/cpu/replay_bus.h"
+#include "runtime/tgp/tgp_board.h"
 #include "geocheck.h"
 
 #include <memory>

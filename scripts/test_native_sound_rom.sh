@@ -36,9 +36,9 @@ libraries+=("$build_dir/libtrace.a" "$build_dir/libi960.a"
     -DSOFTFLOAT_FAST_INT64 -DLITTLEENDIAN=1 -DTHREAD_LOCAL=__thread \
     -I"$repo_root/src" -I"$repo_root/extern/ymfm/src" \
     "$repo_root/tests/test_native_sound_rom.cpp" \
-    "$repo_root/src/runtime/native_sample_mixer.cpp" \
-    "$repo_root/src/runtime/native_sound_sequencer.cpp" \
-    "$repo_root/src/runtime/native_sound_engine.cpp" \
+    "$repo_root/src/runtime/sound/native/native_sample_mixer.cpp" \
+    "$repo_root/src/runtime/sound/native/native_sound_sequencer.cpp" \
+    "$repo_root/src/runtime/sound/native/native_sound_engine.cpp" \
     "${objects[@]}" "${libraries[@]}" -o "$build_dir/test_native_sound_rom"
 arguments=("$rom_dir" "$frames")
 if [[ -n "$wav_path" ]]; then arguments+=("$wav_path"); fi

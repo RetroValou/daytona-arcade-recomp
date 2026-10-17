@@ -8,8 +8,8 @@
 //   dcmemcheck IMAGES_DIR FIRST LAST [--inputs FILE] [--nvram DIR] [--external-3d]
 //              [--fill-upper] [--no-frame-buffer] [--no-scroll-layer] [--mask-green]
 
-#include "runtime/game_loop.h"
-#include "runtime/rom_source.h"
+#include "runtime/board/game_loop.h"
+#include "runtime/rom/rom_source.h"
 #include "../../../../tools/common/input_script.h"
 #include "../../../../tools/common/nvram.h"
 

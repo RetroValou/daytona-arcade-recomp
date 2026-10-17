@@ -12,7 +12,7 @@
 #pragma once
 
 #include "app/controls.h"
-#include "runtime/drive_board.h"
+#include "runtime/io/drive_board.h"
 
 #include <SDL3/SDL.h>
 

@@ -3,7 +3,7 @@
 // The Vita's renderer: vitaGL (the only one; the libvita2d/GXM renderer and the CPU
 // frontend were removed on 2026-10-16).
 
-#include "runtime/video.h"
+#include "runtime/video/video.h"
 #include "render/flat_index.h"
 
 #include <array>

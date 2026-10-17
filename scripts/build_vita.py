@@ -211,7 +211,7 @@ def main(argv=None):
                     help="--fast-inaccuracy/--fast-gen: the i960 code with the board's bus inlined (m2recomp --board, "
                          "M2_INLINE_BUS; off by default: no measurable gain on the Vita), for comparison")
     ap.add_argument("--no-fast-paths", action="store_true",
-                    help="build the shared runtime without its fast paths (src/runtime/fast_paths.h), for comparison")
+                    help="build the shared runtime without its fast paths (src/runtime/board/fast_paths.h), for comparison")
     ap.add_argument("--vitagl-dir", type=Path, default=Path("extern/vitagl/install"),
                     help="vitaGL built by scripts/setup_vitagl.py (default extern/vitagl/install)")
     ap.add_argument("--free-core", action="store_true",
@@ -225,11 +225,11 @@ def main(argv=None):
     mode.add_argument("--diagnostics", action="store_true", help="enable GXM startup/performance file logging (faults always recorded)")
     mode.add_argument("--release", action="store_true", help="fastest build: no diagnostic logging + link-time optimization (LTO; longer link, more host memory)")
     ap.add_argument("--tgp-profile", action="store_true",
-                    help="TGP profiling in perf.log (time, work, unit costs, hottest blocks; src/runtime/tgp_profile.h); "
+                    help="TGP profiling in perf.log (time, work, unit costs, hottest blocks; src/runtime/tgp/tgp_profile.h); "
                          "implies --diagnostics, needs --fast-inaccuracy or --fast-gen (the TGP code is made here)")
     ap.add_argument("--i960-profile", action="store_true",
                     help="i960 profiling in perf.log (time, work, bus calls by region, hottest blocks; "
-                         "src/runtime/i960_profile.h); implies --diagnostics, needs --fast-inaccuracy (the i960 code is made here)")
+                         "src/runtime/cpu/i960_profile.h); implies --diagnostics, needs --fast-inaccuracy (the i960 code is made here)")
     code = ap.add_mutually_exclusive_group()
     code.add_argument("--fast-inaccuracy", dest="code", action="store_const", const="fast_inaccuracy",
                       help="Vita game code made here (BUILD_DIR/gen_vita): i960 m2recomp --fast_inaccuracy with direct "

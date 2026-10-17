@@ -5,7 +5,7 @@
 // runtime and the device replay against MAME without the recompiler.
 #pragma once
 
-#include "runtime/cpu.h"
+#include "runtime/cpu/cpu.h"
 
 namespace rt {
 
