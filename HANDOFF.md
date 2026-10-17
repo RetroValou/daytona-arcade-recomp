@@ -1,5 +1,10 @@
 # Handoff
 
+## Vita: the menu in vita::Launcher; main() 360 lines (2026-10-17)
+
+Step 4c, the last of the frontend refactor (platform/vita/HANDOFF.md).
+frontend/main.cpp: 1,537 lines this morning, 360 now. Not run on the console.
+
 ## Vita: the game being played in vita::Session (2026-10-17)
 
 Step 4b (platform/vita/HANDOFF.md). VF2 VPK built, Daytona compile check.

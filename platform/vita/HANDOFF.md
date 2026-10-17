@@ -1,5 +1,22 @@
 # Vita port handoff — 29 September 2026
 
+## The menu in vita::Launcher — 17 October 2026
+
+frontend/launcher.h/.cpp: the menu's pages and state (options, binds,
+selection, capture, the touch screen's buttons), the option rows and when
+they are listed, what the pad does there (the old input block, as it was),
+the ImGui drawing (draw_menu). It changes the settings, applies them through
+the commit callback main passes (sound join, clocks, save, status: as
+before, then the option's own status line), and returns a MenuAction
+(Resume, Start, Reset, Quit) that main() runs on the Session. companion()
+is public (main's ROM switch). main.cpp is now start-up, the loop and the
+shutdown: 360 lines (1,537 before the refactor); its unused includes went.
+Checks: VF2 VPK built, Daytona compile check. To test on the console with
+4b's list: every Options row (left/right/cross), the Controls page (rebind,
+cycle, reset, back), Circle on each page, touch on rows and arrows.
+Next ideas, not started: a host test of Launcher::handle (needs psp2/power
+and ImGui kept out of the logic: a split of launcher.cpp in two).
+
 ## The game being played in vita::Session — 17 October 2026
 
 frontend/session.h/.cpp: the board (GameLoop), the link, the sound worker

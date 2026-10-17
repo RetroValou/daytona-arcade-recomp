@@ -9,9 +9,10 @@ Vita. One package per game: Daytona USA (`DAYT00093`), Sega Rally Championship
 ## Source layout
 
 ```
-frontend/   main.cpp (startup, launcher, the game loop), settings (vita.cfg), storage
-            (the data folder, files written whole, NV memories), input (pad, game
-            layout), controls.h
+frontend/   main.cpp (start-up and the loop), launcher (the menu), session (the game
+            being played: board, link, sound worker), diagnostics (perf.log,
+            vita-diag, gl.log), settings (vita.cfg), storage (the data folder,
+            files written whole, NV memories), input (pad, game layout), controls.h
 render/     vitaGL renderer: renderer.h (the frontend's API), renderer.cpp (set-up,
             frame entry), model2_textures, model2_polygons, layers_2d (the System 24
             worker), gl_context (vitaGL, frame API, gl.log), shaders, draw_list,
@@ -106,7 +107,7 @@ duplicated set goes back to the game's defaults.
 
 The menu: D-pad, Cross, Circle, or the front touch screen. Options lists only what
 can change something for this game in this build (`option_available`,
-`frontend/main.cpp`):
+`frontend/launcher.cpp`):
 
 * CPU / GPU clock (default 444 / 166 MHz; 500 MHz needs an overclock plugin and
   falls back to 444; the menu shows the actual clock), 4TH CORE (needs a core-unlock
