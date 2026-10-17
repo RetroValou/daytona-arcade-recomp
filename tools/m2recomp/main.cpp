@@ -1,6 +1,6 @@
 // m2recomp: the i960 static recompiler (design doc, i960 static recompiler).
 //
-//   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]
+//   m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--inline FILE] [--chunk N] [--fast_inaccuracy]
 //            [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile] [--board model2o|model2a]
 //
 // The image is the program ROM at address 0. model2o mirrors its upper
@@ -13,6 +13,10 @@
 // --hooks: "ADDRESS name" lines; the generated code calls rt::hook_<name>(c)
 // just before the instruction at ADDRESS (each game's hooks: see
 // src/games/hooks.h). A hook that is off does nothing.
+//
+// --inline: helpers whose arguments follow their balx in the code (VF2's text
+// printers, seeds/vf2_inline.txt): the analysis resumes past the arguments
+// instead of decoding them as code (i960::InlineArgs).
 //
 // Decodes every instruction reachable from the boot record plus the seed
 // addresses (src/i960/reach) and emits native C++: each instruction's
@@ -86,6 +90,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -604,6 +609,35 @@ void load_hooks(const std::string &path) {
     }
 }
 
+// --inline FILE: the set's inline-argument helpers (seeds/<set>_inline.txt).
+// One per line: the helper's hex address and its arguments, a byte count,
+// "words" or "cstring" (i960::InlineArgs).
+i960::InlineHelpers load_inline(const std::string &path) {
+    std::ifstream f(path);
+    if (!f) {
+        std::fprintf(stderr, "m2recomp: cannot open %s\n", path.c_str());
+        std::exit(2);
+    }
+    i960::InlineHelpers h;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream ls(line);
+        std::string addr, kind;
+        if (!(ls >> addr >> kind)) continue;
+        i960::InlineArgs a;
+        if (kind == "words") a.kind = i960::InlineArgs::Words;
+        else if (kind == "cstring") a.kind = i960::InlineArgs::CString;
+        else if (std::isdigit(static_cast<unsigned char>(kind[0]))) a.bytes = uint32_t(std::strtoul(kind.c_str(), nullptr, 0));
+        else {
+            std::fprintf(stderr, "m2recomp: bad --inline line \"%s\" (ADDR BYTES|words|cstring)\n", line.c_str());
+            std::exit(2);
+        }
+        h[uint32_t(std::strtoul(addr.c_str(), nullptr, 16))] = a;
+    }
+    return h;
+}
+
 // --board's name as rt::BoardType (src/runtime/game.h).
 std::string board_type(const std::string &name) { return name == "model2o" ? "rt::BoardType::Model2o" : "rt::BoardType::Model2a"; }
 
@@ -630,13 +664,14 @@ std::vector<uint32_t> load_seeds(const std::string &path) {
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--chunk N] [--fast_inaccuracy]"
+        std::fprintf(stderr, "usage: m2recomp PROGRAM.bin OUTDIR [--seeds FILE]... [--hooks FILE] [--inline FILE] [--chunk N] [--fast_inaccuracy]"
                               " [--no-mirror] [--alias GUEST:OFFSET:LENGTH]... [--profile] [--board model2o|model2a]\n");
         return 2;
     }
     const std::vector<uint8_t> img = load(argv[1]);
     const std::string out = argv[2];
     std::vector<uint32_t> seeds;
+    i960::InlineHelpers inline_helpers;
     size_t chunk = 1500;
     bool blocks = false, chain = false, mirror = true, profile = false;
     std::string board; // --board: rt::BoardType's name, inlined bus
@@ -650,6 +685,8 @@ int main(int argc, char **argv) {
             seeds.insert(seeds.end(), s.begin(), s.end());
         } else if (!std::strcmp(argv[i], "--hooks") && i + 1 < argc) {
             load_hooks(argv[++i]);
+        } else if (!std::strcmp(argv[i], "--inline") && i + 1 < argc) {
+            inline_helpers = load_inline(argv[++i]);
         } else if (!std::strcmp(argv[i], "--chunk") && i + 1 < argc) {
             chunk = std::strtoul(argv[++i], nullptr, 0);
         } else if (!std::strcmp(argv[i], "--no-mirror")) {
@@ -696,7 +733,7 @@ int main(int argc, char **argv) {
     };
     std::vector<uint32_t> all = i960::boot_seeds(read).all();
     all.insert(all.end(), seeds.begin(), seeds.end());
-    const i960::ReachResult r = i960::reach(all, read);
+    const i960::ReachResult r = i960::reach(all, read, inline_helpers);
 
     std::vector<const Insn *> insns;
     for (const auto &[a, in] : r.insns) insns.push_back(&in);

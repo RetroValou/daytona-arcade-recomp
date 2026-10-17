@@ -139,6 +139,9 @@ def main():
     hooks = os.path.join("seeds", args.set + "_hooks.txt")
     if os.path.exists(os.path.join(ROOT, hooks)):
         recomp += ["--hooks", hooks]
+    inline = os.path.join("seeds", args.set + "_inline.txt")  # helpers whose arguments follow their balx
+    if os.path.exists(os.path.join(ROOT, inline)):
+        recomp += ["--inline", inline]
     if args.fast_inaccuracy:
         recomp += ["--fast_inaccuracy"]
     if args.i960_profile:

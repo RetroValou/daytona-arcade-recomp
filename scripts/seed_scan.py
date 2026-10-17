@@ -16,9 +16,10 @@ not visit stops the game with "no recompiled code at X". Candidates:
   - words of the main data ROM that point at a function start (after a ret
     or an unconditional branch; the data ROM is large, so this is stricter).
 
-A candidate is kept only if it decodes as executable code up to a ret or
-branch (i960dis: no undecodable, !noexec or !quirk word first). Repeats to a
-fixed point, recompiling into a scratch directory each round. A false
+A candidate is kept only if it decodes as executable code up to a ret,
+branch or balx (i960dis: no undecodable, !noexec or !quirk word first).
+Repeats to a fixed point, recompiling into a scratch directory each round
+(with the set's seeds/<set>_inline.txt). A false
 positive only costs unused native code; a miss stops the game.
 
 Needs the ROM set imported (scripts/recompile.py has run). Prints the new
@@ -40,7 +41,9 @@ from games import SETS
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RET = 0x0A000000
-ENDS = {"ret", "b", "bx"}
+# A balx ends the check too: print helpers (VF2's 0x9444) take the inline
+# string after their balx as data and return past it.
+ENDS = {"ret", "b", "bx", "balx"}
 INSN = re.compile(r"^L_([0-9a-f]{8}): // [0-9a-f]{8}: (\S+)\s+(0x[0-9a-f]+)?(\[\w+\*4\])?")
 
 
@@ -82,6 +85,8 @@ def main():
     # --alias ranges (code copied to RAM). With aliases, the ROM holds code
     # only below the first copied byte; the rest runs from the copy.
     recomp_args = SETS[args.set]["recomp"]
+    inline_path = os.path.join(ROOT, "seeds", args.set + "_inline.txt")
+    inline_args = ["--inline", inline_path] if os.path.exists(inline_path) else []
     mirror = "--no-mirror" not in recomp_args
     aliases = [tuple(int(x, 16) for x in recomp_args[i + 1].split(":"))
                for i, a in enumerate(recomp_args) if a == "--alias"]
@@ -143,7 +148,7 @@ def main():
             f.writelines("%08x\n" % a for a in seeds + found)
         gen = os.path.join(scratch, "gen")
         os.makedirs(gen)
-        r = subprocess.run([recomp, prog_path, gen, "--seeds", sf] + recomp_args, capture_output=True, text=True)
+        r = subprocess.run([recomp, prog_path, gen, "--seeds", sf] + recomp_args + inline_args, capture_output=True, text=True)
         if r.returncode:
             sys.exit(r.stderr + "\nseed_scan: recompile failed in round %d" % rnd)
 

@@ -6,7 +6,19 @@
 
 namespace i960 {
 
-ReachResult reach(const std::vector<uint32_t> &seeds, const ReadWord &read) {
+std::optional<uint32_t> inline_return(const InlineArgs &args, uint32_t after, const ReadWord &read) {
+    if (args.kind == InlineArgs::Bytes) return after + args.bytes;
+    for (uint32_t a = after; a - after < 0x10000; a += 4) {
+        const auto w = read(a);
+        if (!w) return std::nullopt;
+        if (args.kind == InlineArgs::Words ? *w < 0x1000000u
+                                           : !(*w & 0xff) || !(*w & 0xff00) || !(*w & 0xff0000) || !(*w >> 24))
+            return a + 4;
+    }
+    return std::nullopt;
+}
+
+ReachResult reach(const std::vector<uint32_t> &seeds, const ReadWord &read, const InlineHelpers &inline_helpers) {
     ReachResult r;
     std::set<uint32_t> indirect, stops, unmapped;
     std::deque<uint32_t> work(seeds.begin(), seeds.end());
@@ -31,6 +43,14 @@ ReachResult reach(const std::vector<uint32_t> &seeds, const ReadWord &read) {
             if (in.has_target) work.push_back(in.target);
             if (f == Flow::BranchInd || f == Flow::BalInd || f == Flow::CallInd || f == Flow::CallSys)
                 indirect.insert(pc);
+            // balx to an inline helper: its arguments follow, the path resumes past them.
+            if (f == Flow::BalInd && in.ea == EaMode::Disp) {
+                const auto h = inline_helpers.find(in.disp);
+                if (h != inline_helpers.end()) {
+                    if (const auto back = inline_return(h->second, pc + in.length, read)) work.push_back(*back);
+                    break;
+                }
+            }
             // Paths that do not fall through.
             if (f == Flow::Branch || f == Flow::Ret || f == Flow::BranchInd) break;
             pc += in.length;

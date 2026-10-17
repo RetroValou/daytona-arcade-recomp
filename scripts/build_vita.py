@@ -135,6 +135,8 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     i960 = [i960_tool, cache / "program.bin", tmp / "i960", "--seeds", f"seeds/{game}.txt", *SETS[game]["recomp"]]
     if (ROOT / f"seeds/{game}_hooks.txt").is_file():
         i960 += ["--hooks", f"seeds/{game}_hooks.txt"]
+    if (ROOT / f"seeds/{game}_inline.txt").is_file():
+        i960 += ["--inline", f"seeds/{game}_inline.txt"]
     if mode != "fast_gen":
         i960.append("--fast_inaccuracy")
     if i960_profile:

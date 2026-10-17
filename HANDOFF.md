@@ -1,5 +1,34 @@
 # Handoff
 
+## VF2: the test menu's inline-argument helpers (m2recomp --inline) (2026-10-17)
+
+On the Vita, VF2 stopped with "no recompiled code at 0005ef60" (the test
+menu: 0x5ef60 is an entry of its handler table at 0x5fec0, pairs of handler
+and name). seed_scan.py saw the pointer but dropped it: its code check wants
+a ret or branch before any data, and the function calls balx 0x9444 with
+its text right after the balx. The same pattern hid the code after every
+such call from m2recomp too: the helpers return past their arguments, so
+neither the analysis (it decoded the text as code, or stopped there) nor
+the MAME harvest (the test menu never ran) knew the return addresses.
+- i960::reach takes InlineHelpers (helper -> its arguments: a byte count,
+  "words": packed text up to a word below 0x1000000, "cstring": bytes to a
+  NUL, then a word boundary) and resumes after them. m2recomp --inline FILE;
+  recompile.py, build_vita.py and seed_scan.py pass seeds/<set>_inline.txt.
+- seeds/vf2_inline.txt: the printers 0x93c4-0x9460 (words), 0x4ec00 (8
+  bytes, bx 0x8(r14)), 0x4f50c and 0x502a4 (cstring). From a survey of every
+  balx with an absolute target in the program ROM (319 to 0x9444, 42 to
+  0x4ec00, ...). 0x4f734 is not a helper.
+- seed_scan.py also counts a balx as the end of a candidate's code check;
+  then 70 seeds (the menu's handlers, the states its windows store, their
+  callees) appended to seeds/vf2.txt; 0xa440 is still proposed and still
+  wrong (left out). Reachable: 54,504 instructions -> 55,878 with --inline
+  alone -> 57,669 with the seeds; seed_scan then finds nothing more.
+Checks: PC exact vf2_fight 6,000 frames: last screen hash a0f1d889e5001976
+as before; ctest 23/23; Python tests 43. 0x5ef60 and the returns after its
+text (0x5ef10, 0x5f02c) have code. Vita VPK built (--fast-inaccuracy, not
+--release). Not run on the console: the test menu there is untested.
+Daytona and Sega Rally have no inline file: their code is unchanged.
+
 ## Vita: vitaGL only; the CPU frontend and the vita2d renderer removed (2026-10-16)
 
 The Vita builds one renderer, vitaGL (main_gpu.cpp + gpu_gl.cpp). Removed:

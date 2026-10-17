@@ -1,0 +1,25 @@
+# vf2: helpers called with balx whose arguments follow the balx in the code
+# and that return past them (m2recomp --inline). Without this the analysis
+# decodes the arguments as code and never reaches the code after them: the
+# test menu stopped on the Vita at 0x5ef60, then would have at each return.
+# Our own reading of the program ROM (rules.md rule 7). ADDRESS ARGUMENTS:
+# a byte count, "words" (up to the first word below 0x1000000) or "cstring"
+# (up to a NUL, then a word boundary).
+# Text printers: packed text ended by a word with a zero top byte (0x9468's
+# loop; 0x93c4-0x9444 format a number or not, then join it).
+000093c4 words
+000093dc words
+000093e0 words
+000093f0 words
+00009400 words
+00009408 words
+00009424 words
+00009434 words
+00009444 words
+00009460 words
+# Window set-up: 8 bytes (returns with bx 0x8(r14)).
+0004ec00 8
+# Text into a window (0x4ee30 stops at the NUL; the return rounded up to a word).
+0004f50c cstring
+# Formatted text (0x502c0 copies up to the NUL; the return rounded up to a word).
+000502a4 cstring
