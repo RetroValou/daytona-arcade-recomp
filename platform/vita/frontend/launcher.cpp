@@ -1,5 +1,6 @@
 #include "frontend/launcher.h"
 
+#include "build_date.h" // DAYTONA_VITA_BUILD_DATE (build_date.cmake)
 #include "frontend/diagnostics.h"
 #include "system/core_policy.h"
 
@@ -102,12 +103,12 @@ int listed_options(const VitaSettings &s, Option (&rows)[kOptions]) {
 }
 } // namespace
 
-void Launcher::draw(bool have_game, const VitaSettings &settings, const std::string &status, double fps) {
+void Launcher::draw(bool have_game, const VitaSettings &settings, const std::string &status) {
     ImGui::SetNextWindowPos({12, 12});
     ImGui::SetNextWindowSize({936, 520});
     ImGui::Begin(rt::game().title, nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
-    ImGui::Text("%s | %.1f FPS | CPU %d MHz | GPU %d MHz | %s",
-                rt::game().title, fps, scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency(), kRendererName);
+    ImGui::Text("%s | %s | CPU %d MHz | GPU %d MHz", rt::game().title, DAYTONA_VITA_BUILD_DATE,
+                scePowerGetArmClockFrequency(), scePowerGetGpuClockFrequency());
     if (ImGui::Button("Game")) { options_ = binds_ = false; selection_ = 0; }
     ImGui::SameLine();
     if (ImGui::Button("Options")) { options_ = true; binds_ = false; selection_ = 0; }

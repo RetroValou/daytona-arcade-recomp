@@ -32,7 +32,7 @@ public:
     // changes are applied and saved through commit(clocks too); the status line is set.
     MenuAction handle(uint32_t pressed, bool have_game, VitaSettings &settings, std::string &status,
                       bool &wait_release, const std::function<void(bool)> &commit);
-    void draw(bool have_game, const VitaSettings &settings, const std::string &status, double fps);
+    void draw(bool have_game, const VitaSettings &settings, const std::string &status);
 
 private:
     rt::TestHold &test_hold_;

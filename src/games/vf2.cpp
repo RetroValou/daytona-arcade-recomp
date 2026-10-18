@@ -77,10 +77,14 @@ uint8_t port(unsigned p, const Inputs &in) {
 // The sound driver's voice table, as srallyc's (the same driver family, other
 // code): 16 bytes per SCSP slot from 0x2800 in the 68000's RAM (A1 at every
 // key-on routine: 0x600c8e, 0x600d86, 0x600da8, 0x600ecc, 0x600ee4, 0x600f02),
-// byte 5 the voice's owner: 0 for the music, 1-4 for effects (none in the
-// title's first 500 frames, 3-11 % of key-ons once fights start, demo or
-// played). Found by logging the driver's registers at key-on (15 Oct 2026).
-constexpr ScspVoices kVoices = {0x2800, 0x10, 5};
+// byte 4 the voice's MIDI channel: the music on 0-8 and 15, the hits on 14,
+// the announcer and the characters' voices on 13 (also 9-12). Not byte 5,
+// the voice's owner (0: the music's sequence, 1-4: effects), used until 18
+// Oct 2026: the driver plays some voices from the music's sequence (owner 0
+// on channels 13-14: the first match's "fight", some end-of-fight speech,
+// ~30 hits; 43 of 8,300 key-ons in a 4-minute fight). Found by logging the
+// table's 16 bytes at key-on (15 and 18 Oct 2026).
+constexpr ScspVoices kVoices = {0x2800, 0x10, 4};
 // One player (MAME INPUT_PORTS(vf2) IN0 and IN1): the joystick, Punch, Kick, Guard,
 // start, coin; player 2 stays released.
 constexpr ControlDef kControls[] = {
@@ -110,9 +114,10 @@ extern const Game vf2_game = {
     // the first 10 s): RMS -25.3 dBFS attract, -22.8 in a fight, peak -4.7
     // (Daytona's race -14.4, peak -0.9): x1.5 (+3.5 dB) brings its peaks there.
     .output_gain = 1.5f,
-    // The arcade's mix: its hits are already 13 dB below its music (a fight,
-    // m2run --volumes), unlike Daytona's engine.
-    .defaults = {.effects_volume = 100},
+    // Its hits are already 13 dB below its music (a fight, m2run --volumes),
+    // unlike Daytona's engine: effects at 100 %; the music at 70 % (the
+    // owner's choice, 18 Oct 2026).
+    .defaults = {.music_volume = 70, .effects_volume = 100},
     .control_list = kControls, // one player: the joystick and Punch/Kick/Guard
     // Its SCSP DSP program (the reverb): in the sound program ROM at 0x4a48,
     // 82 steps; the driver copies it into MPRO at boot (the same words, logged

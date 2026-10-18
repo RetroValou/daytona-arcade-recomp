@@ -292,9 +292,16 @@ target_compile_definitions(vita_imgui PRIVATE IMGUI_DISABLE_DEFAULT_SHELL_FUNCTI
 target_link_libraries(vita_runtime PUBLIC vita_imgui)
 set(VITA_IMGUI_LICENSE FILE "${DAYTONA_ROOT}/extern/imgui/LICENSE.txt" "licenses/imgui.txt")
 
+# The build's date in the menu's title line (frontend/launcher.cpp): build_date.h,
+# rewritten on every build, changed only when the date does.
+add_custom_target(vita_build_date
+    COMMAND "${CMAKE_COMMAND}" -DOUT=${CMAKE_BINARY_DIR}/build_date.h -P "${CMAKE_CURRENT_SOURCE_DIR}/build_date.cmake"
+    BYPRODUCTS "${CMAKE_BINARY_DIR}/build_date.h" VERBATIM)
+
 if(DAYTONA_VITA_COMPILE_CHECK)
     add_library(daytona_vita_frontend OBJECT ${VITA_FRONTEND_SOURCES})
-    target_include_directories(daytona_vita_frontend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}")
+    target_include_directories(daytona_vita_frontend PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}" "${CMAKE_BINARY_DIR}")
+    add_dependencies(daytona_vita_frontend vita_build_date)
     target_link_libraries(daytona_vita_frontend PRIVATE vita_runtime ${VITA_SDL_TARGET})
     message(STATUS "ROM-free COMPILE CHECK only: no linked game or installable VPK will be produced")
 else()
@@ -305,7 +312,8 @@ else()
         list(APPEND GEN_SOURCES "${DAYTONA_GEN_ROOT}/${DAYTONA_VITA_ROMSET}_dsp/dsp_gen.cpp")
     endif()
     add_executable(daytona_vita ${VITA_FRONTEND_SOURCES} ${GEN_SOURCES})
-    target_include_directories(daytona_vita PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}")
+    target_include_directories(daytona_vita PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${VITAGL_INCLUDE_DIR}" "${CMAKE_BINARY_DIR}")
+    add_dependencies(daytona_vita vita_build_date)
     target_link_libraries(daytona_vita PRIVATE vita_runtime ${VITA_SDL_TARGET} ${VITAGL_LINK_LIBS})
     target_link_options(daytona_vita PRIVATE -Wl,--gc-sections)
     # vita-elf-create appends its SCE data (~4.3 KB) after the code segment, inside the

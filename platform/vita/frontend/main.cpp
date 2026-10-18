@@ -325,7 +325,7 @@ int main(int, char **) {
                 std::string shown_status = status;
                 if (!launcher.on_options()) shown_status += session.link_status();
                 ui.frame(float(elapsed));
-                launcher.draw(game != nullptr, settings, shown_status, diag.display_fps());
+                launcher.draw(game != nullptr, settings, shown_status);
                 ui.render();
             } else if (game) {
                 gpu.draw(game->board().video()); // System 24 layers + polygons on the GPU (the only case)

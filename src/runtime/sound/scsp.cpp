@@ -131,6 +131,14 @@ uint32_t Scsp::rand() { // a fixed linear congruential generator in place of mac
 void Scsp::render(float *stereo, int n) {
     // MAME DoMasterSamples
     const float gain = float(MVOL()) / 15.0f; // set_output_gain(MVOL() / 15.0)
+    // What the slots play, again, every 32 samples at most (render runs before
+    // each of the ~1,000 register accesses a frame): the driver can rewrite a
+    // playing slot's table entry without a key-on.
+    if (!unity_ && (owner_age_ += uint32_t(n)) >= 32) {
+        owner_age_ = 0;
+        for (int sl = 0; sl < 32; ++sl)
+            if (m_Slots[sl].active) m_Slots[sl].effect = host_.scsp_slot_effect(sl);
+    }
     for (int s = 0; s < n; ++s) {
         int32_t smpl = 0, smpr = 0;
 #ifdef M2_SOUND_PROFILE

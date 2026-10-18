@@ -39,7 +39,7 @@
 
 namespace vita {
 
-constexpr const char *kRendererName = "VITAGL"; // in the menu's title and the logs
+constexpr const char *kRendererName = "VITAGL"; // in the logs
 constexpr bool kDiagnostics = DAYTONA_VITA_DIAGNOSTICS != 0;
 // Every log file (vita-diag.log periodic lines, perf.log, gl.log) and the profiling
 // clocks exist only in diagnostic builds: scripts/build_vita.py --diagnostics.
@@ -113,7 +113,6 @@ public:
     void loop_done(const LoopEnd &e, rt::GameLoop *game, GpuGlRenderer &gpu, AsyncLog &perf_log, NativeOut &native);
     void window_done(const LoopEnd &e, rt::GameLoop *game, Audio &audio, NativeOut &native, const SoundWorker &sound);
 
-    double display_fps() const { return display_fps_; } // emulated frames per second, the menu's
 
 private:
     rt::Geo::Stats take_geo_delta(rt::GameLoop *game);

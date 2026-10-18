@@ -1,5 +1,45 @@
 # Handoff
 
+## SCSP music/effects: by the voice's MIDI channel, not its owner (2026-10-18)
+
+The user heard, on VF2 with the music lowered, the first match's round 1
+"fight" and some end-of-fight speech (a character's laugh) go down with
+the music, the same sounds later with the effects. The voice table's 16
+bytes at key-on (temporary trace, m2run, a 14,000-frame fight kicking all
+along: scratchpad input, the player wins the first match): byte 4 is the
+voice's MIDI channel (music on 0-8 and 15; hits on 14, announcer and voices
+on 13, also 9-12), byte 5 the owner used until now (0 = the music's
+sequence). The driver plays some voices from the music's sequence: 43 of
+8,300 key-ons on channels 9-14 with owner 0 (the "fight" at 27.3 s, channel
+13 TL 1; speech TL 7 on channel 14; ~30 hits). Sega Rally's race: the
+same convention (music 0-7 and 15, effects 9-14 and 0xff; 2 of ~3,700
+key-ons differ). Now ScspVoices::channel (byte 4) for both games; effect =
+channel 9-14 or above 15.
+Also: the driver rewrites a playing slot's table entry without a key-on
+(owner changes during play: 47 in vf2_fight 6,000 frames, 164 in the
+kicking fight; 41 followed by the slot's key-on within 10 ms, 107 not
+within 100 ms). Scsp::render now asks again every 32 samples (not every
+call: ~1,000 calls a frame; only when the volumes are not both 100 %).
+Measured, effects only (--volumes 0,1, kicking fight): owner rule -> channel
+rule, 25 seconds louder (sounds that were silent, e.g. +112 dB at 29 s),
+none quieter. Every voice moved has TL 0-7 (music is 13+). Volumes 100/100:
+WAV identical (vf2_fight 6,000 frames, md5 cd5741cd...). ctest 23/23 x2.
+A first idea, wrong: the owner written just after the key-on (none of
+the changes came within 100 samples of one).
+
+## Vita menu: the build date in the title line; VF2's music at 70 % (2026-10-18)
+
+The menu's first line was "title | x.x FPS | CPU | GPU | VITAGL"; now
+"title | YYYY-MM-DD | CPU | GPU". The date comes from build_date.h, written
+on every build by platform/vita/build_date.cmake (target vita_build_date,
+copy_if_different: launcher.cpp recompiles only when the date changes).
+Diagnostics::display_fps() (only the menu read it) removed; perf.log keeps
+its fps. A wrong turn: -DOUT="..." with VERBATIM passed the quotes, the
+header landed in a folder named `"` under the build dir (removed).
+VF2's frontend defaults: music 70 %, effects 100 % (the owner's choice; a
+saved settings file keeps its value until RESET DEFAULTS). Built: VF2 and
+Sega Rally diagnostics VPKs; not run on the console.
+
 ## SCSP: stepped note decay and the DSP at 25 %, fixed by default (2026-10-18)
 
 The user's choice after a listening test (files listed at the end), not a MAME or PCB

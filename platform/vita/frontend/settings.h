@@ -39,7 +39,7 @@ struct VitaSettings {
     int volume = 80;
     // Balance between the music and the effects (engine, skids, crashes), as the
     // desktop launcher's; 100/100 is the arcade's mix. The defaults are the game's
-    // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85).
+    // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85, VF2 70/100).
     int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
     int deadzone = 12;
     int draw_distance = 0, steer_curve = 0;

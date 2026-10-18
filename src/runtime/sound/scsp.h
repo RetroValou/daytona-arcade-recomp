@@ -28,8 +28,8 @@ public:
     virtual void scsp_timer(int n, double seconds) = 0;
     // A byte the SCSP sends on its MIDI output (Model 2: to the i960's UART).
     virtual void scsp_midi_out(uint8_t byte) = 0;
-    // At a slot's key-on: whether it plays a sound effect rather than the
-    // music (the driver's own bookkeeping; false when unknown).
+    // Whether a slot plays a sound effect rather than the music (the driver's
+    // own bookkeeping; false when unknown): at its key-on and at every render.
     virtual bool scsp_slot_effect(int) { return false; }
 };
 
@@ -147,8 +147,11 @@ public:
     // A byte received on the MIDI input (MAME rcv_complete).
     void midi_in(uint8_t byte);
     // The music and effects volumes (0..1; both 1, the default: MAME's output,
-    // untouched). Each slot's output, direct and to the DSP, is scaled by its
-    // owner's volume (ScspHost::scsp_slot_effect at its key-on).
+    // untouched). Each slot's output, direct and to the DSP, is scaled by the
+    // volume of what it plays (ScspHost::scsp_slot_effect at its key-on, and
+    // again every 32 samples: VF2's driver rewrites a playing slot's table
+    // entry without a key-on, 107 times in a 4-minute fight, HANDOFF.md 18 Oct
+    // 2026).
     void set_volumes(float music, float effects) {
         music_ = music, effects_ = effects;
         unity_ = music == 1.0f && effects == 1.0f;
@@ -223,6 +226,7 @@ private:
     uint8_t *ram_;
     float music_ = 1.0f, effects_ = 1.0f;
     bool unity_ = true; // both volumes 1: the samples are not touched
+    uint32_t owner_age_ = 0; // samples since render last asked what the slots play
     uint32_t rand_ = 0x12345678; // machine().rand() stand-in (noise; LFO noise tables)
     uint32_t rand();
     int8_t read_byte(uint32_t a) const { return a < 0x80000 ? int8_t(ram_[a]) : 0; }

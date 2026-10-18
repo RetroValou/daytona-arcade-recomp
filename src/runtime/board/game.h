@@ -77,12 +77,13 @@ struct ScspDspProgram {
     uint32_t offset = 0, steps = 0, crc = 0;
 };
 
-// The SCSP sound driver's voice table in the 68000's RAM, which says whose
-// voice each SCSP slot plays: `entry` bytes per slot from `table`, the owner
-// at `owner` (0: the music's sequence, else a sound effect's). Read at each
-// key-on, for the music and effects volumes (snd::ScspBoard::set_volumes).
+// The SCSP sound driver's voice table in the 68000's RAM, which says what
+// each SCSP slot plays: `entry` bytes per slot from `table`, the voice's MIDI
+// channel at `channel` (0-8 and 15: the music's; 9-14 and 0xff: sound effects
+// and voices). Read at each key-on and while the slot plays, for the music
+// and effects volumes (snd::ScspBoard::set_volumes).
 struct ScspVoices {
-    uint32_t table, entry, owner;
+    uint32_t table, entry, channel;
 };
 
 // A frontend's default settings for the game (the Vita's: platform/vita

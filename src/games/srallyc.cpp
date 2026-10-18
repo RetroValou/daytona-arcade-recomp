@@ -69,11 +69,12 @@ uint8_t analog(unsigned ch, const Inputs &in) {
 // The TGP program: in the program ROM at 0x5ae94, 1,665 words, equal to
 // The sound driver's voice table: 16 bytes per SCSP slot from 0x2800 in the
 // 68000's RAM (the key-on routines take the slot's register offset from its
-// first word, 0x600eba, 0x60103a), whose byte 5 is the voice's owner at
-// key-on: 0 for the music's sequence (the whole attract, music only), 1-15
-// for the sound effects' (only in a race; one in the attract, at the coin's
-// effect). Found by logging the driver's A1 at every key-on (15 Oct 2026).
-constexpr ScspVoices kVoices = {0x2800, 0x10, 5};
+// first word, 0x600eba, 0x60103a), whose byte 4 is the voice's MIDI
+// channel: the music on 0-7 and 15 (owner 0), the effects on 9-14 and 0xff
+// (owners 1-15), as VF2's driver; 2 of ~3,700 key-ons in a race differ from
+// byte 5, the owner (used until 18 Oct 2026). Found by logging the driver's
+// A1 at every key-on (15 Oct 2026) and the table at key-on (18 Oct 2026).
+constexpr ScspVoices kVoices = {0x2800, 0x10, 4};
 // The cabinet (MAME INPUT_PORTS(srallyc)): wheel, pedals, the 4-speed gearbox, one
 // view button (VR), the hand brake (IN2), start, coin.
 constexpr ControlDef kControls[] = {

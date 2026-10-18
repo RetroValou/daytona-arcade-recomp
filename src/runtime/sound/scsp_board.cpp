@@ -127,8 +127,10 @@ void ScspBoard::write16(uint32_t addr, uint16_t data, uint16_t mask) {
 
 bool ScspBoard::scsp_slot_effect(int slot) {
     if (!voices_) return false;
-    const uint32_t a = voices_->table + uint32_t(slot) * voices_->entry + voices_->owner;
-    return a < cpu_.ram.size() && cpu_.ram[a] != 0; // owner 0: the music's sequence
+    const uint32_t a = voices_->table + uint32_t(slot) * voices_->entry + voices_->channel;
+    if (a >= cpu_.ram.size()) return false;
+    const uint8_t channel = cpu_.ram[a];
+    return channel > 8 && channel != 15; // the music's channels: 0-8 and 15
 }
 
 void ScspBoard::scsp_irq(int level, bool assert) {
