@@ -13,9 +13,9 @@ is not to reproduce the hardware 100% exactly, nor to turn the game code into
 readable source.
 
 Games so far: Daytona USA (daytona93, daytona), Sega Rally Championship
-(srallyc), Virtua Fighter 2 (vf2, Version 2.1, one player) and Virtua Cop
-(vcop, Revision B, one player: the light gun is the Vita's touch screen or
-the PC's mouse). What is specific to a game (its ROMs, addresses,
+(srallyc), Virtua Fighter 2 (vf2, Version 2.1, one player), Virtua Cop
+(vcop, Revision B) and Virtua Cop 2 (vcop2), one player each: the light gun
+is the Vita's touch screen or the PC's mouse. What is specific to a game (its ROMs, addresses,
 input wiring, hooks) lives in `src/games/` and `scripts/games.py`; the rest
 is the Model 2 board, shared by every game. To add one, see
 [docs/adding-a-game.md](docs/adding-a-game.md).
@@ -28,6 +28,6 @@ including the files a clone shares with its parent. A split set (a clone's
 archive with only the files that differ from its parent) is refused: the
 importer checks every file of the set by name and CRC. Put them in `roms/`
 as `daytona93.zip`, `srallyc.zip` (or MAME's merged `srallycb.zip`),
-`vf2.zip` and `vcop.zip`; on the Vita, see [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md).
+`vf2.zip`, `vcop.zip` and `vcop2.zip`; on the Vita, see [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md).
 
 The original README is kept in [README_fork.md](README_fork.md).

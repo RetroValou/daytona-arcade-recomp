@@ -98,7 +98,7 @@ Each game's controls come from its record (`Game::control_list`, `src/games/*.cp
 | - | - | Punch / Kick / Guard | Cross / Circle / Square |
 | Coin / start | Coin / start | Coin / start | Select / Start |
 
-Virtua Cop (one player) is played on the front touch screen: a touch on the
+Virtua Cop and Virtua Cop 2 (one player) are played on the front touch screen: a touch on the
 picture aims there and pulls the trigger; a touch on the black margins left or
 right of it points the gun off the screen and pulls the trigger, which reloads.
 Cross is the trigger too (at the last aim). The touch panel's coordinates are
@@ -203,7 +203,7 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   cut by distance while coplanar ones keep the rank order. The 2D layers keep their
   depths (0, `kForegroundDepth`); the result stays below the HUD. Both values are the
   game's (`Game::update_z_depth_local_weight`, `update_z_depth_scale`: 0.9 / 12.5,
-  Sega Rally 0.95 / 12.5, Daytona 6.0, VF2 4.5, Virtua Cop 7.2, from each game's w
+  Sega Rally 0.91 / 12.5, Daytona 6.0, VF2 4.5, Virtua Cop 7.2, Virtua Cop 2 7.3, from each game's w
   99.9th percentile on the PC). The switch picks the set at draw time
   (`gl_set_upgrade_z_depth`); the first boot compiles 14 programs.
 * System 24 layers are placed by the same depth buffer: foreground before the polygons,

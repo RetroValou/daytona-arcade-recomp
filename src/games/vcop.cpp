@@ -75,7 +75,7 @@ extern const Game vcop_game = {
     // looping while videoctl & 4 equals g5 (r21), each pass adding 1 to g0 (r16).
     .spin = {{Game::SpinWait::WordBitsCount, 0x9124, 0x0098000c, 4, 21, 0, 0, 4, 16}},
     // MAME vcop P1_X/P1_Y PORT_MINMAX: the screen's edges in the gun's units.
-    .gun = {0x083, 0x276, 0x024, 0x1a9},
+    .gun = {0x083, 0x276, 0x024, 0x1a9, 0x179, 0x0e8}, // player 2: MAME's P2_X/P2_Y defaults
     .model1_voices = &kVoices,
     // Daytona's driver's channels: the music on 0-8 and 15 (9 unused), the
     // shots and reloads on 11 (commands ae 20 01, ae 20 07).

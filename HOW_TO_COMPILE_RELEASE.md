@@ -5,7 +5,7 @@
 * A Linux, macOS or WSL computer where the project is set up: your ROM sets in
   `roms/` (`daytona93.zip` for Daytona USA, `srallyc.zip` or `srallycb.zip` for
   Sega Rally Championship, `vf2.zip` for Virtua Fighter 2, `vcop.zip` for Virtua
-  Cop), then
+  Cop, `vcop2.zip` for Virtua Cop 2), then
   `python3 scripts/setup.py` (see [README.md](README.md)).
 * Complete MAME ROM sets, **full merged**: every file of the set in the archive,
   the parent's included. Split sets (a clone with only its own files) are
@@ -34,6 +34,7 @@ python3 scripts/build_vita.py --game GAME --fast-inaccuracy --release
 | Sega Rally Championship | `segarally` | `build_segarally/vita/segarally.vpk` | SRAL00094 | `ux0:data/srallyc/srallyc.zip` |
 | Virtua Fighter 2 | `virtuafighter2` | `build_virtuafighter2/vita/virtuafighter2.vpk` | VFTR00095 | `ux0:data/vf2/vf2.zip` |
 | Virtua Cop | `virtuacop` | `build_virtuacop/vita/virtuacop.vpk` | VCOP00096 | `ux0:data/vcop/vcop.zip` |
+| Virtua Cop 2 | `virtuacop2` | `build_virtuacop2/vita/virtuacop2.vpk` | VCOP00097 | `ux0:data/vcop2/vcop2.zip` |
 
 Install the VPK with VitaShell and copy the ROM set to the place above. The games
 are separate apps: they install side by side.

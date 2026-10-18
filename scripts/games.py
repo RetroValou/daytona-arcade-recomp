@@ -78,6 +78,10 @@ GAMES = {
         "title": "Virtua Cop", "sets": ("vcop",),
         "vita_title_id": "VCOP00096", "vita_name": "Virtua Cop", "vita_link": False,
     },
+    "virtuacop2": {
+        "title": "Virtua Cop 2", "sets": ("vcop2",),
+        "vita_title_id": "VCOP00097", "vita_name": "Virtua Cop 2", "vita_link": False,
+    },
 }
 
 # The game the scripts build when none is given.
@@ -128,6 +132,19 @@ SETS = {
     "vcop": {
         "game": "virtuacop", "label": "Revision B",
         "roms": ["vcop"], "board": "model2o", "recomp": [], "sndrecomp": [],
+        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
+        "full_range": False,
+    },
+    # Model 2A-CRX like vf2 (program in ROM, --no-mirror; SCSP sound), the light
+    # gun through the 315-5649's serial channel 2 (MAME lightgun_mux_r/w). One
+    # player: the trigger on IN1 0x01, the aim in MAME's P1_X/P1_Y units.
+    # --fast-inaccuracy checked on the PC: vcop2_shoot, a scripted 9,000-frame
+    # game (the same 898 sound commands as the exact code) and 8,000 frames of
+    # attract run through (no new seed).
+    "vcop2": {
+        "game": "virtuacop2", "label": "Virtua Cop 2",
+        "roms": ["vcop2"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
         "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
         "full_range": False,

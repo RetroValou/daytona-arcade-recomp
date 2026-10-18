@@ -1,5 +1,67 @@
 # Handoff
 
+## Virtua Cop 2 (vcop2; Model 2A-CRX), one player (2026-10-18)
+
+Added as the other games: src/games/vcop2.cpp, scripts/games.py (game
+virtuacop2, Vita title ID VCOP00097, ux0:data/vcop2/vcop2.zip; set vcop2:
+model2a, --no-mirror, --scsp), seeds/vcop2.txt (1,403: MAME harvests of
+attract, a scripted game and walks through the test mode, then
+seed_scan.py), seeds/vcop2_snd.txt (six jump tables of the 68000 driver, 153
+entries), scripts/inputs/vcop2_shoot.txt (vcop_shoot with the reload at gunx
+0x089: vcop2's range starts at 137, so vcop's 0x083 is not off-screen there
+and the MAME replay "diverged").
+The program runs from ROM (two pairs, 2 MB); main_data's last pair is
+mirrored from 0xc00000. TGP program at 0x5d480 (1,778 words) and SCSP DSP
+program at 0x8cc8 (84 steps), both equal to MAME's after boot.
+The gun: no I/O board on the 2A-CRX; the 315-5649's serial channel 2 carries
+it behind a multiplexer (MAME lightgun_mux_w at offset 0x0a, lightgun_mux_r at
+0x0c: 0-7 P1 Y, P1 X, P2 Y, P2 X, low byte then high; 8 and up 0xfc | the
+off-screen bits). IoBoard::gun_byte builds the report for both boards
+(latch_gun for vcop's DPRAM, crx_read for vcop2); GunRange now holds player
+2's fixed aim (p2_x, p2_y: MAME's P2 defaults, vcop 0x179/0x0e8, vcop2
+0x17c/0x0e6), which latch_gun had as constants. Range: MAME vcop2 P1
+PORT_MINMAX 137-630 x 36-425.
+Wait loop (M2_SPIN_SKIP): 0x36fc ldob 0x500000,r3; cmpibe r3,g0 (ByteIsReg,
+as Daytona's), the idle range too: 9.1M of 69M instructions skipped in
+attract, 23M in a game.
+Sound: the SCSP driver's voice table is VF2's ({0x2800, 0x10, 4}), but the
+channels differ: in 9,000 frames of play every voice on 0-9 is the music's
+sequence (owner 0; 9 the drums), 10-15 the shots and voices (owners 1-0x13,
+18 of 268 owner 0), 15 included. music_channels 0x03ff. Checked with m2run
+--volumes 1,0 and 0,1 on vcop2_shoot: the music and the shots land in
+separate files; the first second (the boot sound, before the driver fills
+its table) is in both.
+POLYGON ORDER scale 7.3 (scripted game, every 20th frame's vertex w: p50 38,
+p99.9 1,230, max 1,420; ln max 7.26; temporary probe, removed).
+Checked against MAME (m2_check.sh lockstep): attract 600 frames MATCH (593
+interrupts, 596/596 screens); vcop2_shoot 2,400 frames MATCH (270M
+instructions, 3.7M device events with the gun serial reads, 2,511
+interrupts, 1.7M polygons, 2,396/2,396 screens, sound MATCH). MAME delays
+irq_enable_w by 80 ns ("vcop2 needs this"); ours applies it at once and
+still matches.
+--fast-inaccuracy (vita_fast) checked on the PC: vcop2_shoot 2,400, a
+scripted game 9,000 (the same 898 sound command bytes as the exact code) and
+attract 8,000 frames, no new seed. Test mode: a 24,000-frame walk runs
+through (2.46B instructions: the memory test loops with no vblank wait).
+Regression: daytona93 race_basic, srallyc_race, vf2_fight, vcop_shoot m2run
+hash and WAV identical before and after the IoBoard change; ctest 23/23 on
+daytona93 and vcop2.
+Not done: the Vita VPK on the console; player 2.
+
+## Virtua Cop: the test mode's missing seeds (2026-10-18)
+
+Entering the test mode stopped on a jump with no code (as VF2's had). Added
+to seeds/vcop.txt: a MAME harvest of a 12,000-frame walk through the test
+mode, seed_scan.py again, 0x28dc0, 0x28e10, and the handler tables at
+main_data 0x82c3b0 (16 entries) and 0x82c8c0 (7). Wrong turn: a table read 8
+bytes off added 0x20 and 0x20202020 (text), removed. Checked: a 24,000-frame
+test-mode walk and the scripted game run through (977 seeds).
+
+## Vita: POLYGON ORDER help text without Sega Rally's example (2026-10-18)
+
+The user: "(SHADOW / WHEEL)" is Sega Rally's case; the option is every
+game's. Sega Rally's local weight is now 0.91 (the user's setting).
+
 ## Vita option POLYGON ORDER: a hybrid depth (2026-10-18)
 
 The user's idea, from the user's own shader test on Sega Rally (overlapping

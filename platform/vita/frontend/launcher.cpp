@@ -377,7 +377,7 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                     if (option == OptDistance) status = "FURTHER DISTANCES ADD SCENERY AND MAY REDUCE FPS.";
                     if (option == OptZDepth)
                         status = settings.upgrade_z_depth
-                            ? "HYBRID: THE ARCADE ORDER, CORRECTED BY DISTANCE WHERE SHAPES OVERLAP (SHADOW / WHEEL)."
+                            ? "HYBRID: THE ARCADE ORDER, CORRECTED BY DISTANCE WHERE SHAPES OVERLAP."
                             : "ARCADE: THE MODEL 2'S OWN DRAWING ORDER, AS ON THE CABINET.";
                     if (option == OptSaveBackup) status = settings.save_backup
                         ? "RECORDS KEPT FROM THE NEXT START. UNUSED COINS ARE KEPT TOO, AS ON A CABINET."

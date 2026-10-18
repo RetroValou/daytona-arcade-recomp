@@ -41,9 +41,11 @@ struct Inputs {
 };
 
 // A light gun's range (MAME's PORT_MINMAX for P1_X/P1_Y): the values at the
-// screen's edges. All zero: no light gun.
+// screen's edges, and player 2's gun (MAME's P2_X/P2_Y defaults: one player,
+// player 2's never moves). All zero: no light gun.
 struct GunRange {
     uint16_t x_min, x_max, y_min, y_max;
+    uint16_t p2_x, p2_y;
     bool present() const { return x_max != 0; }
 };
 
@@ -202,8 +204,9 @@ struct Game {
         uint8_t counter = 0;       // WordBitsCount: the register the passes count in
     };
     SpinWait spin[2]{}; // unused entries: None
-    // Model 1 I/O board with the light gun interface (837-12079, Virtua Cop):
-    // player 1's gun range; the board reports the gun (IoBoard). None: no gun.
+    // The light gun (IoBoard): player 1's range, player 2's fixed aim. Model 1
+    // I/O board with the interface 837-12079 (Virtua Cop) or the 2A-CRX
+    // 315-5649's serial channel 2 (Virtua Cop 2). None: no gun.
     GunRange gun{};
     // Model 1 sound board: its driver's voice pools (nullptr: Daytona's).
     const Model1Voices *model1_voices = nullptr;

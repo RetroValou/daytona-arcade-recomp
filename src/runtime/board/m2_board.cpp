@@ -64,18 +64,25 @@ void IoBoard::write(uint32_t index, uint8_t v) {
     }
 }
 
-// The light gun interface (MAME model1io2_device, its lightgun ports): each
-// gun's Y then X at 0x80-0x87 (16 bits, little-endian; player 1 then 2), and
-// at 0x88 the off-screen bits (1: player 1, 2: player 2), set within 5 % of
-// the range from an edge, as MAME's. Player 2 stays at MAME's defaults.
-void IoBoard::latch_gun() {
-    constexpr uint16_t kP2X = 0x179, kP2Y = 0x0e8; // MAME vcop P2_X/P2_Y defaults (on screen)
-    const auto put = [this](size_t at, uint16_t v) { ram_[at] = uint8_t(v), ram_[at + 1] = uint8_t(v >> 8); };
-    put(0x80, inputs.gun_y), put(0x82, inputs.gun_x), put(0x84, kP2Y), put(0x86, kP2X);
+// The light gun's report, as MAME's lightgun ports give it (model1io2 for the
+// Model 1 I/O 2 board, model2 lightgun_data_r / lightgun_offscreen_r for the
+// 2A-CRX): bytes 0-7 each gun's Y then X (16 bits, little-endian; player 1
+// then 2), byte 8 the off-screen bits (1: player 1, 2: player 2), set within
+// 5 % of the range from an edge, as MAME's. Player 2 stays at MAME's defaults.
+uint8_t IoBoard::gun_byte(unsigned i) const {
+    if (i < 8) {
+        const uint16_t v[4] = {inputs.gun_y, inputs.gun_x, gun.p2_y, gun.p2_x};
+        return uint8_t(v[i >> 1] >> (8 * (i & 1)));
+    }
     const int bx = int(float(gun.x_max - gun.x_min) * 0.05f), by = int(float(gun.y_max - gun.y_min) * 0.05f);
     const bool off = inputs.gun_x <= gun.x_min + bx || inputs.gun_x >= gun.x_max - bx ||
                      inputs.gun_y <= gun.y_min + by || inputs.gun_y >= gun.y_max - by;
-    ram_[0x88] = off ? 1 : 0;
+    return off ? 1 : 0;
+}
+
+// The Model 1 I/O 2 board (Virtua Cop): the report at 0x80-0x88 of the DPRAM.
+void IoBoard::latch_gun() {
+    for (unsigned i = 0; i < 9; ++i) ram_[0x80 + i] = gun_byte(i);
 }
 
 // --- 315-5649 (Model 2A-CRX) ---------------------------------------------------
@@ -104,7 +111,10 @@ uint8_t IoBoard::crx_read(uint32_t offset, uint64_t now) {
         [[fallthrough]];
     case 0x00: case 0x01: case 0x02: case 0x03: case 0x04: case 0x05:
         return (port_config_ >> offset) & 1 ? port_in(offset, now) : port_[offset];
-    case 0x0b: case 0x0c: return 0; // RS-422 receive: nothing connected
+    case 0x0c: // serial channel 2: the 2A-CRX light gun (MAME lightgun_mux_r: past byte 7 the off-screen bits, 0xfc set)
+        if (gun.present()) return gun_mux_ < 8 ? gun_byte(gun_mux_) : uint8_t(0xfc | gun_byte(8));
+        return 0;
+    case 0x0b: return 0; // RS-422 receive: nothing connected
     case 0x0d: return 0x0c;         // RS-422 status (MAME's: receive buffers full, transmit empty)
     case 0x0f: {                    // analog input, auto-increments
         const uint8_t ch = analog_channel_;
@@ -125,6 +135,7 @@ void IoBoard::crx_write(uint32_t offset, uint8_t v, uint64_t now) {
     case 0x08: port_config_ = v; break;
     case 0x0e: mode_ = v; break;
     case 0x0f: analog_channel_ = v & 7; break;
+    case 0x0a: gun_mux_ = v; break; // serial channel 2: the light gun byte to read (MAME lightgun_mux_w)
     default: break; // RS-422 transmit: nothing connected
     }
 }

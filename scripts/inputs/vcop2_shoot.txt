@@ -1,0 +1,14 @@
+# vcop2: coin, start, the gun at the centre (stage select), four shots, then a
+# shot off the screen (a reload). Frames at 57.52 Hz.
+frames 2400
+700-709 coin=1
+800-809 start=1
+0-2400 gunx=0x17c
+0-2400 guny=0x0e6
+1500-1505 trigger=1
+1900-1905 trigger=1
+1940-1945 trigger=1
+1980-1985 trigger=1
+2020-2025 trigger=1
+2100-2120 gunx=0x089
+2104-2109 trigger=1

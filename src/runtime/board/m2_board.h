@@ -81,6 +81,8 @@ private:
     bool ctrl_mode_ = false; // port A bit 0: port B reads the EEPROM
     uint8_t port_in(uint32_t offset, uint64_t now);
     void latch_gun();
+    uint8_t gun_byte(unsigned i) const; // the light gun's report, byte i (0-8)
+    uint8_t gun_mux_ = 0;               // 315-5649 serial channel 2: the byte the game reads next
     void eeprom_pins(uint8_t port_a, uint64_t now);
 
     // 93C46 (MAME eeprom_serial_93cxx_device, 16-bit, 6 address bits)
