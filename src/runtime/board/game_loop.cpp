@@ -49,7 +49,7 @@ GameLoop::GameLoop(M2Board::Images img, bool sound_enabled) {
 #endif
     if (sound_enabled && !img.sound_program.empty()) {
         if (img.game->sound == SoundBoardType::Scsp) sound_ = std::make_unique<snd::ScspBoard>(img.sound_program, img.samples, img.game->scsp_voices);
-        else sound_ = std::make_unique<snd::SoundBoard>(img.sound_program, img.pcm1, img.pcm2);
+        else sound_ = std::make_unique<snd::SoundBoard>(img.sound_program, img.pcm1, img.pcm2, img.game->model1_voices);
     }
     board_ = std::make_unique<M2Board>(std::move(img));
     cpu_ = std::make_unique<Cpu>(board_.get());

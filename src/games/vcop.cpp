@@ -47,6 +47,12 @@ constexpr ControlDef kControls[] = {
     {Control::Coin, "COIN", PadButton::Select},
 };
 
+// The sound driver's voice pools (Daytona's driver's layout, other offsets):
+// 28 records of 12 bytes at 0xf01500 and 0xf01650, byte 3 the channel (the
+// voice searches at 0xa12-0xa44 and 0xd5a-0xdbe: lea $f01500/$f01650, moveq
+// #$1b, adda.l #$c).
+constexpr Model1Voices kVoices{{0x1500, 0x1650}, 12, false};
+
 // The TGP program the i960 uploads at boot: in the program ROM at 0x70c0,
 // 2,024 words, equal to MAME's copro_tgp_program after boot (dumped with a
 // Lua script, 18 Oct 2026).
@@ -70,6 +76,7 @@ extern const Game vcop_game = {
     .spin = {{Game::SpinWait::WordBitsCount, 0x9124, 0x0098000c, 4, 21, 0, 0, 4, 16}},
     // MAME vcop P1_X/P1_Y PORT_MINMAX: the screen's edges in the gun's units.
     .gun = {0x083, 0x276, 0x024, 0x1a9},
+    .model1_voices = &kVoices,
 };
 
 } // namespace rt

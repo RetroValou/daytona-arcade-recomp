@@ -1,5 +1,26 @@
 # Handoff
 
+## Virtua Cop: music/effects split by its own voice pools (2026-10-18)
+
+The user, on the Vita: only part of the music followed the MUSIC volume, the
+rest the EFFECTS one. SoundBoard::voice_channel looked for each key-on's voice
+in Daytona's driver's pools (0xf01500 and 0xf01618, 10-byte records): on vcop
+1,307 of 1,676 key-ons (78 %) matched none, and an unmatched voice counts as
+an effect. Virtua Cop's driver keeps 12-byte records at 0xf01500 and 0xf01650
+(the voice searches at 0xa12-0xa44 and 0xd5a-0xdbe: lea $f01500/$f01650,
+moveq #$1b, adda.l #$c; byte 3 the channel, as Daytona's). Now
+rt::Model1Voices (pools, stride, Daytona's byte-6 reserved records) per game
+(Game::model1_voices; nullptr: Daytona's, kDaytonaVoices), passed to
+snd::SoundBoard. vcop: 0 of 4,357 key-ons unmatched (scripted 9,000-frame
+game); channels 0-8, 11, 12, 15. The channel rule (music 0-9 and 15) holds:
+a shot is command ae 20 01 and a reload ae 20 07, each starting one voice on
+channel 11 (chip 1) right after; channel 15 is the music's beat.
+Measured (vcop_shoot, --volumes): effects only in the attract (no shots,
+frames 300-1400) -27.0 dBFS before, -35.9 after (music only -26.0): the
+attract's demo shots are what is left; around the stage's shots effects only
+-21.7. Volumes 1/1: WAV byte-identical before/after. ctest 23/23 (vcop,
+daytona93).
+
 ## Virtua Cop (vcop, Revision B; original Model 2), one player (2026-10-18)
 
 New game `virtuacop` (scripts/games.py; build_virtuacop/, Vita virtuacop.vpk,

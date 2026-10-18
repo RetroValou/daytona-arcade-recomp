@@ -11,6 +11,7 @@
 // board a video frame at a time and drains the rendered audio.
 #pragma once
 
+#include "runtime/board/game.h"
 #include "runtime/sound/multipcm.h"
 #include "runtime/sound/sound_board.h"
 #include "runtime/sound/snd_gen_support.h"
@@ -34,7 +35,9 @@ public:
     static constexpr uint32_t kBaud = 31250;          // MIDI-rate serial line from the i960
     static constexpr uint32_t kByteBits = 10;         // start, 8 data, stop
 
-    SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2);
+    // voices: the driver's voice pools (rt::Game::model1_voices); nullptr: Daytona's.
+    SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2,
+               const rt::Model1Voices *voices = nullptr);
 
     // Command bytes the i960 wrote to its UART; they arrive one line-time
     // apart from now on.
@@ -78,6 +81,7 @@ private:
 
     std::vector<uint8_t> program_, pcm1_rom_, pcm2_rom_;
     Cpu68k cpu_;
+    rt::Model1Voices voices_;
     Sched sched_{cpu_};
     sndgen::Env env_{cpu_, sched_};
     double carry_ = 0; // fractional instructions from advance()

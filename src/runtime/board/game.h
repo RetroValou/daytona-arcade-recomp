@@ -96,6 +96,20 @@ struct ScspVoices {
     uint32_t table, entry, channel;
 };
 
+// The Model 1 sound driver's voice pools in the 68000's RAM (offsets from
+// 0xf00000): two pools of 28 records, `stride` bytes each. Byte 0 is zero when
+// free (bit 3: the MultiPCM), byte 1 the slot code it writes to the chip, byte
+// 3 the owning channel; with `reserved_ff6`, byte 6 0xff marks the engine
+// layers' reserved records (Daytona). Read at each key-on, for the music and
+// effects volumes (snd::SoundBoard::voice_channel).
+struct Model1Voices {
+    uint32_t pool[2];
+    uint32_t stride;
+    bool reserved_ff6;
+};
+// Daytona's driver (the allocator at 0x1688).
+inline constexpr Model1Voices kDaytonaVoices{{0x1500, 0x1618}, 10, true};
+
 // A frontend's default settings for the game (the Vita's: platform/vita
 // VitaSettings; RESET DEFAULTS goes back to them). Volumes in percent.
 struct FrontendDefaults {
@@ -188,6 +202,8 @@ struct Game {
     // Model 1 I/O board with the light gun interface (837-12079, Virtua Cop):
     // player 1's gun range; the board reports the gun (IoBoard). None: no gun.
     GunRange gun{};
+    // Model 1 sound board: its driver's voice pools (nullptr: Daytona's).
+    const Model1Voices *model1_voices = nullptr;
 };
 
 

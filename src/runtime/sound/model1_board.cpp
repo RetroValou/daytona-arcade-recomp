@@ -7,11 +7,13 @@
 
 namespace snd {
 
-SoundBoard::SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2)
+SoundBoard::SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2,
+                       const rt::Model1Voices *voices)
     : program_(program), pcm1_rom_(pcm1), pcm2_rom_(pcm2),
       pcm1_(kPcmClock, pcm1_rom_.data(), uint32_t(pcm1_rom_.size())),
       pcm2_(kPcmClock, pcm2_rom_.data(), uint32_t(pcm2_rom_.size())) {
     if (program_.size() < 0x40000) throw rt::Fatal("sound program image missing or short (re-run the importer)");
+    voices_ = voices ? *voices : rt::kDaytonaVoices;
     cpu_.rom = program_.data();
     cpu_.dev = this;
     cpu_.reset();
@@ -104,8 +106,9 @@ uint8_t SoundBoard::read(uint32_t addr) {
     }
 }
 
-// The driver's voices: two pools of 28, ten bytes each, in its RAM at
-// 0xf01500 and 0xf01618. Byte 0 is zero when free, bit 3 the MultiPCM;
+// The driver's voices: two pools of 28 records (rt::Model1Voices: Daytona's
+// ten bytes each at 0xf01500 and 0xf01618, Virtua Cop's twelve at 0xf01500 and
+// 0xf01650). Byte 0 is zero when free, bit 3 the MultiPCM;
 // byte 1 the slot code it writes to the chip, byte 3 the owning channel
 // (the command's low nibble), byte 6 0xff for the engine layers' reserved
 // records, which never take a voice (the allocator wants 0) and carry chip
@@ -113,10 +116,11 @@ uint8_t SoundBoard::read(uint32_t addr) {
 // allocator at 0x1688, the slot select at 0x1652, a note's start at
 // 0xc22-0xd26.
 int SoundBoard::voice_channel(unsigned chip, uint8_t slot) const {
-    for (uint32_t pool : {0x1500u, 0x1618u})
-        for (uint32_t v = pool; v < pool + 28 * 10; v += 10) {
+    for (uint32_t pool : voices_.pool)
+        for (uint32_t v = pool; v < pool + 28 * voices_.stride; v += voices_.stride) {
             const uint8_t *voice = &cpu_.ram[v];
-            if (voice[0] && voice[6] != 0xff && (voice[0] >> 3 & 1) == chip && voice[1] == slot) return voice[3] & 15;
+            if (voice[0] && !(voices_.reserved_ff6 && voice[6] == 0xff) && (voice[0] >> 3 & 1) == chip && voice[1] == slot)
+                return voice[3] & 15;
         }
     return -1;
 }
