@@ -126,6 +126,18 @@ class Scsp {
 public:
     static constexpr uint32_t kClock = 22579200; // 45.1584 MHz / 2 on the Model 2A-CRX video board
     static constexpr uint32_t kRate = kClock / 512; // 44100 Hz
+    // Not MAME's, fixed by default (rules.md, 18 Oct 2026); -DM2_SCSP_MAME=ON
+    // builds MAME's output for comparisons. kSteppedDecay: decay and release
+    // advance by the hardware-tested steps of Yabause's newer SCSP (DecayStep)
+    // instead of MAME's times; kDspReturnPercent: the DSP's output (the reverb)
+    // in the mix, which at MAME's level covers the rest.
+#ifdef M2_SCSP_MAME
+    static constexpr bool kSteppedDecay = false;
+    static constexpr int kDspReturnPercent = 100;
+#else
+    static constexpr bool kSteppedDecay = true;
+    static constexpr int kDspReturnPercent = 25;
+#endif
 
     Scsp(ScspHost &host, uint8_t *ram); // ram: 0x80000 bytes, the 68000's view (big-endian words)
 
@@ -197,8 +209,14 @@ private:
             uint8_t lpctl, sbctl, isel, imxl;
             bool pcm8, sdir, stwinh, lpslnk, plain;
             int dsp_gain, left_gain, right_gain, ring_gain; // m_LPANTABLE / m_RPANTABLE entries
+            int decay_base; // DecayStep's rate without 2R: 2KRS + OCT + FNS bit 9 (0 for KRS 0xf)
         } dec;
         bool decoded; // zeroed with the slots (Scsp's constructor): decoded at first use
+        // DecayStep's state: samples since key-on, steps taken, the position in
+        // the rate's step row and the EG state it belongs to.
+        uint32_t eg_samples, eg_steps;
+        uint8_t eg_column;
+        int8_t eg_state;
     };
 
     ScspHost &host_;
@@ -272,6 +290,8 @@ private:
     void Compute_EG(SCSP_SLOT *slot);
     // Inlined into render()'s per-sample path (UpdateSlotPlain): a call per slot and sample.
     [[gnu::always_inline]] inline int EG_Update(SCSP_SLOT *slot);
+    [[gnu::always_inline]] inline int32_t EG_Apply(SCSP_SLOT *slot, int32_t sample);
+    int DecayStep(SCSP_SLOT *slot, uint32_t sample_index);
     uint32_t Step(SCSP_SLOT *slot);
     void Compute_LFO(SCSP_SLOT *slot);
     void StartSlot(SCSP_SLOT *slot);

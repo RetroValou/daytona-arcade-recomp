@@ -1,5 +1,33 @@
 # Handoff
 
+## SCSP: stepped note decay and the DSP at 25 %, fixed by default (2026-10-18)
+
+The user's choice after a listening test (files listed at the end), not a MAME or PCB
+measurement. snd::Scsp, constants in scsp.h, no runtime option:
+- kSteppedDecay: decay 1/2 and release by Yabause's newer SCSP steps
+  (Scsp::DecayStep, EG_Apply; MAME's attack kept). Rate = 2R + 2KRS + OCT +
+  FNS bit 9 (2R for KRS 0xf; precomputed per register write in
+  Decoded::decay_base), periods as powers of two (masks, no division: the
+  Vita's A9 has no divider). D2R 0 still decays (Yabause's rule; MAME holds).
+- kDspReturnPercent 25: the DSP's EFREG returns in the output mix.
+- -DM2_SCSP_MAME=ON (CMake option, root build): MAME's output again. rules.md
+  and the design doc (SCSP section) record the exception.
+A bug on the way: a sentinel -1 for "KRS 0xf" in decay_base collided with
+real negative bases (OCT 13, KRS 0: -3); found by comparing with the
+experiment's WAV. Checks: default build, m2run 4,000 frames of vf2_attract
+and srallyc_attract, WAV byte-identical to the listened files
+(extern/test_son/vf2_attract_decay_dsp25.wav, srallyc_attract_decay.wav,
+with the games' gain); -DM2_SCSP_MAME=ON: vf2 WAV md5 67e52193 as before the change, srallyc identical to the listened mame file.
+Listening files kept in extern/test_son (git-ignored):
+{vf2,srallyc}_attract_{mame,decay,old,both}.wav, vf2_attract_{mame,decay}_
+{dsp50,dsp25}.wav (old: Yabause's default SCSP model, no DSP; both: old with
+the stepped decay). Measured, before the games' gain (VF2 x1.5, Sega Rally
+x10): VF2 RMS -22.5 dBFS at DSP 100 %, -26.7 at 50 %, -29.5 at 25 %, -32.6
+without (old); decay alone 36.6 dB below the signal on VF2, 19.6 on Sega
+Rally. Sega Rally's attract does not use the DSP return (byte-identical at
+any level): to hear the 25 % on it, a race recording is needed.
+Not done: Vita build and console listening; a VF2 fight recording.
+
 ## VF2 sound: Yabause's SCSP compared with MAME's (2026-10-18)
 
 extern/yabause (https://github.com/Yabause/yabause, 7e38821, GPL-2: reference

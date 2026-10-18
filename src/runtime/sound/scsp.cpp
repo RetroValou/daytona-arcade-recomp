@@ -196,8 +196,10 @@ void Scsp::render(float *stereo, int n) {
             SCSP_SLOT *slot = m_Slots + i;
             if (EFSDL(slot)) {
                 uint16_t Enc = uint16_t((EFPAN(slot) << 0x8) | (EFSDL(slot) << 0xd));
-                smpl += (m_DSP.EFREG[i] * m_LPANTABLE[Enc]) >> SHIFT;
-                smpr += (m_DSP.EFREG[i] * m_RPANTABLE[Enc]) >> SHIFT;
+                const int32_t l = (m_DSP.EFREG[i] * m_LPANTABLE[Enc]) >> SHIFT;
+                const int32_t r = (m_DSP.EFREG[i] * m_RPANTABLE[Enc]) >> SHIFT;
+                if constexpr (kDspReturnPercent == 100) smpl += l, smpr += r;
+                else smpl += l * kDspReturnPercent / 100, smpr += r * kDspReturnPercent / 100;
             }
         }
 
@@ -366,6 +368,62 @@ inline int Scsp::EG_Update(SCSP_SLOT *slot) {
     return (slot->EG.volume >> EG_SHIFT) << (SHIFT - 10);
 }
 
+// The envelope on a slot's sample: MAME's, or with kSteppedDecay MAME's attack
+// then DecayStep's decay and release.
+inline int32_t Scsp::EG_Apply(SCSP_SLOT *slot, int32_t sample) {
+    if constexpr (kSteppedDecay) {
+        const uint32_t n = slot->eg_samples++;
+        if (slot->EG.state != SCSP_ATTACK) {
+            const int att = DecayStep(slot, n);
+            return att > 0x3bf ? 0 : (sample * m_EG_TABLE[0x3ff - att]) >> SHIFT;
+        }
+    }
+    if (slot->EG.state == SCSP_ATTACK) return (sample * EG_Update(slot)) >> SHIFT;
+    return (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
+}
+
+// Decay 1, decay 2 and release by steps, as Yabause's newer SCSP (scsp.c,
+// use_new_scsp; GPL-2, read for its hardware-tested rules, not copied): the
+// attenuation (0x3ff - EG.volume, 3/32 dB a unit) grows at most once a sample.
+// Effective rate = 2R + 2KRS + OCT + FNS bit 9 (2R alone for KRS 0xf), 0-0x3c.
+// Below 0x30 it steps by 1 when the samples since key-on are a multiple of the
+// current entry of its row (rate - 2: the row's kind is (rate - 2) & 3, its
+// periods halve every four rates); from 0x30 every other sample, by 1-8 as the
+// steps taken so far select. Over the 0x3bf units it decays MAME's times are
+// ~7 % shorter (HANDOFF.md, 18 Oct 2026). Returns the attenuation; past 0x3bf
+// the slot is silent, and stopped in release.
+int Scsp::DecayStep(SCSP_SLOT *slot, uint32_t n) {
+    // log2 of the periods at rate 2-5, 0 ends a row
+    static constexpr uint8_t kRows[4][8] = {{13, 12, 12}, {13, 12, 12, 12, 12, 12, 12}, {12}, {12, 12, 12, 11, 11}};
+    static constexpr uint8_t kAdd[13][4] = {{1, 1, 1, 1}, {2, 1, 1, 1}, {2, 1, 2, 1}, {2, 2, 2, 1}, {2, 2, 2, 2},
+                                            {4, 2, 2, 2}, {4, 2, 4, 2}, {4, 4, 4, 2}, {4, 4, 4, 4}, {8, 4, 4, 4},
+                                            {8, 4, 8, 4}, {8, 8, 8, 4}, {8, 8, 8, 8}};
+    if (slot->eg_state != slot->EG.state) slot->eg_state = int8_t(slot->EG.state), slot->eg_column = 0;
+    int att = 0x3ff - (slot->EG.volume >> EG_SHIFT);
+    if (att < 0x3bf) {
+        const int R = slot->EG.state == SCSP_DECAY1 ? int(D1R(slot)) : slot->EG.state == SCSP_DECAY2 ? int(D2R(slot)) : int(RR(slot));
+        const int rate = std::clamp(slot->dec.decay_base + 2 * R, 0, 0x3c);
+        const int add = kAdd[rate <= 0x30 ? 0 : rate - 0x30][slot->eg_steps & 3];
+        bool step = false;
+        if (n != 0 && rate >= 2) {
+            if (rate >= 0x30) step = (n & 1) == 0;
+            else {
+                const uint8_t *row = kRows[(rate - 2) & 3];
+                const uint32_t period = 1u << (row[slot->eg_column] - ((rate - 2) >> 2));
+                if ((n & (period - 1)) == 0) {
+                    step = true;
+                    if (++slot->eg_column == 8 || row[slot->eg_column] == 0) slot->eg_column = 0;
+                }
+            }
+        }
+        if (step) ++slot->eg_steps, att += add;
+        if (slot->EG.state == SCSP_DECAY1 && (att >> 5) >= int(DL(slot))) slot->EG.state = SCSP_DECAY2;
+        slot->EG.volume = (0x3ff - att) << EG_SHIFT;
+    }
+    if (att > 0x3bf && slot->EG.state == SCSP_RELEASE) StopSlot(slot, 0);
+    return att;
+}
+
 uint32_t Scsp::Step(SCSP_SLOT *slot) {
     int octave = (OCT(slot) ^ 8) - 8 + SHIFT - 10;
     uint32_t Fn = FNS(slot) + (1 << 10);
@@ -390,6 +448,7 @@ void Scsp::StartSlot(SCSP_SLOT *slot) {
     slot->EG.volume = 0x17F << EG_SHIFT;
     slot->Prev = 0;
     slot->Backwards = 0;
+    slot->eg_samples = slot->eg_steps = 0, slot->eg_column = 0, slot->eg_state = -1;
 
     Compute_LFO(slot);
 }
@@ -745,6 +804,7 @@ void Scsp::DecodeSlot(SCSP_SLOT *slot) {
     d.left_gain = m_LPANTABLE[direct];
     d.right_gain = m_RPANTABLE[direct];
     d.ring_gain = m_LPANTABLE[uint16_t(tl | (0x7 << 0xd))];
+    d.decay_base = KRS(slot) == 0xf ? 0 : int(KRS(slot)) * 2 + int((FNS(slot) >> 9) & 1) + (int(OCT(slot) ^ 8) - 8);
     slot->decoded = true;
 }
 
@@ -820,10 +880,7 @@ inline int32_t Scsp::UpdateSlotPlain(SCSP_SLOT *slot) {
         }
     }
 
-    if (!d.sdir) {
-        if (slot->EG.state == SCSP_ATTACK) sample = (sample * EG_Update(slot)) >> SHIFT;
-        else sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
-    }
+    if (!d.sdir) sample = EG_Apply(slot, sample);
 
     if (!d.stwinh) *m_RBUFDST = int16_t((sample * d.ring_gain) >> (SHIFT + 1));
 
@@ -940,8 +997,7 @@ int32_t Scsp::UpdateSlot(SCSP_SLOT *slot) {
             sample >>= SHIFT;
         }
 
-        if (slot->EG.state == SCSP_ATTACK) sample = (sample * EG_Update(slot)) >> SHIFT;
-        else sample = (sample * m_EG_TABLE[EG_Update(slot) >> (SHIFT - 10)]) >> SHIFT;
+        sample = EG_Apply(slot, sample);
     }
 
     if (!STWINH(slot)) {

@@ -148,6 +148,12 @@ option(M2_SPIN_SKIP "Skip whole passes of the game's wait loop (same results)" O
 if(M2_SPIN_SKIP)
     target_compile_definitions(runtime PUBLIC M2_SPIN_SKIP=1)
 endif()
+# The SCSP's output as MAME computes it (snd::Scsp::kSteppedDecay, kDspReturnPercent):
+# for comparisons with MAME. Off by default: stepped decay, the DSP at 25 %.
+option(M2_SCSP_MAME "SCSP sound identical to MAME's (no stepped decay, the DSP at 100 %)" OFF)
+if(M2_SCSP_MAME)
+    target_compile_definitions(runtime PUBLIC M2_SCSP_MAME=1)
+endif()
 # i960 profiling (src/runtime/cpu/i960_profile.h; recompile.py --i960-profile): needs i960
 # code generated with m2recomp --profile. m2run prints the report.
 option(M2_I960_PROFILE "i960 time, work, bus calls and hot blocks (m2recomp --profile code)" OFF)
