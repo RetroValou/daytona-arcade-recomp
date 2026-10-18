@@ -1,5 +1,27 @@
 # Handoff
 
+## Virtua Cop 2 and VF2: the code after inline texts (2026-10-18)
+
+The user, on the console: Virtua Cop 2 stops on 0x2faac (no code) when the
+player dies and continues (coin or Start). MAME harvests (a game without
+shooting and coin + Start every 300 frames, 14,000 frames; one left to game
+over) found 0x2faac and 0x2fad0, both from 0x4408 bx (r14), and 0x485e0 (a
+bx (g14) return). 0x4350-0x4408 is a print routine called as balx
+0x43xx,r14 with its text inline after the call; it skips the words up to
+the first one <= 0xffffff and returns past them, so the code after each text
+is reached only from there and only when that text is shown. Every return
+point computed from the program ROM (193 calls, 187 new seeds; all decode as
+code), plus 0x485e0: seeds/vcop2.txt 1,591. Checked: the continue run (14,000
+frames: CONTINUE?, play resumes, dies, continues again) and the game-over run
+go through on the PC.
+VF2 has the same routines (0x93c4-0x947c, 461 calls; and 0x4ec00, returning
+8 bytes past the call, 42 calls): 488 new seeds (15 were already seeds) and
+0xa440 from seed_scan.py: seeds/vf2.txt 1,858. vf2_fight 4,000 frames hash
+and WAV identical before and after; 8,000 frames of attract run through.
+Daytona, Sega Rally and Virtua Cop have no such return (no bx (r14)).
+For a new game: grep the disassembly for bx (r14) after ld (r14) and compute
+the returns the same way.
+
 ## POLYGON ORDER hybrid: one depth band per Model 2 window (2026-10-18)
 
 The user, on the console: HYBRID makes some UI elements vanish. Measured on
