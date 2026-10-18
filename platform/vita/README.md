@@ -196,8 +196,11 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   intersecting polygons do not cut, as on the arcade board. Polygons are grouped by
   (clip, shader, texture), one draw call per group, as indexed quads.
 * Option POLYGON ORDER: HYBRID (off by default: ARCADE) draws with a second set of the
-  7 programs, compiled with `upgrade_z_depth` (`render/shaders.cpp`): each vertex's
-  depth is the rank, weighted 0.9999 - `update_z_depth_LOCAL_WEIGHT`, plus a nearness
+  7 programs, compiled with `upgrade_z_depth` (`render/shaders.cpp`). Each Model 2
+  window keeps its own band of the depth range (`kZDepthBands`, 32), as the board draws
+  a window over the ones before it, so a game's UI windows stay in front; the CPU codes
+  each polygon's depth as 1 + band + its rank in the window (`model2_polygons.cpp`).
+  Inside the band, each vertex's depth is the rank, weighted 0.9999 - `update_z_depth_LOCAL_WEIGHT`, plus a nearness
   from its distance w on a log scale, weighted `update_z_depth_LOCAL_WEIGHT` (1 at w 1,
   0 at e^`update_z_depth_SCALE`), so shapes that cross (a car's shadow and its wheel)
   cut by distance while coplanar ones keep the rank order. The 2D layers keep their
@@ -205,7 +208,8 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   game's (`Game::update_z_depth_local_weight`, `update_z_depth_scale`: 0.9 / 12.5,
   Sega Rally 0.91 / 12.5, Daytona 6.0, VF2 4.5, Virtua Cop 7.2, Virtua Cop 2 7.3, from each game's w
   99.9th percentile on the PC). The switch picks the set at draw time
-  (`gl_set_upgrade_z_depth`); the first boot compiles 14 programs.
+  (`gl_set_upgrade_z_depth`, also read by the CPU coding); the first boot compiles
+  14 programs.
 * System 24 layers are placed by the same depth buffer: foreground before the polygons,
   background after them, so hidden pixels are rejected before their shader runs
   (`k2DLayersByDepth` in `render/gl_internal.h`; false restores the painter order,

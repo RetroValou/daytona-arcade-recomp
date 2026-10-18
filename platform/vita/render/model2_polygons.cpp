@@ -134,8 +134,28 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
     if (!polys.empty()) {
         const auto &order = g.order.sort(polys); // first = drawn first = wins
         g.depth.resize(polys.size());
-        const float step = 1.0f / float(polys.size() + 1);
-        for (size_t rank = 0; rank < order.size(); ++rank) g.depth[order[rank].index] = 1.0f - float(rank + 1) * step;
+        if (!g.upgrade_z_depth) {
+            const float step = 1.0f / float(polys.size() + 1);
+            for (size_t rank = 0; rank < order.size(); ++rank) g.depth[order[rank].index] = 1.0f - float(rank + 1) * step;
+        } else {
+            // The hybrid depth (the Vita option): a Model 2 window is drawn over the ones
+            // before it, so each keeps its own band and the shader mixes rank and distance
+            // inside it only. Coded as 1 + band + the rank inside the band, in (0, 1),
+            // larger in front (kVertexShader decodes it). The order runs window by window,
+            // front (highest) first: the front window gets band kZDepthBands - 1; past
+            // kZDepthBands windows, the backmost share band 0.
+            for (size_t first = 0, run = 0; first < order.size(); ++run) {
+                const unsigned band = run < kZDepthBands - 1 ? unsigned(kZDepthBands - 1 - run) : 0u;
+                size_t end = first + 1;
+                while (end < order.size() &&
+                       (band == 0 || polys[order[end].index].window == polys[order[end - 1].index].window))
+                    ++end;
+                const float step = 1.0f / float(end - first + 1);
+                for (size_t rank = first; rank < end; ++rank)
+                    g.depth[order[rank].index] = 1.0f + float(band) + (1.0f - float(rank - first + 1) * step);
+                first = end;
+            }
+        }
     }
     last_sort_us_ = now_us() - sort_begin;
 

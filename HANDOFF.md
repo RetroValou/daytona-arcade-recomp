@@ -1,5 +1,32 @@
 # Handoff
 
+## POLYGON ORDER hybrid: one depth band per Model 2 window (2026-10-18)
+
+The user, on the console: HYBRID makes some UI elements vanish. Measured on
+the PC (temporary probe in Video::screen_update, polygons and w range per
+window every 60th frame; removed): the UI lives in its own windows above the
+3D, e.g. Virtua Cop in play w1 ~1,500 polygons (w 10-470), w4 13 polygons at
+w 1,170-1,230, w5 2 at w 1; Sega Rally w2-w4 (1-24 polygons); Virtua Cop 2
+w3-w6; Daytona w3 (2). The window only counted through the rank, which
+HYBRID weights 10 %: w4's far distance (nearness ~0) sent it behind the 3D.
+Fix, the user's choice among the ones proposed: in HYBRID only, the CPU
+(model2_polygons.cpp) codes each polygon's depth as 1 + band + its rank in
+its window (in (0, 1)); the order runs window by window, front first, the
+front window band 31 (kZDepthBands 32; past 32 windows the backmost share
+band 0). kVertexShader decodes (floor), mixes rank and nearness as before
+inside the band, clamped to [0.001, 0.999] of it, and scales by 0.9999/32;
+the 2D layers (0, 0.99999994) are below 1 and untouched. ARCADE: the same
+depths and shaders as before (one bool test a frame).
+Effect: each window keeps the arcade's priority over the others; the hybrid
+mixes inside a window only. Sega Rally's road, cars and shadows are all in
+w1 (unchanged); in VF2 the stage (w6) and the fighters (w7) no longer cut
+each other, as on the board.
+Not taken: the UI alone at 0.9999 (no UI flag on the Model 2; VF2's top
+window holds the fighters); "windows above the largest one are UI" (proposed,
+then the user chose the per-window bands).
+Checked: Vita host tests 38/38. Not checked: the shader compile and the image
+on the console (no GLSL validator here).
+
 ## Virtua Cop 2 (vcop2; Model 2A-CRX), one player (2026-10-18)
 
 Added as the other games: src/games/vcop2.cpp, scripts/games.py (game

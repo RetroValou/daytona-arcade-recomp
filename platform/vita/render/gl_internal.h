@@ -40,7 +40,8 @@ inline float sy(float y) { return y * kScale; }
 // Larger = in front (test GL_GEQUAL, cleared to 0, never cleared during the frame). The
 // vertex shader outputs z = d * w, so it is d again after the division. A polygon is
 // entirely in front of or behind another one: intersecting polygons do not cut, as on the
-// arcade board.
+// arcade board. With the hybrid depth option (upgrade_z_depth) the CPU codes it per window
+// instead, 1 + band + rank in the window, and kVertexShader turns it into a depth.
 //
 // 2D layers sorted by the same depth buffer instead of by drawing order (every polygon
 // depth is strictly inside (0, 1)). Drawing order:
@@ -64,6 +65,9 @@ constexpr bool k2DLayersByDepth = true;
 constexpr int kWorker2DCore = DAYTONA_VITA_2D_CORE;
 constexpr float kForegroundDepth = 0.99999994f; // largest float below 1: z stays inside w
 constexpr float kBackgroundDepth = 0.0f;        // glClear writes 0 (glClearDepthf(0))
+// The hybrid depth (the Vita option POLYGON ORDER): the polygons' depth range cut into
+// this many equal bands, one per Model 2 window (model2_polygons.cpp, kVertexShader).
+constexpr unsigned kZDepthBands = 32;
 
 // vitaGL's glDrawArrays reads a fixed index table of 0xC000 entries (MAX_IDX_NUMBER):
 // never draw more vertices in one call. Multiple of 3.
@@ -121,7 +125,7 @@ struct Vertex {
     float x, y, w;  // x * w, y * w in display pixels, w (1 for 2D quads)
     float u, v;     // texture coordinates
     float p;        // palette row coordinate (Model 2 textures only)
-    float d;        // depth in [0, 1], larger = in front (Model 2 priority, see above)
+    float d;        // depth in [0, 1], larger = in front (Model 2 priority, see above); hybrid: coded, >= 1
     uint32_t color; // bytes r, g, b, a
 };
 static_assert(sizeof(Vertex) == 32, "attribute offsets below rely on this layout");

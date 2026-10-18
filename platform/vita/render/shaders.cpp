@@ -27,23 +27,30 @@ varying vec3 v_pos;
 void main() {
     float w = a_pos.z;
 #ifdef upgrade_z_depth
-    // Test: a hybrid depth. Model 2 polygons only: the 2D layers sit at exactly
-    // 0 (background) or 0.99999994 (HUD, w 1) and keep it.
-    //  - macro order: the Model 2 rank (a_uvpd.w) keeps 90 % of the range;
-    //  - local slope: the vertex's nearness from its distance w (Sega Rally: w 1
-    //    to 2e5, ~15 for the car) on a log scale, 10 % of the range (~100-200
-    //    ranks): nearer (smaller w) in front, coplanar polygons (same w) still
-    //    ordered by rank. The result stays below the HUD and inside (0, 1).
-    // update_z_depth_LOCAL_WEIGHT: the one setting, the local slope's share of the range
-    // (0: the Model 2 order alone, larger: closer to a true z-buffer), the
-    // game's (rt::Game::update_z_depth_local_weight, defined by build_program); the
-    // rank gets the rest, 0.9999 - update_z_depth_LOCAL_WEIGHT, so the sum never passes the HUD.
+    // The hybrid depth (the Vita option POLYGON ORDER). Model 2 polygons only,
+    // coded by the CPU as 1 + their window's band + their rank inside it (in
+    // (0, 1), larger in front; model2_polygons.cpp); the 2D layers sit at
+    // exactly 0 (background) or 0.99999994 (HUD, w 1) and keep it. Each window
+    // keeps its band of the range, as the Model 2 draws a window over the ones
+    // before it (its UI stays in front); inside the band:
+    //  - macro order: the rank, weighted update_z_depth_RANK_WEIGHT;
+    //  - local slope: the vertex's nearness from its distance w on a log scale,
+    //    weighted update_z_depth_LOCAL_WEIGHT: nearer (smaller w) in front,
+    //    coplanar polygons (same w) still ordered by rank.
+    // update_z_depth_LOCAL_WEIGHT: the one setting (0: the Model 2 order alone,
+    // larger: closer to a true z-buffer), the game's
+    // (rt::Game::update_z_depth_local_weight, defined by build_program); the
+    // rank gets the rest, 0.9999 - update_z_depth_LOCAL_WEIGHT. The result stays
+    // inside its band, below the HUD and above the background.
     const float update_z_depth_RANK_WEIGHT = 0.9999 - update_z_depth_LOCAL_WEIGHT;
     float hybrid_depth = a_uvpd.w;
-    if (hybrid_depth > 0.0 && hybrid_depth < 0.9999) {
+    if (hybrid_depth >= 1.0) {
+        float band = floor(hybrid_depth);
+        float rank = hybrid_depth - band;
         // 1 at w 1, 0 at the game's farthest distance (update_z_depth_SCALE: its log)
         float nearness = clamp(1.0 - log(max(w, 1.0)) * (1.0 / update_z_depth_SCALE), 0.0, 1.0);
-        hybrid_depth = clamp(hybrid_depth * update_z_depth_RANK_WEIGHT + nearness * update_z_depth_LOCAL_WEIGHT, 0.00001, 0.9999);
+        float local = clamp(rank * update_z_depth_RANK_WEIGHT + nearness * update_z_depth_LOCAL_WEIGHT, 0.001, 0.999);
+        hybrid_depth = (band - 1.0 + local) * (0.9999 / update_z_depth_BANDS);
     }
     gl_Position = vec4(a_pos.x * (2.0 / SCREEN_W) - w, w - a_pos.y * (2.0 / SCREEN_H), hybrid_depth * w, w);
 #else
@@ -141,8 +148,9 @@ GLuint build_program(const ProgramDef &def, bool upgrade_z_depth) {
                   "%s" // the hybrid depth variant (the Vita option, gl_set_upgrade_z_depth)
                   "#define update_z_depth_LOCAL_WEIGHT %.4f\n"
                   "#define update_z_depth_SCALE %.4f\n"
+                  "#define update_z_depth_BANDS %.1f\n" // kZDepthBands: one per Model 2 window
                   "#define SCREEN_W %.1f\n#define SCREEN_H %.1f\n",
-                  upgrade_z_depth ? "#define upgrade_z_depth\n" : "", local_weight, scale, double(kDisplayW), double(kDisplayH));
+                  upgrade_z_depth ? "#define upgrade_z_depth\n" : "", local_weight, scale, double(kZDepthBands), double(kDisplayW), double(kDisplayH));
     const GLuint vs = compile(GL_VERTEX_SHADER, common, def.defines, kVertexShader, def.name);
     const GLuint fs = vs ? compile(GL_FRAGMENT_SHADER, common, def.defines, kFragmentShader, def.name) : 0;
     GLuint program = 0;
