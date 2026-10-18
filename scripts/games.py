@@ -122,10 +122,13 @@ SETS = {
     # Original Model 2 like Daytona (Model 1 sound board), its I/O board with
     # the light gun interface (MAME model1io2). One player: the trigger on IN1
     # 0x01, the gun's aim in MAME's P1_X/P1_Y units (gunx/guny in scripts/inputs).
+    # --fast-inaccuracy checked on the PC: vcop_shoot, a scripted 9,000-frame game
+    # and 8,000 frames of attract run through (no new seed); shots and the reload
+    # as with the exact code, not the same frames (timing).
     "vcop": {
         "game": "virtuacop", "label": "Revision B",
         "roms": ["vcop"], "board": "model2o", "recomp": [], "sndrecomp": [],
-        "vita_fast": (), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
         "full_range": False,
     },

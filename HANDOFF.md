@@ -61,8 +61,13 @@ empties shot by shot and refills on the off-screen shot.
 Unchanged elsewhere: daytona93 race_basic 3,000 and vf2_fight 4,000 frames,
 counts, hashes and WAV identical before and after; ctest 23/23 (vcop);
 Vita host tests 15/15 (test_vita_controls gains the gun); Vita compile check.
-Not done: the Vita VPK on the console; vita_fast (--fast-inaccuracy) not
-checked on vcop; the 10 screen differences.
+--fast-inaccuracy (games.py vita_fast): recompile.py --fast_inaccuracy on the
+PC, 13,673 blocks; vcop_shoot 2,400, the scripted game 9,000 and attract 8,000
+frames run through with no new seed; the revolver empties and refills as with
+the exact code (frames differ: interrupt timing).
+MAME needs hd44780_a00.bin only for itself (run_trace.sh, m2_check.sh); the
+recompilation and the game (PC, Vita) read vcop.zip alone.
+Not done: the Vita VPK on the console; the 10 screen differences.
 
 ## SCSP: decay steps only when due, volumes folded into the gains (2026-10-18)
 
