@@ -35,6 +35,16 @@ struct Inputs {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20; // ADC values, 0x20-0xe0
     uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;       // switches, active low (MAME daytona IN0/IN1/IN2 layout)
     uint8_t handbrake = 0;                            // hand brake (analog 0x00-0xff); 0: off
+    // Player 1's light gun (games with Game::gun): where it points, in the
+    // game's units (MAME's P1_X/P1_Y); at the range's edge it is off the screen.
+    uint16_t gun_x = 0x17c, gun_y = 0x0e6;
+};
+
+// A light gun's range (MAME's PORT_MINMAX for P1_X/P1_Y): the values at the
+// screen's edges. All zero: no light gun.
+struct GunRange {
+    uint16_t x_min, x_max, y_min, y_max;
+    bool present() const { return x_max != 0; }
 };
 
 // One ROM file: MAME's ROM_LOAD32_WORD (16-bit words into bytes 0-1, offset
@@ -149,9 +159,10 @@ struct Game {
     // SCSP board: its DSP program, recompiled (tools/m2dsprecomp), or none.
     ScspDspProgram dsp{};
     // Wait loops of the game's whose passes the board skips (M2_SPIN_SKIP,
-    // M2Board::spin_skip): each pass starts with an ldob of a work RAM byte at
-    // `ip`. Between two lockstep events (interrupts, board callbacks) nothing
-    // changes that byte, so the passes up to just before the next event (and,
+    // M2Board::spin_skip): each pass starts with an ldob of a work RAM byte (or,
+    // WordBitsCount, an ld of a device register) at `ip`. Between two lockstep
+    // events (interrupts, board callbacks) nothing changes that value, so the
+    // passes up to just before the next event (and,
     // with a timer, before the pass that would leave on it) are skipped by
     // moving the instruction count on: the state is the one those passes leave.
     // A wrong entry changes the game silently: check a new one with m2run's
@@ -163,13 +174,20 @@ struct Game {
             ByteZeroTimer, // loops while the byte is 0 and timer `timer`'s count, masked to
                            // 20 bits and read `timer_at` instructions into the pass, is not
                            // 0xfffff and above register `reg`
+            WordBitsCount, // loops while the 32-bit device word ANDed with `mask` equals
+                           // register `reg`, adding 1 to register `counter` each pass
         } kind = None;
-        uint32_t ip = 0, addr = 0; // the pass's first instruction (the ldob) and the byte
+        uint32_t ip = 0, addr = 0; // the pass's first instruction (the ldob/ld) and the byte/word
         uint8_t pass = 0;          // instructions in a pass
         uint8_t reg = 0;           // Cpu::m_r index (r13: 13, g0: 16)
         uint8_t timer = 0, timer_at = 0;
+        uint32_t mask = 0;         // WordBitsCount: the bits the loop compares
+        uint8_t counter = 0;       // WordBitsCount: the register the passes count in
     };
     SpinWait spin[2]{}; // unused entries: None
+    // Model 1 I/O board with the light gun interface (837-12079, Virtua Cop):
+    // player 1's gun range; the board reports the gun (IoBoard). None: no gun.
+    GunRange gun{};
 };
 
 

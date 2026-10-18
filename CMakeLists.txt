@@ -133,6 +133,7 @@ add_library(runtime STATIC
     src/games/daytona.cpp
     src/games/srallyc.cpp
     src/games/vf2.cpp
+    src/games/vcop.cpp
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")

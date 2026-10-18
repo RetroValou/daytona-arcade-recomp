@@ -98,6 +98,15 @@ Each game's controls come from its record (`Game::control_list`, `src/games/*.cp
 | - | - | Punch / Kick / Guard | Cross / Circle / Square |
 | Coin / start | Coin / start | Coin / start | Select / Start |
 
+Virtua Cop (one player) is played on the front touch screen: a touch on the
+picture aims there and pulls the trigger; a touch on the black margins left or
+right of it points the gun off the screen and pulls the trigger, which reloads.
+Cross is the trigger too (at the last aim). The touch panel's coordinates are
+scaled to the screen from its own display corners (`sceTouchGetPanelInfo`:
+not exactly twice the screen), the picture's place from `render/gl_internal.h`
+(496x384 scaled to 544 lines, centred); `rt::aim_gun` turns a picture position
+into the gun's units (`Game::gun`, MAME's range).
+
 Fixed: Start+Select opens the menu; Select+Triangle is the cabinet's Test switch,
 Select+Square its Service switch (in test mode Cross gives VR1, menu next, and Start
 selects); plain Select inserts a coin on release. The Controls page rebinds each of

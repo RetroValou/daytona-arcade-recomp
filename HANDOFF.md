@@ -1,5 +1,69 @@
 # Handoff
 
+## Virtua Cop (vcop, Revision B; original Model 2), one player (2026-10-18)
+
+New game `virtuacop` (scripts/games.py; build_virtuacop/, Vita virtuacop.vpk,
+title ID VCOP00096, images platform/vita/logo_livearea/virtuacop/):
+src/games/vcop.cpp, seeds/vcop.txt (826), seeds/vcop_snd.txt (136),
+scripts/inputs/vcop_shoot.txt. Daytona's board (Model 1 sound board, the I/O
+board behind the dual-port RAM): the program is two ROM pairs (512 KB), no
+main_data mirror, the TGP program in the program ROM at 0x70c0 (2,024 words,
+CRC 0x77D05CE6: MAME's copro_tgp_program after boot, Lua dump).
+
+Light gun. MAME runs vcop with a Model 1 I/O 2 board (model1io2, BIOS
+epr-17181, its own CPU). MAME needs hd44780_a00.bin (the I/O board's LCD
+font) to start vcop: a zero-filled 4 KB stub in a scratch rompath folder
+(ROMPATH="roms;stub") is enough (bad CRC warning; the LCD is cosmetic). The
+i960's DPRAM traffic (Lua taps, 1,500 frames): the same protocol as Daytona's
+board (write 1 at 0x20, poll it back to 0: 4.9 M reads), then reads 0x08-0x0a
+(IN0-2), 0x0e (0x0f: the board's DIP switches), 0x0f, 0x11, and 0x80-0x88.
+Moving MAME's P1_X/P1_Y and dumping the DPRAM: 0x80-0x81 player 1's Y,
+0x82-0x83 X (16 bits LE), 0x84-0x87 player 2's, 0x88 off-screen bits (1, 2).
+IoBoard::latch_gun writes them (Game::gun: player 1's range, MAME's
+PORT_MINMAX 0x083-0x276 x 0x024-0x1a9; the off-screen bit by MAME's rule:
+within 5 % of an edge); player 2 at MAME's defaults (one player only); bytes
+0-7 0xff (no ADC), in1 | 0x70 (Daytona's gear bits unused). Controls:
+Control::Trigger (IN1 0x01); rt::Inputs::gun_x/gun_y; rt::aim_gun maps a
+pointer in the 496x384 picture to the range, the margins to the left edge
+(off screen: a shot there reloads). Vita: the front touch screen (scaled from
+sceTouchGetPanelInfo's display corners, not a fixed x2; the picture at 544/384
+scale, centred), a touch fires, Cross too (at the last aim); PC: the mouse
+aims, left button fires, right button reloads (src/app/main.cpp mouse_gun).
+m2run scripts: gunx, guny, trigger; make_input.py: P1_X/P1_Y; the m2trace
+plugin records/replays :P1_X/:P1_Y.
+
+Wait loops. The vblank wait 0x9124-0x9137 (89 % of MAME's interrupts):
+ld 0x98000c (videoctl), counts its passes in g0 (stored at 0x5016b4, read
+only by 0x2760, a load meter nothing calls), loops while the frame bit is
+unchanged: Game::idle (1,800 frames of attract: 273 M -> 47.6 M i960
+instructions, same last screen hash) and M2_SPIN_SKIP with a new kind,
+SpinWait::WordBitsCount (a 32-bit device read at `ip`, `mask` compared with
+`reg`, the skipped passes added to `counter`; hooked on the Dev read in
+read32): 4.1 M of the 47.6 M skipped, frames identical to the run without it.
+
+Seeds. MAME harvest (run_trace.sh): 3,600 and 8,000 frames of attract and a
+scripted 9,000-frame game (shots across a grid, reloads), then seed_scan.py.
+Function pointers in main_data (0x33250 at 0x86ac64) sit after a ret and
+zero padding (16-byte alignment): seed_scan's data-ROM rule now skips up to
+3 zero words before the ret. Sound: the 68000 dispatches commands through
+"movea.l #$f4e,A5; lsl.l #2,D2; jmp (A5,D2.l)": 128 jmp/bra entries
+0xf4e-0x114a, all seeded, plus 8 starts from M2TRACE_SNDPCS.
+
+Checked against MAME (SET=vcop scripts/m2_check.sh, ROMPATH with the stub;
+traces/hdr_vcop.m2in): attract 600 frames: m2native, m2replay, m2tgpcheck,
+m2sndcheck MATCH (95.8 M instructions); vcop_shoot 2,400 frames (stage 2,
+four shots, a reload): m2native MATCH (391.8 M instructions, 92.9 M device
+events incl. the gun's DPRAM reads, 2,443 interrupts), TGP 28.8 M, 1.07 M
+polygons, 3D 775/775, sound 31.9 M MATCH; screen 2,386/2,396 (10 composed
+frames differ from frame 135, as in the attract: not looked at; MAME's own
+picture is not exact for this game, per the user). m2run: the revolver
+empties shot by shot and refills on the off-screen shot.
+Unchanged elsewhere: daytona93 race_basic 3,000 and vf2_fight 4,000 frames,
+counts, hashes and WAV identical before and after; ctest 23/23 (vcop);
+Vita host tests 15/15 (test_vita_controls gains the gun); Vita compile check.
+Not done: the Vita VPK on the console; vita_fast (--fast-inaccuracy) not
+checked on vcop; the 10 screen differences.
+
 ## SCSP: decay steps only when due, volumes folded into the gains (2026-10-18)
 
 The stepped decay (939af4b) ran DecayStep for every slot and sample, and

@@ -44,6 +44,13 @@ Define one `extern const rt::Game <set>_game = {...};` per set
   `INPUT_PORTS(<set>)`.
 - `link`: whether it has the communication board. `companion`: the game's
   other set that one Vita package can switch to, or nullptr.
+- `gun` (original Model 2, light gun I/O board): player 1's gun range, MAME's
+  `PORT_MINMAX` of its P1_X/P1_Y ports (Virtua Cop). The frontends aim it with a
+  pointer; the board reports it (`IoBoard::latch_gun`).
+- `spin` (optional, `M2_SPIN_SKIP`): the game's wait loops whose passes the
+  board can skip: a work RAM byte (`ByteIsReg`, `ByteZeroTimer`) or a device
+  register whose passes are counted in a register (`WordBitsCount`, Virtua
+  Cop). Check one with m2run's dumps against the same run without it.
 
 Then add the record to `kGames` in `src/games/games.cpp`, and add the file to
 the runtime's sources in `CMakeLists.txt`, `platform/vita/CMakeLists.txt` (the

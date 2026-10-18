@@ -159,6 +159,24 @@ int fail(const char *what) {
     return app::startup_error(what);
 }
 
+// A light gun game (rt::Game::gun): the mouse aims at where it points in the
+// game's picture (letterboxed in the window as the frame is shown); the left
+// button fires, the right button fires off the screen (a reload), as does the
+// left button on the black margins.
+void mouse_gun(rt::Inputs &in, const rt::GunRange &gun, SDL_Window *window, int screen_w, int screen_h) {
+    float mx = 0.f, my = 0.f;
+    const SDL_MouseButtonFlags buttons = SDL_GetMouseState(&mx, &my);
+    int ww = 0, wh = 0;
+    if (!SDL_GetWindowSize(window, &ww, &wh) || ww <= 0 || wh <= 0) return;
+    const float scale = std::min(float(ww) / float(screen_w), float(wh) / float(screen_h));
+    const float x = (mx - (float(ww) - float(screen_w) * scale) * 0.5f) / scale - float(screen_w - rt::GameLoop::kWidth) * 0.5f;
+    const float y = (my - (float(wh) - float(screen_h) * scale) * 0.5f) / scale;
+    const bool reload = (buttons & SDL_BUTTON_RMASK) != 0;
+    const rt::GunAim a = rt::aim_gun(reload ? -1.f : x, reload ? -1.f : y, gun.x_min, gun.x_max, gun.y_min, gun.y_max);
+    in.gun_x = a.x, in.gun_y = a.y;
+    if (buttons & (SDL_BUTTON_LMASK | SDL_BUTTON_RMASK)) in.in1 &= uint8_t(~0x01);
+}
+
 } // namespace
 
 // Windows builds daytona as a GUI program, which has no console of its own:
@@ -507,6 +525,7 @@ int main(int argc, char **argv) {
             rt::GameLoop::set_draw_distance(cfg.draw_distance);
             for (int frames = pacer.frames(now); frames > 0; --frames) {
                 rt::Inputs inputs = cfg.controls.sample(SDL_GetKeyboardState(nullptr), devices);
+                if (rt::game().gun.present()) mouse_gun(inputs, rt::game().gun, window, screen_w, H);
                 if (cfg.hold_test != test_hold.armed()) cfg.hold_test ? test_hold.arm() : test_hold.cancel();
                 if (test_hold.apply(game->frames(), inputs.in0)) cfg.hold_test = false; // held: the box clears
                 game->run_frame(inputs);

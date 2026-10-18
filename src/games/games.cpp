@@ -16,7 +16,7 @@
 namespace rt {
 
 // Defined in each game's file (constant-initialized: safe from any static initializer).
-extern const Game daytona93_game, daytona_game, srallyc_game, vf2_game;
+extern const Game daytona93_game, daytona_game, srallyc_game, vf2_game, vcop_game;
 
 namespace {
 const Game *const kGames[] = {
@@ -24,6 +24,7 @@ const Game *const kGames[] = {
     &daytona_game,
     &srallyc_game,
     &vf2_game,
+    &vcop_game,
 };
 } // namespace
 

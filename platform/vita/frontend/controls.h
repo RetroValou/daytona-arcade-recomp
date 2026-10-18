@@ -12,12 +12,23 @@ enum Button : uint32_t {
     Up = 1u << 4, Down = 1u << 5, Left = 1u << 6, Right = 1u << 7,
     L = 1u << 8, R = 1u << 9, Start = 1u << 10, Select = 1u << 11
 };
-struct Pad { uint32_t buttons = 0; uint8_t lx = 128, ry = 128, ly = 128; }; // ly: a joystick's up/down
+struct Pad {
+    uint32_t buttons = 0;
+    uint8_t lx = 128, ry = 128, ly = 128; // ly: a joystick's up/down
+    bool touch = false;                   // the front touch screen, in screen pixels (960x544)
+    float tx = 0.f, ty = 0.f;
+};
 struct Input {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20;
     uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;
     uint8_t handbrake = 0; // rt::Inputs::handbrake (0xff: pulled)
+    uint16_t gun_x = 0x17c, gun_y = 0x0e6; // rt::Inputs::gun_x/gun_y (light gun games)
 };
+
+// Where the game's 496x384 picture is on the screen (render/gl_internal.h):
+// scaled to the 544 lines and centred, black margins left and right.
+inline constexpr float kPictureScale = 544.0f / 384.0f;
+inline constexpr float kPictureX = (960.0f - 496.0f * kPictureScale) * 0.5f;
 inline bool menu_chord(uint32_t buttons) {
     return (buttons & (Start | Select)) == (Start | Select);
 }
@@ -117,6 +128,11 @@ public:
     }
     const Layout &layout() const { return layout_; }
     bool steering() const { return steering_; }
+    // A light gun game (rt::Game::gun): its range; x_max 0: none.
+    void set_gun(uint16_t x_min, uint16_t x_max, uint16_t y_min, uint16_t y_max) {
+        gun_x_min_ = x_min, gun_x_max_ = x_max, gun_y_min_ = y_min, gun_y_max_ = y_max;
+        aim_x_ = uint16_t((x_min + x_max) / 2), aim_y_ = uint16_t((y_min + y_max) / 2);
+    }
 
     Input sample(Pad pad) {
         Input in;
@@ -179,6 +195,22 @@ public:
         if (held(Control::View3) || held(Control::Guard)) in.in0 &= uint8_t(~0x80);
         if (held(Control::View4)) in.in1 &= uint8_t(~0x01);
         if (held(Control::HandBrake)) in.handbrake = 0xff;
+        if (gun_x_max_) {
+            // A touch on the picture aims there and pulls the trigger; on the
+            // black margins it points off the screen and pulls it (a reload).
+            // Without a touch the gun stays at the last aim on the picture; the
+            // trigger's button fires there.
+            bool fire = held(Control::Trigger);
+            in.gun_x = aim_x_, in.gun_y = aim_y_;
+            if (pad.touch) {
+                const rt::GunAim a = rt::aim_gun((pad.tx - kPictureX) / kPictureScale, pad.ty / kPictureScale,
+                                                 gun_x_min_, gun_x_max_, gun_y_min_, gun_y_max_);
+                in.gun_x = a.x, in.gun_y = a.y;
+                if (a.on_screen) aim_x_ = a.x, aim_y_ = a.y;
+                fire = true;
+            }
+            if (fire) in.in1 &= uint8_t(~0x01);
+        }
         return in;
     }
     void latch(uint32_t buttons) { held_ = buttons; if (buttons & bindings_.button[int(Control::Coin)]) coin_used_ = true; }
@@ -200,6 +232,7 @@ private:
     int gear_ = 1, steer_curve_ = 0;
     float deadzone_ = 0.12f;
     bool steer_invert_ = false, coin_used_ = false, steering_ = false, pedals_ = false, joystick_ = false;
+    uint16_t gun_x_min_ = 0, gun_x_max_ = 0, gun_y_min_ = 0, gun_y_max_ = 0, aim_x_ = 0, aim_y_ = 0;
 };
 
 // Host time only; each simulation step still advances at GameLoop::kFrameHz.

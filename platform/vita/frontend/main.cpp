@@ -176,6 +176,7 @@ int main(int, char **) {
         controls.set_steer_invert(settings.steer_invert);
         controls.set_steer_curve(settings.steer_curve);
         controls.set_layout(game_layout());
+        controls.set_gun(rt::game().gun.x_min, rt::game().gun.x_max, rt::game().gun.y_min, rt::game().gun.y_max);
         controls.set_bindings(settings.bindings);
         rt::GameLoop::set_draw_distance(settings.draw_distance);
     };

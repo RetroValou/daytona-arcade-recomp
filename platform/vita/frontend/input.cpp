@@ -1,6 +1,7 @@
 #include "frontend/input.h"
 
 #include <psp2/ctrl.h>
+#include <psp2/touch.h>
 
 namespace vita {
 
@@ -18,6 +19,22 @@ Pad read_pad() {
         {SCE_CTRL_START, Start}, {SCE_CTRL_SELECT, Select}
     };
     for (auto e : map) if (native.buttons & e.native) pad.buttons |= e.portable;
+    // The front touch screen, in screen pixels: the panel's coordinates are
+    // not the screen's (about twice, not exactly), so they are scaled from the
+    // panel's own display corners (sceTouchGetPanelInfo); 1920x1088 if unknown.
+    static const SceTouchPanelInfo panel = [] {
+        sceTouchSetSamplingState(SCE_TOUCH_PORT_FRONT, SCE_TOUCH_SAMPLING_STATE_START);
+        SceTouchPanelInfo info{};
+        if (sceTouchGetPanelInfo(SCE_TOUCH_PORT_FRONT, &info) < 0 || info.maxDispX <= info.minDispX || info.maxDispY <= info.minDispY)
+            info.minDispX = 0, info.minDispY = 0, info.maxDispX = 1919, info.maxDispY = 1087;
+        return info;
+    }();
+    SceTouchData touch{};
+    if (sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) > 0 && touch.reportNum) {
+        pad.touch = true;
+        pad.tx = float(touch.report[0].x - panel.minDispX) * 960.0f / float(panel.maxDispX - panel.minDispX + 1);
+        pad.ty = float(touch.report[0].y - panel.minDispY) * 544.0f / float(panel.maxDispY - panel.minDispY + 1);
+    }
     return pad;
 }
 

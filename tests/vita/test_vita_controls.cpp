@@ -33,6 +33,13 @@ constexpr rt::ControlDef kFighter[] = {
 constexpr vita::Layout kDaytonaLayout{kDaytona, int(std::size(kDaytona))};
 constexpr vita::Layout kRallyLayout{kRally, int(std::size(kRally))};
 constexpr vita::Layout kFighterLayout{kFighter, int(std::size(kFighter))};
+// Virtua Cop (vcop.cpp): one player's light gun, the trigger on Cross.
+constexpr rt::ControlDef kGun[] = {
+    {Control::Trigger, "TRIGGER", PadButton::Cross},
+    {Control::Start, "START", PadButton::Start},
+    {Control::Coin, "COIN", PadButton::Select},
+};
+constexpr vita::Layout kGunLayout{kGun, int(std::size(kGun))};
 constexpr int ix(Control c) { return int(c); }
 vita::Controls driving() {
     vita::Controls c;
@@ -229,5 +236,37 @@ int main() {
     CHECK(clock.advance(-1) == 0);
     CHECK(clock.advance(std::numeric_limits<double>::infinity()) == 0);
     CHECK(clock.advance(std::numeric_limits<double>::quiet_NaN()) == 0);
-    std::puts("Vita input and timing tests passed (all 256 axis values, 4096 button combinations, 100 seconds of pacing)");
+    {   // The light gun (vcop's range): a touch on the picture aims there and fires;
+        // on a black margin it points off the screen (the range's left edge) and
+        // fires; without a touch the last aim on the picture stays, unfired.
+        vita::Controls gun;
+        gun.set_layout(kGunLayout);
+        gun.set_bindings(vita::Bindings::defaults(kGunLayout));
+        gun.set_gun(0x083, 0x276, 0x024, 0x1a9);
+        vita::Pad centre;
+        centre.touch = true, centre.tx = 480.f, centre.ty = 272.f; // the screen's centre: the picture's
+        vita::Input in = gun.sample(centre);
+        CHECK(!(in.in1 & 0x01));
+        CHECK(in.gun_x == uint16_t(0x083 + 248.f * float(0x276 - 0x083) / 496.f + 0.5f));
+        CHECK(in.gun_y == uint16_t(0x024 + 192.f * float(0x1a9 - 0x024) / 384.f + 0.5f));
+        const uint16_t aim_x = in.gun_x, aim_y = in.gun_y;
+        vita::Pad margin;
+        margin.touch = true, margin.tx = 40.f, margin.ty = 272.f; // left of the picture (it starts at ~128.6)
+        in = gun.sample(margin);
+        CHECK(!(in.in1 & 0x01) && in.gun_x == 0x083);
+        margin.tx = 940.f; // right of it
+        in = gun.sample(margin);
+        CHECK(!(in.in1 & 0x01) && in.gun_x == 0x083);
+        in = gun.sample(vita::Pad{});
+        CHECK((in.in1 & 0x01) && in.gun_x == aim_x && in.gun_y == aim_y);
+        vita::Pad cross;
+        cross.buttons = vita::Cross;
+        in = gun.sample(cross);
+        CHECK(!(in.in1 & 0x01) && in.gun_x == aim_x);
+        // The picture's corners map to the range's ends.
+        const rt::GunAim lo = rt::aim_gun(0.f, 0.f, 0x083, 0x276, 0x024, 0x1a9);
+        CHECK(lo.on_screen && lo.x == 0x083 && lo.y == 0x024);
+        CHECK(!rt::aim_gun(496.f, 10.f, 0x083, 0x276, 0x024, 0x1a9).on_screen);
+    }
+    std::puts("Vita input and timing tests passed (all 256 axis values, 4096 button combinations, 100 seconds of pacing, the light gun)");
 }

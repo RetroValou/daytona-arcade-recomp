@@ -66,7 +66,7 @@ local READ_TAPS = {
 	{ 0x10000000, 0x105fffff, "render" },
 }
 local IRQ_ACK = 0x00e80000
-local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE" }
+local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE", ":P1_X", ":P1_Y" } -- P1_X/Y: vcop's light gun
 local GEAR_BITS = { port = ":IN1", mask = 0x70 } -- computed from GEARS, not replayed
 
 local cfg = {}

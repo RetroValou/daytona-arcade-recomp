@@ -11,7 +11,7 @@ namespace {
 constexpr const char *kBindKeys[ControlCount] = {"bind_accelerate", "bind_brake",
     "bind_steer_left", "bind_steer_right", "bind_shift_up", "bind_shift_down", "bind_start",
     "bind_coin", "bind_view1", "bind_view2", "bind_view3", "bind_view4", "bind_handbrake",
-    "bind_up", "bind_down", "bind_left", "bind_right", "bind_punch", "bind_kick", "bind_guard"};
+    "bind_up", "bind_down", "bind_left", "bind_right", "bind_punch", "bind_kick", "bind_guard", "bind_trigger"};
 } // namespace
 
 void VitaSettings::sanitize() {

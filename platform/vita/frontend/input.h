@@ -15,6 +15,7 @@ inline rt::Inputs map_input(const Input &in) {
     out.steer = in.steer; out.accel = in.accel; out.brake = in.brake;
     out.in0 = in.in0; out.in1 = in.in1; out.in2 = in.in2;
     out.handbrake = in.handbrake;
+    out.gun_x = in.gun_x; out.gun_y = in.gun_y;
     return out;
 }
 

@@ -14,7 +14,8 @@ not visit stops the game with "no recompiled code at X". Candidates:
   - entries of tables read with a [reg*4] index in reachable code;
   - every aligned word of the program ROM that points into code;
   - words of the main data ROM that point at a function start (after a ret
-    or an unconditional branch; the data ROM is large, so this is stricter).
+    or an unconditional branch, past up to 3 zero words of padding; the data
+    ROM is large, so this is stricter).
 
 A candidate is kept only if it decodes as executable code up to a ret,
 branch or balx (i960dis: no undecodable, !noexec or !quirk word first).
@@ -110,7 +111,14 @@ def main():
         return a % 4 == 0 and off(a) is not None
 
     def fstart(a):
-        w = word(a - 4)
+        # After a ret or an unconditional branch, past up to 3 zero words of
+        # padding (vcop aligns its functions to 16 bytes).
+        b = a - 4
+        for _ in range(3):
+            if word(b) != 0:
+                break
+            b -= 4
+        w = word(b)
         return w is not None and (w == RET or (w >> 24) == 0x08)
 
     decoded = {}

@@ -54,6 +54,9 @@ struct Script {
             else if (l.name == "accel") in.accel = uint8_t(l.value);
             else if (l.name == "brake") in.brake = uint8_t(l.value);
             else if (l.name == "handbrake") in.handbrake = uint8_t(l.value); // srallyc
+            else if (l.name == "gunx") in.gun_x = uint16_t(l.value);         // vcop: the light gun, in MAME's units
+            else if (l.name == "guny") in.gun_y = uint16_t(l.value);
+            else if (l.name == "trigger" && l.value) in.in1 &= uint8_t(~0x01);
             else if (l.name.compare(0, 4, "gear") == 0 && l.value) {
                 const int g = l.name[4] - '0';
                 if (g >= 0 && g < 5) in.in1 = uint8_t((in.in1 & ~0x70) | (gearvalue[g] << 4));

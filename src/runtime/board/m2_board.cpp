@@ -31,13 +31,23 @@ void IoBoard::write(uint32_t index, uint8_t v) {
     if (index != 0x20) return;
     switch (v) {
     case 1: // latch inputs
-        ram_[0] = inputs.steer;
-        ram_[1] = inputs.accel;
-        ram_[2] = inputs.brake;
-        for (int i = 3; i < 8; i++) ram_[size_t(i)] = 0xff; // unused ADC channels
-        ram_[8] = inputs.in0;
-        ram_[9] = inputs.in1;
-        ram_[10] = inputs.in2;
+        if (gun.present()) { // the light gun board (Virtua Cop's 837-12079), as MAME's dump of it
+            for (int i = 0; i < 8; i++) ram_[size_t(i)] = 0xff; // no ADC
+            ram_[8] = inputs.in0;
+            ram_[9] = uint8_t(inputs.in1 | 0x70); // the driving layout's gear bits: unused here (1)
+            ram_[10] = inputs.in2;
+            for (int i = 0x0b; i < 0x0e; i++) ram_[size_t(i)] = 0xff;
+            ram_[0x0e] = 0x0f; // the board's DIP switches (MAME's default: Normal reloading, Normal enemies)
+            latch_gun();
+        } else {
+            ram_[0] = inputs.steer;
+            ram_[1] = inputs.accel;
+            ram_[2] = inputs.brake;
+            for (int i = 3; i < 8; i++) ram_[size_t(i)] = 0xff; // unused ADC channels
+            ram_[8] = inputs.in0;
+            ram_[9] = inputs.in1;
+            ram_[10] = inputs.in2;
+        }
         ram_[0x21] = 0x40; // board status the game checks at boot
         ram_[0x20] = 0;
         break;
@@ -52,6 +62,20 @@ void IoBoard::write(uint32_t index, uint8_t v) {
         break;
     default: break;
     }
+}
+
+// The light gun interface (MAME model1io2_device, its lightgun ports): each
+// gun's Y then X at 0x80-0x87 (16 bits, little-endian; player 1 then 2), and
+// at 0x88 the off-screen bits (1: player 1, 2: player 2), set within 5 % of
+// the range from an edge, as MAME's. Player 2 stays at MAME's defaults.
+void IoBoard::latch_gun() {
+    constexpr uint16_t kP2X = 0x179, kP2Y = 0x0e8; // MAME vcop P2_X/P2_Y defaults (on screen)
+    const auto put = [this](size_t at, uint16_t v) { ram_[at] = uint8_t(v), ram_[at + 1] = uint8_t(v >> 8); };
+    put(0x80, inputs.gun_y), put(0x82, inputs.gun_x), put(0x84, kP2Y), put(0x86, kP2X);
+    const int bx = int(float(gun.x_max - gun.x_min) * 0.05f), by = int(float(gun.y_max - gun.y_min) * 0.05f);
+    const bool off = inputs.gun_x <= gun.x_min + bx || inputs.gun_x >= gun.x_max - bx ||
+                     inputs.gun_y <= gun.y_min + by || inputs.gun_y >= gun.y_max - by;
+    ram_[0x88] = off ? 1 : 0;
 }
 
 // --- 315-5649 (Model 2A-CRX) ---------------------------------------------------
@@ -234,6 +258,7 @@ M2Board::M2Board(Images images)
     }
 #endif
     io_.wiring = img_.game->io;
+    io_.gun = img_.game->gun;
 #ifdef M2_SPIN_SKIP
     std::copy(std::begin(img_.game->spin), std::end(img_.game->spin), std::begin(spin_));
 #endif
@@ -750,8 +775,12 @@ void M2Board::prof_bus(uint32_t addr, bool write) {
 // allows: that count is the dev_read expression at that instruction count,
 // falling while the timer runs (its expiry is an event), so the skip stops
 // before the first pass that would leave.
-void M2Board::spin_skip(const Game::SpinWait &w, uint8_t value) {
-    if (w.kind == Game::SpinWait::ByteIsReg ? value != uint8_t(cpu_->m_r[w.reg]) : value != 0) return;
+void M2Board::spin_skip(const Game::SpinWait &w, uint32_t value) {
+    switch (w.kind) {
+    case Game::SpinWait::ByteIsReg: if (uint8_t(value) != uint8_t(cpu_->m_r[w.reg])) return; break;
+    case Game::SpinWait::WordBitsCount: if ((value & w.mask) != cpu_->m_r[w.reg]) return; break;
+    default: if (uint8_t(value) != 0) return; break;
+    }
     const uint64_t limit = std::min(ls_->next_count, ls_->end_count), count = io_now();
     if (limit <= count + w.pass) return;
     uint64_t passes = (limit - 1 - count) / w.pass;
@@ -781,6 +810,7 @@ void M2Board::spin_skip(const Game::SpinWait &w, uint8_t value) {
         }
     }
     const uint64_t skip = passes * w.pass;
+    if (w.kind == Game::SpinWait::WordBitsCount) cpu_->m_r[w.counter] += uint32_t(passes); // what those passes counted
     ls_->count += skip;
     spin_skipped_ += skip;
 #ifdef M2_FAST_GEN
@@ -806,7 +836,7 @@ uint8_t M2Board::read_byte(uint32_t addr) {
 #ifdef M2_SPIN_SKIP
     if (p.kind == Ram)
         for (const Game::SpinWait &w : spin_)
-            if (w.kind != Game::SpinWait::None && addr == w.addr && cpu_->m_IP == w.ip) {
+            if ((w.kind == Game::SpinWait::ByteIsReg || w.kind == Game::SpinWait::ByteZeroTimer) && addr == w.addr && cpu_->m_IP == w.ip) {
                 const uint8_t v = p.base[addr & 0xfff];
                 spin_skip(w, v);
                 return v;
@@ -905,7 +935,14 @@ uint32_t M2Board::read_dword(uint32_t addr) {
         std::memcpy(&v, M2_AL(p.base + (addr & 0xfff), 4), 4);
         return v;
     }
-    case Dev: return dev_read(addr, 0xffffffffu);
+    case Dev: {
+        const uint32_t v = dev_read(addr, 0xffffffffu);
+#ifdef M2_SPIN_SKIP
+        for (const Game::SpinWait &w : spin_) // a device register's wait loop (WordBitsCount)
+            if (w.kind == Game::SpinWait::WordBitsCount && addr == w.addr && cpu_->m_IP == w.ip) spin_skip(w, v);
+#endif
+        return v;
+    }
     default: return 0;
     }
 }

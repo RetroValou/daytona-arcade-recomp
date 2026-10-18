@@ -65,6 +65,7 @@ public:
     void crx_write(uint32_t offset, uint8_t v, uint64_t now);
     Inputs inputs;
     CrxInputs wiring{}; // Model 2A-CRX: the game's ports and analog channels (Game::io)
+    GunRange gun{};     // the light gun interface's range (Game::gun), or none
     std::array<uint8_t, 128> eeprom;
     bool eeprom_dirty = false;
     std::vector<uint8_t> drive_commands; // written to byte 0x11 (2A: port E) since last taken (at most kMaxDrive kept)
@@ -79,6 +80,7 @@ private:
     uint8_t port_config_ = 0xff, mode_ = 0, analog_channel_ = 0;
     bool ctrl_mode_ = false; // port A bit 0: port B reads the EEPROM
     uint8_t port_in(uint32_t offset, uint64_t now);
+    void latch_gun();
     void eeprom_pins(uint8_t port_a, uint64_t now);
 
     // 93C46 (MAME eeprom_serial_93cxx_device, 16-bit, 6 address bits)
@@ -327,7 +329,7 @@ private:
     uint8_t comm_cn_ = 0, comm_fg_ = 0;
     uint64_t frame_ = 0;
 #ifdef M2_SPIN_SKIP
-    void spin_skip(const Game::SpinWait &w, uint8_t value);
+    void spin_skip(const Game::SpinWait &w, uint32_t value);
     Game::SpinWait spin_[2]{};
     uint64_t spin_skipped_ = 0;
 #endif

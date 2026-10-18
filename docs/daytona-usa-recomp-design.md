@@ -36,6 +36,7 @@ Figures below are confirmed against MAME at `dddd7368` (`src/mame/sega/model2.cp
 | Sound | Model 1 sound board (`SEGAM1AUDIO`): 68000 + YM3438 + 2x MultiPCM | 68000 `20_MHz_XTAL / 2` = 10 MHz, YM3438 8 MHz, MultiPCM 10 MHz each | 68000 program statically recompiled (same pipeline as the i960); FM/MultiPCM chips as native C++ |
 | Main ↔ sound | i8251 UART (uPD71051C) at 0x01c80000 | 31.25 kbit/s (`16_MHz_XTAL / 2 / 16`) | Serial byte stream, not a latch |
 | I/O | Model 1 I/O board (`SEGA_MODEL1IO`, BIOS `epr14869c`): own Z80, talks through an MB8421 dual-port RAM at 0x01c00000 | Z80 `32_MHz_XTAL / 8` = 4 MHz | HLE of the dual-port RAM protocol, SDL3 mapping |
+| I/O (Virtua Cop) | Model 1 I/O 2 board (`SEGA_MODEL1IO2`, BIOS `epr17181`) with the light gun interface 837-12079: the same dual-port RAM protocol, plus each gun's Y and X at 0x80-0x87 and the off-screen bits at 0x88 (read from MAME's DPRAM, 18 Oct 2026) | own CPU | HLE in `IoBoard::latch_gun` (`Game::gun`: one player); aimed with a pointer (`rt::aim_gun`): the Vita's touch screen, the PC's mouse |
 | Drive board | SJ25-0207-01 / 838-10646: Z80 + 2x 315-5296 + MSM6253 ADC; commands arrive through the I/O board | Z80 `XTAL(8'000'000)/2` = 4 MHz, "confirmed" | HLE: decode commands, map to SDL haptics |
 | Comm board | 837-10537: Z80 + uPD72103 HDLC, program EPR-16726; MAME simulates it (`M2COMM`), no Z80 runs | — | HLE shared-memory protocol over UDP |
 | Timers | 4 down-counters at 0x00f00000 | 25 MHz | Runtime device |
