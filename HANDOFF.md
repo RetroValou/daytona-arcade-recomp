@@ -26,6 +26,36 @@ window holds the fighters); "windows above the largest one are UI" (proposed,
 then the user chose the per-window bands).
 Checked: Vita host tests 38/38. Not checked: the shader compile and the image
 on the console (no GLSL validator here).
+Then, the user on the console: VF2's scenery and fighters should mix (they
+did before the bands), and Sega Rally's third course "seemed" to have its
+scenery in another window. Per-game window groups,
+Game::update_z_depth_window_groups (up to 4 ranges, first-last inclusive; a
+code parameter, not a menu option): the grouped windows share one band
+(model2_polygons.cpp z_band_key). Found by drawing each window alone on the
+PC (temporary M2_WINDOWS filter and per-window log in Video::screen_update,
+removed); the window lists are the geometrizer's, which matches MAME
+(m2_check lockstep, polygons MATCH).
+- VF2 (vf2_fight, every frame of 9,000): windows 1 scenery, 5 ring floor, 6
+  shadows, 7 fighters (2: 32 polygons in 25 frames; 0 alone on the select
+  screen). Group {1, 7}.
+- Sega Rally, the Mountain (practice, script below): w1 the whole world, w2
+  the rev counter's needle (w 128), w3 the mirror's frame, w4 the mirror's
+  view (its own viewport); at the start w2 holds the cars (~350 polygons).
+  Third-person view (the VR button): w2 the player's car (~300 polygons, w
+  4-8), w3 the needle. Group {1, 2} (the user's choice, to be checked on the
+  console): the car mixes with the world; in the cockpit view w2 is the
+  needle (one polygon, w 128), which may then go behind near polygons. A
+  polygon-count condition per group was proposed for that and not taken.
+- Daytona race_basic: the race in w1 alone (4,532 of 6,000 frames); w2-w3
+  only in the menus. Virtua Cop / Virtua Cop 2: the scene in w1, the other
+  windows UI (sight, cylinder, the tutorial's frame and gun).
+Reaching Sega Rally's practice in a script (MAME does the same): hold the
+wheel right *before* Start (the SELECT GAME screen confirms itself after ~50
+frames, at the wheel's position: PRACTICE right); the course follows the
+wheel's position (EXPERT = the Mountain at the right) and must be confirmed
+with the accelerator while the wheel is still right: 1420-1560 steer=0xe0,
+1450 start=1, 1600-1610 accel=0xe0, 1700-2420 steer=0xe0, 2400-2410
+accel=0xe0, then the accelerator from 2700.
 
 ## Virtua Cop 2 (vcop2; Model 2A-CRX), one player (2026-10-18)
 

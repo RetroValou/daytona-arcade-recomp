@@ -1,10 +1,21 @@
 // vitaGL renderer: Model 2 polygons, in priority order (render/renderer.cpp).
 
 #include "render/gl_internal.h"
+#include "runtime/board/game.h"
 #include <cmath>
 
 namespace vita {
 using namespace gldraw;
+
+namespace {
+// The hybrid depth's band key of a window: its group's first window when the game
+// groups it with others (rt::Game::update_z_depth_window_groups), else its own.
+unsigned z_band_key(unsigned window) {
+    for (const auto &r : rt::game().update_z_depth_window_groups)
+        if (r.first < r.last && r.first <= window && window <= r.last) return r.first;
+    return window;
+}
+} // namespace
 
 // ---- Renderer: Model 2 polygons --------------------------------------------------------
 void GpuGlRenderer::draw_polygons(rt::Video &video) {
@@ -143,12 +154,14 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
             // inside it only. Coded as 1 + band + the rank inside the band, in (0, 1),
             // larger in front (kVertexShader decodes it). The order runs window by window,
             // front (highest) first: the front window gets band kZDepthBands - 1; past
-            // kZDepthBands windows, the backmost share band 0.
+            // kZDepthBands windows, the backmost share band 0. The windows a game groups
+            // (Game::update_z_depth_window_groups, contiguous in the order) share one band.
             for (size_t first = 0, run = 0; first < order.size(); ++run) {
                 const unsigned band = run < kZDepthBands - 1 ? unsigned(kZDepthBands - 1 - run) : 0u;
                 size_t end = first + 1;
                 while (end < order.size() &&
-                       (band == 0 || polys[order[end].index].window == polys[order[end - 1].index].window))
+                       (band == 0 || z_band_key(polys[order[end].index].window) ==
+                                         z_band_key(polys[order[end - 1].index].window)))
                     ++end;
                 const float step = 1.0f / float(end - first + 1);
                 for (size_t rank = first; rank < end; ++rank)

@@ -134,6 +134,11 @@ extern const Game vf2_game = {
     // The music on channels 0-8 and 15; 9-14 and 0xff hits, voices, effects.
     .music_channels = 0x81ff, // 0-8 and 15
     .update_z_depth_scale = 4.5f, // ln of w: fight 99.9th percentile 71 (max 143)
+    // A fight's windows (every frame of vf2_fight, 9,000 frames, each drawn
+    // alone): 1 the stage's scenery, 5 the ring's floor, 6 the shadows, 7 the
+    // fighters (2: 32 polygons in a few frames); the HUD is 2D. One scene: the
+    // hybrid depth mixes them, the scenery with the fighters (the user's choice).
+    .update_z_depth_window_groups = {{1, 7}},
 };
 
 } // namespace rt

@@ -200,6 +200,8 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   window keeps its own band of the depth range (`kZDepthBands`, 32), as the board draws
   a window over the ones before it, so a game's UI windows stay in front; the CPU codes
   each polygon's depth as 1 + band + its rank in the window (`model2_polygons.cpp`).
+  A game can put several windows in one band (`Game::update_z_depth_window_groups`:
+  VF2's 1-7, so its scenery and fighters mix).
   Inside the band, each vertex's depth is the rank, weighted 0.9999 - `update_z_depth_LOCAL_WEIGHT`, plus a nearness
   from its distance w on a log scale, weighted `update_z_depth_LOCAL_WEIGHT` (1 at w 1,
   0 at e^`update_z_depth_SCALE`), so shapes that cross (a car's shadow and its wheel)

@@ -223,6 +223,14 @@ struct Game {
     // the farthest vertex distance w the game draws (its 99.9th percentile:
     // nearness 1 at w 1, 0 there and beyond). Each game's own, measured on the PC.
     float update_z_depth_scale = 12.5f;
+    // The same test: Model 2 windows that share one depth band (each range,
+    // first to last, inclusive), so the hybrid depth mixes them as one scene;
+    // every other window keeps its own band, in front of the windows before
+    // it. Found by drawing each window alone on the PC. Unused entries: {0, 0}.
+    struct WindowRange {
+        uint8_t first = 0, last = 0;
+    };
+    WindowRange update_z_depth_window_groups[4]{};
 };
 
 // Channel `channel` of the game's sound driver plays the music (Game::music_channels).
