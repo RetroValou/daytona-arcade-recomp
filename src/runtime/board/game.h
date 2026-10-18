@@ -109,6 +109,9 @@ struct Model1Voices {
 };
 // Daytona's driver (the allocator at 0x1688).
 inline constexpr Model1Voices kDaytonaVoices{{0x1500, 0x1618}, 10, true};
+// Daytona's driver's music channels, 0-9 and 15: the ones its "stop music"
+// command (0x50 0x7e) stops (Game::music_channels).
+inline constexpr uint16_t kDaytonaMusic = 0x83ff;
 
 // A frontend's default settings for the game (the Vita's: platform/vita
 // VitaSettings; RESET DEFAULTS goes back to them). Volumes in percent.
@@ -204,14 +207,24 @@ struct Game {
     GunRange gun{};
     // Model 1 sound board: its driver's voice pools (nullptr: Daytona's).
     const Model1Voices *model1_voices = nullptr;
+    // Which of the sound driver's channels play the music (bit n: channel n,
+    // 0-15); every other channel, and a voice no channel owns, is an effect.
+    // The music and effects volumes split the voices by it (both sound boards
+    // and the native engine; music_channel below). 0: no split.
+    uint16_t music_channels = 0;
 };
+
+// Channel `channel` of the game's sound driver plays the music (Game::music_channels).
+inline bool music_channel(const Game &g, int channel) {
+    return channel >= 0 && channel < 16 && (g.music_channels >> channel & 1);
+}
 
 
 // The game's sound board can mix its music and effects at their own volumes
 // (snd::Board::set_volumes): the Model 1 board (its driver's voice pools) or
 // an SCSP board whose driver's voice table is known.
 inline bool has_music_effects(const Game &g) {
-    return g.sound == SoundBoardType::Model1 || g.scsp_voices != nullptr;
+    return g.music_channels != 0 && (g.sound == SoundBoardType::Model1 || g.scsp_voices != nullptr);
 }
 
 // Every game the runtime knows (src/games/games.cpp).

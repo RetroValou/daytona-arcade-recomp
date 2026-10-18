@@ -15,9 +15,10 @@ namespace snd {
 
 class NativeSoundSequencer {
 public:
-    // The driver's music channels: the ones its "stop music" command (0x50
-    // 0x7e) stops. The rest, and the engine layers, are effects.
-    static bool music_channel(unsigned channel) { return channel <= 9 || channel == 15; }
+    // The driver's music channels (rt::Game::music_channels: Daytona's 0-9 and
+    // 15, the ones its "stop music" command, 0x50 0x7e, stops). The rest, and
+    // the engine layers, are effects.
+    bool music_channel(unsigned channel) const { return channel < 16 && (music_channels_ >> channel & 1); }
     enum class EventKind : uint8_t { NoteOn, NoteOff, Update, Stop };
     struct VoiceEvent {
         uint64_t frame = 0;
@@ -37,7 +38,9 @@ public:
 
     // The immutable ROM must outlive this sequencer. All time is measured in
     // output samples, so music continues independently of graphics cadence.
-    NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout, uint32_t output_rate = 48000);
+    // music_channels: the driver's music channels (rt::Game::music_channels).
+    NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout, uint32_t output_rate = 48000,
+                         uint16_t music_channels = rt::kDaytonaMusic);
     void set_sink(Sink sink, void *context) { sink_ = sink; context_ = context; }
     void reset();
     void send(const uint8_t *data, size_t bytes);
@@ -68,6 +71,7 @@ private:
     };
     const std::vector<uint8_t> &program_;
     uint32_t output_rate_;
+    uint16_t music_channels_;
     rt::SoundLayout t_; // where the driver's tables are
     Sink sink_ = nullptr;
     void *context_ = nullptr;

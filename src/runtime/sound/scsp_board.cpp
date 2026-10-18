@@ -13,8 +13,8 @@ double board_fm_rate() { return rt::game().sound == rt::SoundBoardType::Scsp ? S
 double board_pcm_rate() { return rt::game().sound == rt::SoundBoardType::Scsp ? Scsp::kRate : SoundBoard::kPcmClock / 224.0; }
 
 ScspBoard::ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples,
-                     const rt::ScspVoices *voices)
-    : program_(program), samples_(samples), voices_(voices), scsp_(*this, (cpu_.ram.assign(0x80000, 0), cpu_.ram.data())) {
+                     const rt::ScspVoices *voices, uint16_t music_channels)
+    : program_(program), samples_(samples), voices_(voices), music_channels_(music_channels), scsp_(*this, (cpu_.ram.assign(0x80000, 0), cpu_.ram.data())) {
     if (program_.size() < 0x80000 || samples_.size() < 0x800000)
         throw rt::Fatal("SCSP sound board images missing or short (re-run the importer)");
     cpu_.map = kScspMap;
@@ -130,7 +130,7 @@ bool ScspBoard::scsp_slot_effect(int slot) {
     const uint32_t a = voices_->table + uint32_t(slot) * voices_->entry + voices_->channel;
     if (a >= cpu_.ram.size()) return false;
     const uint8_t channel = cpu_.ram[a];
-    return channel > 8 && channel != 15; // the music's channels: 0-8 and 15
+    return !(channel < 16 && (music_channels_ >> channel & 1)); // rt::Game::music_channels
 }
 
 void ScspBoard::scsp_irq(int level, bool assert) {

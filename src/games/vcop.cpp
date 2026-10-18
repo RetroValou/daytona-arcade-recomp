@@ -77,6 +77,9 @@ extern const Game vcop_game = {
     // MAME vcop P1_X/P1_Y PORT_MINMAX: the screen's edges in the gun's units.
     .gun = {0x083, 0x276, 0x024, 0x1a9},
     .model1_voices = &kVoices,
+    // Daytona's driver's channels: the music on 0-8 and 15 (9 unused), the
+    // shots and reloads on 11 (commands ae 20 01, ae 20 07).
+    .music_channels = kDaytonaMusic, // 0-9 and 15
 };
 
 } // namespace rt

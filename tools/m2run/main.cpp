@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
                 return std::vector<uint8_t>{std::istreambuf_iterator<char>(f), {}};
             };
             native = std::make_unique<snd::NativeSoundEngine>(file("sound_program.bin"), file("pcm1.bin"), file("pcm2.bin"),
-                                                              *rt::game().native_sound);
+                                                              *rt::game().native_sound, rt::game().music_channels);
         }
         std::vector<float> native_out;
         uint64_t native_rendered = 0;

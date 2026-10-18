@@ -8,12 +8,13 @@
 namespace snd {
 
 SoundBoard::SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2,
-                       const rt::Model1Voices *voices)
+                       const rt::Model1Voices *voices, uint16_t music_channels)
     : program_(program), pcm1_rom_(pcm1), pcm2_rom_(pcm2),
       pcm1_(kPcmClock, pcm1_rom_.data(), uint32_t(pcm1_rom_.size())),
       pcm2_(kPcmClock, pcm2_rom_.data(), uint32_t(pcm2_rom_.size())) {
     if (program_.size() < 0x40000) throw rt::Fatal("sound program image missing or short (re-run the importer)");
     voices_ = voices ? *voices : rt::kDaytonaVoices;
+    music_channels_ = music_channels;
     cpu_.rom = program_.data();
     cpu_.dev = this;
     cpu_.reset();
@@ -147,7 +148,7 @@ void SoundBoard::write(uint32_t addr, uint16_t data) {
         else if (offset == 2) pcm_register_[chip] = d;
         else if (offset == 0 && pcm_register_[chip] == 4 && (d & 0x80)) { // key on: music's voice or an effect's
             const int channel = voice_channel(chip, pcm_slot_[chip]);
-            pcm.set_effect(channel < 0 || !NativeSoundSequencer::music_channel(unsigned(channel)));
+            pcm.set_effect(!(channel >= 0 && channel < 16 && (music_channels_ >> channel & 1)));
         }
         pcm.write(offset, d);
         break;

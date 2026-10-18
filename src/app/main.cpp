@@ -339,7 +339,8 @@ int main(int argc, char **argv) {
             if (native_active) {
                 if (!audio_initialized) throw std::runtime_error("Native audio needs an available audio device.");
                 auto engine = std::make_unique<snd::NativeSoundEngine>(std::move(images.sound_program),
-                    std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound);
+                    std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound,
+                    rt::game().music_channels);
                 if (!native_audio.open(std::move(engine)))
                     throw std::runtime_error(std::string("Cannot open native audio: ") + SDL_GetError());
                 native_audio.volume(cfg.volume);

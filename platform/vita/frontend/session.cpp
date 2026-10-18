@@ -108,7 +108,8 @@ bool Session::start(const VitaSettings &settings, rt::TestHold &test_hold) {
         if (native_audio_) {
             worker_.close();
             auto engine = std::make_unique<snd::NativeSoundEngine>(
-                std::move(images.sound_program), std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound);
+                std::move(images.sound_program), std::move(images.pcm1), std::move(images.pcm2), *rt::game().native_sound,
+                rt::game().music_channels);
             if (!native_.open(std::move(engine), kDiagnostics ? ticks_us : nullptr))
                 throw std::runtime_error("Native audio output unavailable; select Reference audio and reset");
         } else {

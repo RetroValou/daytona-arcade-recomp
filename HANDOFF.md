@@ -1,5 +1,23 @@
 # Handoff
 
+## Music channels: a game parameter (2026-10-18)
+
+The user asked for the music/effects split to be each game's data, as its
+controls are, instead of rules in the code. Before: Model 1 board and native
+engine `channel <= 9 || channel == 15` (NativeSoundSequencer::music_channel,
+static), SCSP board `channel > 8 && channel != 15`. Now Game::music_channels,
+a mask (bit n: channel n is music; any other channel, or a voice no channel
+owns, is an effect), passed to snd::SoundBoard, snd::ScspBoard and the native
+engine/sequencer (constructor parameters, default rt::kDaytonaMusic 0x83ff;
+the sequencer cannot call rt::game(): its unit test links no game list).
+Values: daytona93, daytona, vcop 0x83ff (0-9, 15); srallyc, vf2 0x81ff
+(0-8, 15). has_music_effects also needs a nonzero mask.
+Checked: m2run with split volumes, before/after, WAV byte-identical on the
+four games (daytona93 race_basic 3,000 frames at 1/0.2, srallyc_race 3,000 at
+1/0.85, vf2_fight 4,000 at 0.7/1, vcop_shoot 2,400 at 0.7/1); ctest 23/23 on
+each; Vita compile check. A wrong turn: the sequencer first read
+rt::game() itself, which broke test_native_sound_sequencer's link.
+
 ## Virtua Cop: music/effects split by its own voice pools (2026-10-18)
 
 The user, on the Vita: only part of the music followed the MUSIC volume, the

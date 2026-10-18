@@ -131,6 +131,8 @@ extern const Game vf2_game = {
     // 0 passes a frame in a steady fight, 400-1,900 in the Vita's slow windows
     // at ~1.9 us each (perf_supra_probe.log, --i960-profile).
     .spin = {{Game::SpinWait::ByteZeroTimer, 0x4cb7c, 0x00500000, 7, 13, 2, 2}},
+    // The music on channels 0-8 and 15; 9-14 and 0xff hits, voices, effects.
+    .music_channels = 0x81ff, // 0-8 and 15
 };
 
 } // namespace rt

@@ -32,9 +32,10 @@ public:
     static constexpr uint32_t kBaud = 31250; // MIDI-rate serial line from the i960
     static constexpr uint32_t kByteBits = 10;
 
-    // voices: the driver's voice table (rt::Game::scsp_voices), or nullptr.
+    // voices: the driver's voice table (rt::Game::scsp_voices), or nullptr;
+    // music_channels: its music channels (rt::Game::music_channels).
     ScspBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &samples,
-              const rt::ScspVoices *voices = nullptr);
+              const rt::ScspVoices *voices = nullptr, uint16_t music_channels = 0);
 
     // Board
     void send(const uint8_t *bytes, size_t n) override;
@@ -67,6 +68,7 @@ private:
 
     std::vector<uint8_t> program_, samples_;
     const rt::ScspVoices *voices_;
+    uint16_t music_channels_;
     Cpu68k cpu_;
     Sched sched_{cpu_};
     sndgen::Env env_{cpu_, sched_};

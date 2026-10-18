@@ -105,6 +105,9 @@ extern const Game srallyc_game = {
     // Its effects (engine, gravel, co-driver) need more than Daytona's 20 %.
     .defaults = {.effects_volume = 85},
     .control_list = kControls,
+    // The music on channels 0-7 and 15 (scsp_voices: 2 of ~3,700 key-ons in a
+    // race elsewhere); 8 counted with it, as VF2's.
+    .music_channels = 0x81ff, // 0-8 and 15
 };
 
 

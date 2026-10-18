@@ -106,6 +106,7 @@ extern const Game daytona93_game = {
     .sound = SoundBoardType::Model1, .native_sound = &kDaytona93Sound,
     .io = {}, .link = false, .draw_distance = true, // hook_draw_list
     .control_list = kControls,
+    .music_channels = kDaytonaMusic, // 0-9 and 15
 };
 extern const Game daytona_game = {
     .set = "daytona", .title = "Daytona USA", .label = "Revision A, 1994", .companion = "daytona93",
@@ -121,6 +122,7 @@ extern const Game daytona_game = {
     // the Dreamcast (platform/dreamcast_unmaintained/HANDOFF.md; dcmemcheck matched the
     // desktop at its 100 checkpoints with the skip). daytona93 has no such loop.
     .spin = {{Game::SpinWait::ByteIsReg, 0x1394, 0x00500000, 2, 16}},
+    .music_channels = kDaytonaMusic, // 0-9 and 15
 };
 
 
