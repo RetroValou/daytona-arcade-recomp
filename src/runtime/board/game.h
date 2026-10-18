@@ -212,6 +212,14 @@ struct Game {
     // The music and effects volumes split the voices by it (both sound boards
     // and the native engine; music_channel below). 0: no split.
     uint16_t music_channels = 0;
+    // Vita renderer, hybrid depth test (upgrade_z_depth, render/shaders.cpp): the
+    // local slope's share of the depth range, update_z_depth_LOCAL_WEIGHT (0: the Model 2 order
+    // alone; up to 0.9999: closer to a true z-buffer). Each game's own.
+    float update_z_depth_local_weight = 0.9f;
+    // The same test: the distance scale, update_z_depth_SCALE, the natural log of
+    // the farthest vertex distance w the game draws (its 99.9th percentile:
+    // nearness 1 at w 1, 0 there and beyond). Each game's own, measured on the PC.
+    float update_z_depth_scale = 12.5f;
 };
 
 // Channel `channel` of the game's sound driver plays the music (Game::music_channels).

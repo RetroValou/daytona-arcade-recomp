@@ -130,9 +130,10 @@ void execute() {
     // gl_begin_frame() left glDepthMask at GL_TRUE.
     GLuint program = 0, texture = 0;
     int blend = -1, depth_test = -1, depth_write = 1, clip = -2;
+    const GLuint *programs = g.upgrade_z_depth ? g.program_z : g.program; // the option's set
     for (const Cmd &c : g.cmds) {
-        if (g.program[int(c.prog)] != program) {
-            program = g.program[int(c.prog)];
+        if (programs[int(c.prog)] != program) {
+            program = programs[int(c.prog)];
             glUseProgram(program);
         }
         // Blending only for the menu / text rectangles; the game image is never blended.

@@ -80,6 +80,7 @@ extern const Game vcop_game = {
     // Daytona's driver's channels: the music on 0-8 and 15 (9 unused), the
     // shots and reloads on 11 (commands ae 20 01, ae 20 07).
     .music_channels = kDaytonaMusic, // 0-9 and 15
+    .update_z_depth_scale = 7.2f, // ln of w: game 99.9th percentile 1,230 (max 1,320)
 };
 
 } // namespace rt

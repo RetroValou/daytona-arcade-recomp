@@ -133,6 +133,7 @@ extern const Game vf2_game = {
     .spin = {{Game::SpinWait::ByteZeroTimer, 0x4cb7c, 0x00500000, 7, 13, 2, 2}},
     // The music on channels 0-8 and 15; 9-14 and 0xff hits, voices, effects.
     .music_channels = 0x81ff, // 0-8 and 15
+    .update_z_depth_scale = 4.5f, // ln of w: fight 99.9th percentile 71 (max 143)
 };
 
 } // namespace rt

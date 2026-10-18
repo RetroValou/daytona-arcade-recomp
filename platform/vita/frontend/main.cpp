@@ -329,6 +329,7 @@ int main(int, char **) {
                 launcher.draw(game != nullptr, settings, shown_status);
                 ui.render();
             } else if (game) {
+                vita::gl_set_upgrade_z_depth(settings.upgrade_z_depth); // the option's shader set
                 gpu.draw(game->board().video()); // System 24 layers + polygons on the GPU (the only case)
             }
             const uint64_t drawn = diagnostic_ticks_us();

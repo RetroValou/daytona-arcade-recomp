@@ -112,7 +112,9 @@ struct ProgramDef { const char *name; const char *defines; };
 extern const ProgramDef kPrograms[int(Prog::Count)]; // shaders.cpp
 inline bool textured(Prog p) { return p != Prog::Flat && p != Prog::FlatChecker; }
 
-GLuint build_program(const ProgramDef &def); // shaders.cpp; 0 on failure (set_error)
+// shaders.cpp; 0 on failure (set_error). upgrade_z_depth: the hybrid depth variant
+// of the vertex shader (kVertexShader's #ifdef upgrade_z_depth).
+GLuint build_program(const ProgramDef &def, bool upgrade_z_depth = false);
 
 // ---- Draw list -----------------------------------------------------------------------
 struct Vertex {
@@ -225,6 +227,10 @@ struct State {
     bool ready = false;
     unsigned frame = 0;
     GLuint program[int(Prog::Count)] = {};
+    // The same programs with the hybrid depth (upgrade_z_depth), and whether the
+    // frame draws with them (the Vita option, gl_set_upgrade_z_depth).
+    GLuint program_z[int(Prog::Count)] = {};
+    bool upgrade_z_depth = false;
     GLuint vbo = 0;
     GLuint quad_ibo = 0;        // static index buffer of the indexed quads (0: plain triangles)
     GLuint palette_texture = 0; // bound on unit 1 for the MODEL shaders

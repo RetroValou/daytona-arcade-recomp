@@ -67,6 +67,7 @@ void VitaSettings::load(const char *path) {
         else if (!std::strcmp(key, "native_audio")) native_audio = value != 0;
         else if (!std::strcmp(key, "deadzone")) deadzone = value;
         else if (!std::strcmp(key, "steer_invert")) steer_invert = value != 0;
+        else if (!std::strcmp(key, "upgrade_z_depth")) upgrade_z_depth = value != 0;
         else for (int a = 0; a < ControlCount; ++a)
             if (!std::strcmp(key, kBindKeys[a])) bindings.button[a] = uint32_t(value);
     }
@@ -86,6 +87,7 @@ bool VitaSettings::save(const char *path) const {
         int(link_enabled), int(link_sync), link_port, next_port);
     for (int i = 0; i < 4; ++i) std::fprintf(f, "next_ip%d=%d\n", i, next_ip[i]);
     std::fprintf(f, "steer_curve=%d\n", steer_curve);
+    std::fprintf(f, "upgrade_z_depth=%d\n", int(upgrade_z_depth));
     std::fprintf(f, "draw_distance=%d\n", draw_distance);
     for (int a = 0; a < ControlCount; ++a)
         if (bindings.button[a]) std::fprintf(f, "%s=%u\n", kBindKeys[a], unsigned(bindings.button[a]));

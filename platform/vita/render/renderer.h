@@ -32,6 +32,7 @@ const char *gl_error();      // last init error, empty when none
 void gl_begin_frame();       // clear the screen and the recorded draw list
 void gl_end_frame();         // draw everything recorded since gl_begin_frame() and swap
 void gl_fini();              // release shaders/buffers
+void gl_set_upgrade_z_depth(bool on); // draw with the hybrid depth shaders (the option)
 
 // ImGui menu (render/imgui_backend.h): an RGBA texture (linear, clamped) and textured triangles in
 // display pixels, vertex colour bytes r, g, b, a, alpha blended, drawn in recording order

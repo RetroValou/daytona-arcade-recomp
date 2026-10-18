@@ -125,7 +125,8 @@ can change something for this game in this build (`option_available`,
   shown when the board can tell them apart, `rt::has_music_effects`), the audio
   engine (Daytona: the native engine, still being validated).
 * Dead zone, invert steering and steering curve (Linear, Soft, Extra Soft; for a game
-  with a wheel), draw distance (a game with its hook, `Game::draw_distance`).
+  with a wheel), draw distance (a game with its hook, `Game::draw_distance`), polygon
+  order (ARCADE, the default, or HYBRID: see the renderer below; every game).
 * Skip launcher, save records (backup RAM), hold Test button (holds Test for three
   game seconds at the next start, not saved), the ROM switch (a package holding the
   companion set), link play (below), reset defaults.
@@ -194,6 +195,17 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   reproduces that order: each polygon gets one depth from its rank (`GL_GEQUAL`), so
   intersecting polygons do not cut, as on the arcade board. Polygons are grouped by
   (clip, shader, texture), one draw call per group, as indexed quads.
+* Option POLYGON ORDER: HYBRID (off by default: ARCADE) draws with a second set of the
+  7 programs, compiled with `upgrade_z_depth` (`render/shaders.cpp`): each vertex's
+  depth is the rank, weighted 0.9999 - `update_z_depth_LOCAL_WEIGHT`, plus a nearness
+  from its distance w on a log scale, weighted `update_z_depth_LOCAL_WEIGHT` (1 at w 1,
+  0 at e^`update_z_depth_SCALE`), so shapes that cross (a car's shadow and its wheel)
+  cut by distance while coplanar ones keep the rank order. The 2D layers keep their
+  depths (0, `kForegroundDepth`); the result stays below the HUD. Both values are the
+  game's (`Game::update_z_depth_local_weight`, `update_z_depth_scale`: 0.9 / 12.5,
+  Sega Rally 0.95 / 12.5, Daytona 6.0, VF2 4.5, Virtua Cop 7.2, from each game's w
+  99.9th percentile on the PC). The switch picks the set at draw time
+  (`gl_set_upgrade_z_depth`); the first boot compiles 14 programs.
 * System 24 layers are placed by the same depth buffer: foreground before the polygons,
   background after them, so hidden pixels are rejected before their shader runs
   (`k2DLayersByDepth` in `render/gl_internal.h`; false restores the painter order,

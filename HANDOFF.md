@@ -1,5 +1,36 @@
 # Handoff
 
+## Vita option POLYGON ORDER: a hybrid depth (2026-10-18)
+
+The user's idea, from the user's own shader test on Sega Rally (overlapping
+shapes, a car's shadow over its wheel). The Vita's depth buffer only holds
+each polygon's rank (one flat depth per polygon, render/gl_internal.h). The
+kVertexShader branch under `#ifdef upgrade_z_depth`: for Model 2 polygons
+(depth strictly inside (0, 0.9999); the 2D layers keep 0 and kForegroundDepth)
+depth = clamp(rank * (0.9999 - W) + nearness * W, 1e-5, 0.9999), nearness =
+clamp(1 - ln(max(w, 1)) / S, 0, 1); W = update_z_depth_LOCAL_WEIGHT, S =
+update_z_depth_SCALE, both #defined by build_program from the game's record
+(Game::update_z_depth_local_weight, default 0.9, Sega Rally 0.95 by the user;
+Game::update_z_depth_scale, default 12.5).
+Scales measured on the PC (temporary probe in Video::screen_update, every
+20th frame's vertex w; removed): daytona93 race_basic p50 25, p99.9 348 ->
+6.0; vf2_fight p50 5, p99.9 71 -> 4.5; vcop scripted game p50 36, p99.9
+1,230 -> 7.2; srallyc_race p50 106, p99.9 1.9e5 (the sky) -> 12.5.
+Wrong turns, on the console: the first version added w * 0.0005 to every
+program's depth: the HUD (depth 0.99999994, w 1) went past 1 and was clipped
+away; w is the vertex's distance (1 to 2e5 in Sega Rally), so w * k also
+pushed far polygons in front.
+Option (every game): Options > POLYGON ORDER: ARCADE (default) / HYBRID,
+VitaSettings::upgrade_z_depth (vita.cfg upgrade_z_depth=). gl_init compiles
+both sets of the 7 programs (g.program, g.program_z; a failed hybrid one
+falls back to the plain one); draw_list picks the set per frame
+(gl_set_upgrade_z_depth, from main.cpp before gpu.draw). Off: the same
+shaders and image as before (the plain set has the #define lines but not the
+branch); the first boot after this compiles 14 programs.
+Checked: Vita host tests 15/15, Vita compile check, the four PC builds. Not
+measured on the console (cost: a log and a few operations per vertex, nothing
+per pixel). Not on the desktop (m2.hlsl): to port if kept.
+
 ## Music channels: a game parameter (2026-10-18)
 
 The user asked for the music/effects split to be each game's data, as its

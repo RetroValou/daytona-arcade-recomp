@@ -55,6 +55,9 @@ struct VitaSettings {
     bool mute = false;
     bool native_audio = false; // explicitly selected while native fidelity is validated
     bool steer_invert = false;
+    // The hybrid depth shaders (render/shaders.cpp, upgrade_z_depth): the Model 2
+    // draw order plus each vertex's distance. Off: the plain order.
+    bool upgrade_z_depth = false;
     Bindings bindings = Bindings::defaults(game_layout()); // Controls page of the launcher
 
     void defaults() { *this = VitaSettings{}; }

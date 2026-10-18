@@ -155,6 +155,14 @@ bool gl_init() {
         g.program[int(Prog::FlatChecker)] = g.program[int(Prog::Flat)];
         g.program[int(Prog::ModelChecker)] = g.program[int(Prog::ModelAlpha)];
     }
+    // The hybrid depth variants (the option switches between the two sets at draw
+    // time, nothing is compiled then); one that fails falls back to the plain one.
+    for (int i = 0; i < int(Prog::Count); ++i) {
+        g.program_z[i] = build_program(kPrograms[i], true);
+        gl_log("gl_init: program %s (upgrade_z_depth) = %u\n", kPrograms[i].name, g.program_z[i]);
+        if (!g.program_z[i]) g.program_z[i] = g.program[i];
+    }
+    g.error[0] = 0;
     glGenBuffers(1, &g.vbo);
     if (!g.vbo || !g.verts.grow(size_t(1) << 16)) {
         set_error("vertex memory allocation failed");
@@ -250,15 +258,20 @@ void gl_profile_loop(const GlLoopProfile &p) {
     t.prepare += p.prepare;
 }
 
+void gl_set_upgrade_z_depth(bool on) { g.upgrade_z_depth = on; }
+
 void gl_fini() {
     if (!g.ready) return;
     glFinish();
-    for (int i = 0; i < int(Prog::Count); ++i) {
-        bool shared = false; // checker fallbacks reuse other handles
-        for (int j = 0; j < i; ++j) shared = shared || g.program[j] == g.program[i];
-        if (g.program[i] && !shared) glDeleteProgram(g.program[i]);
-        g.program[i] = 0;
+    // Both sets; fallbacks reuse other handles: each handle deleted once.
+    GLuint *all[2 * int(Prog::Count)];
+    for (int i = 0; i < int(Prog::Count); ++i) all[i] = &g.program[i], all[int(Prog::Count) + i] = &g.program_z[i];
+    for (int i = 0; i < 2 * int(Prog::Count); ++i) {
+        bool shared = false;
+        for (int j = 0; j < i; ++j) shared = shared || *all[j] == *all[i];
+        if (*all[i] && !shared) glDeleteProgram(*all[i]);
     }
+    for (GLuint *p : all) *p = 0;
     if (g.vbo) {
         glBindBuffer(GL_ARRAY_BUFFER, g.vbo);
         vglBufferData(GL_ARRAY_BUFFER, nullptr); // our memory: vitaGL must not free it

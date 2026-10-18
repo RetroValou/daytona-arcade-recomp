@@ -108,6 +108,8 @@ extern const Game srallyc_game = {
     // The music on channels 0-7 and 15 (scsp_voices: 2 of ~3,700 key-ons in a
     // race elsewhere); 8 counted with it, as VF2's.
     .music_channels = 0x81ff, // 0-8 and 15
+    .update_z_depth_local_weight = 0.95,
+    .update_z_depth_scale = 12.5f, // ln of w: race 99.9th percentile 1.9e5 (the sky)
 };
 
 

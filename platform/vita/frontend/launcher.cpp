@@ -58,7 +58,7 @@ bool has_steering() {
 // The Options page's rows, in display order.
 enum Option {
     OptCpu, OptGpu, OptVolume, OptMute, OptMusic, OptEffects, OptDeadzone, OptInvert, OptAudioEngine, OptRom,
-    OptDistance, OptSteerCurve, OptSkipLauncher, OptSaveBackup, OptFourthCore,
+    OptDistance, OptZDepth, OptSteerCurve, OptSkipLauncher, OptSaveBackup, OptFourthCore,
     OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync,
     OptTestHold, OptDefaults, OptBack, kOptions
 };
@@ -181,6 +181,7 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     values[OptRom]=rom.c_str();
     static const char* distances[] = {"DISTANCE: SHORTEST", "DISTANCE: SHORTER", "DISTANCE: DEFAULT", "DISTANCE: FURTHER", "DISTANCE: FURTHEST"};
     values[OptDistance]=distances[settings.draw_distance + 2];
+    values[OptZDepth]=settings.upgrade_z_depth ? "POLYGON ORDER: HYBRID" : "POLYGON ORDER: ARCADE";
     values[OptTestHold]=test_hold_.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF";
     values[OptDefaults]="RESET DEFAULTS"; values[OptBack]="BACK";
     values[OptFourthCore]=!settings.fourth_core ? "4TH CORE: OFF" :
@@ -314,6 +315,9 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                         changed = true;
                     }
                     break;
+                case OptZDepth:
+                    if (step) { settings.upgrade_z_depth = !settings.upgrade_z_depth; changed = true; }
+                    break;
                 case OptSteerCurve:
                     if (step) { settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true; }
                     break;
@@ -371,6 +375,10 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                     if (option == OptCpu && settings.cpu_clock == 500 && scePowerGetArmClockFrequency() != 500)
                         status += " 500 NOT ACTIVE: CHECK OVERCLOCK PLUGIN/PROFILE.";
                     if (option == OptDistance) status = "FURTHER DISTANCES ADD SCENERY AND MAY REDUCE FPS.";
+                    if (option == OptZDepth)
+                        status = settings.upgrade_z_depth
+                            ? "HYBRID: THE ARCADE ORDER, CORRECTED BY DISTANCE WHERE SHAPES OVERLAP (SHADOW / WHEEL)."
+                            : "ARCADE: THE MODEL 2'S OWN DRAWING ORDER, AS ON THE CABINET.";
                     if (option == OptSaveBackup) status = settings.save_backup
                         ? "RECORDS KEPT FROM THE NEXT START. UNUSED COINS ARE KEPT TOO, AS ON A CABINET."
                         : "RECORDS NOT SAVED: EACH START IS A FRESH CABINET. TEST MODE SETTINGS STAY SAVED.";
