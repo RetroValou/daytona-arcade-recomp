@@ -155,6 +155,7 @@ public:
     void set_volumes(float music, float effects) {
         music_ = music, effects_ = effects;
         unity_ = music == 1.0f && effects == 1.0f;
+        for (SCSP_SLOT &slot : m_Slots) ScaleGains(&slot);
     }
     // Timer n expired (MAME timerA_cb ...).
     void timer_expired(int n);
@@ -212,12 +213,18 @@ private:
             uint8_t lpctl, sbctl, isel, imxl;
             bool pcm8, sdir, stwinh, lpslnk, plain;
             int dsp_gain, left_gain, right_gain, ring_gain; // m_LPANTABLE / m_RPANTABLE entries
+            // dsp_gain, left_gain and right_gain times the slot's volume (music or
+            // effects; ScaleGains): what render() uses.
+            int dsp_mix, left_mix, right_mix;
             int decay_base; // DecayStep's rate without 2R: 2KRS + OCT + FNS bit 9 (0 for KRS 0xf)
         } dec;
         bool decoded; // zeroed with the slots (Scsp's constructor): decoded at first use
         // DecayStep's state: samples since key-on, steps taken, the position in
-        // the rate's step row and the EG state it belongs to.
-        uint32_t eg_samples, eg_steps;
+        // the rate's step row and the EG state it belongs to; the next sample at
+        // which DecayStep must run (0: at once, after a register write), and the
+        // envelope's gain until then.
+        uint32_t eg_samples, eg_steps, eg_next;
+        int32_t eg_gain;
         uint8_t eg_column;
         int8_t eg_state;
     };
@@ -295,7 +302,7 @@ private:
     // Inlined into render()'s per-sample path (UpdateSlotPlain): a call per slot and sample.
     [[gnu::always_inline]] inline int EG_Update(SCSP_SLOT *slot);
     [[gnu::always_inline]] inline int32_t EG_Apply(SCSP_SLOT *slot, int32_t sample);
-    int DecayStep(SCSP_SLOT *slot, uint32_t sample_index);
+    void DecayStep(SCSP_SLOT *slot, uint32_t sample_index);
     uint32_t Step(SCSP_SLOT *slot);
     void Compute_LFO(SCSP_SLOT *slot);
     void StartSlot(SCSP_SLOT *slot);
@@ -309,6 +316,7 @@ private:
     int32_t UpdateSlot(SCSP_SLOT *slot);
     [[gnu::always_inline]] inline int32_t UpdateSlotPlain(SCSP_SLOT *slot);
     void DecodeSlot(SCSP_SLOT *slot);
+    void ScaleGains(SCSP_SLOT *slot);
     void start_timer(int n, int reg);
 
     void LFO_Init();

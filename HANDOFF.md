@@ -1,5 +1,32 @@
 # Handoff
 
+## SCSP: decay steps only when due, volumes folded into the gains (2026-10-18)
+
+The stepped decay (939af4b) ran DecayStep for every slot and sample, and
+VF2's music at 70 % made every slot sample go through a float multiply
+(unity_ false). PC, cycles in the slot path (perf, P-core pinned, 20 kHz,
+9,000 frames of the kicking fight): yesterday evening's code (b2114b9,
+volumes 1/1) 13,642 samples; this noon's (stepped decay, music 0.7) 18,583
+(+36 %); now 12,503 and 13,413 (two runs; run-to-run noise ~7 %).
+- DecayStep sets eg_next (the next sample that can step: next even one from
+  rate 0x30, else the next multiple of the column's period) and eg_gain;
+  EG_Apply calls it only then, at an EG state change, or after a register
+  write (DecodeSlot sets eg_next 0). Volumes 1/1: WAV byte-identical
+  (vf2_fight 6,000 frames, md5 cd5741cd...).
+- ScaleGains: the music/effects volume multiplied into dsp/left/right gains
+  (Decoded::*_mix), on decode, key-on, owner change and set_volumes; at 1/1
+  the gains themselves. At 0.7/1 against the per-sample float: rounding only,
+  max 9 LSB, 57.6 dB below the signal.
+ctest 23/23 (VF2, Sega Rally). Next if needed: per-slot block rendering
+(loop interchange, byte-identical; the bigger gain, longer), no ring-buffer
+writes without modulation slots, -O3/ARM mode for scsp.cpp on the Vita.
+Not measured on the Vita yet.
+Also checked today: no memory leak (m2run draining the audio as the Vita
+does: 178.7 MB at 2,000, 7,000 and 14,000 frames; without draining m2run
+itself grows, its audio buffer). Core 2 load rises in later fights with
+the active voices (kicking fight: 12.6 on average in match 1, 19.3 after,
+up to 30); the 2D worker is flat at ~1.4 ms (perf_sound.log windows 9-30).
+
 ## Docs: complete MAME ROM sets, full merged (2026-10-18)
 
 README.md (new "ROM sets" section), HOW_TO_COMPILE_RELEASE.md (You need) and

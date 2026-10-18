@@ -136,8 +136,12 @@ void Scsp::render(float *stereo, int n) {
     // playing slot's table entry without a key-on.
     if (!unity_ && (owner_age_ += uint32_t(n)) >= 32) {
         owner_age_ = 0;
-        for (int sl = 0; sl < 32; ++sl)
-            if (m_Slots[sl].active) m_Slots[sl].effect = host_.scsp_slot_effect(sl);
+        for (int sl = 0; sl < 32; ++sl) {
+            SCSP_SLOT &slot = m_Slots[sl];
+            if (!slot.active) continue;
+            const bool effect = host_.scsp_slot_effect(sl);
+            if (effect != slot.effect) slot.effect = effect, ScaleGains(&slot);
+        }
     }
     for (int s = 0; s < n; ++s) {
         int32_t smpl = 0, smpr = 0;
@@ -162,15 +166,15 @@ void Scsp::render(float *stereo, int n) {
                 prof.pcm8_slots += PCM8B(slot) != 0;
 #endif
 
-                int32_t sample = d.plain ? UpdateSlotPlain(slot) : UpdateSlot(slot);
-                if (!unity_) sample = int32_t(float(sample) * (slot->effect ? effects_ : music_));
+                const int32_t sample = d.plain ? UpdateSlotPlain(slot) : UpdateSlot(slot);
 
                 // SDIR bypasses the EG and the TL attenuator in both the DSP
                 // input feed and the direct-output mix (MAME's comment). The
-                // gains are the pan tables' entries DecodeSlot looked up.
-                m_DSP.SetSample((sample * d.dsp_gain) >> (SHIFT - 2), d.isel, d.imxl);
-                smpl += (sample * d.left_gain) >> SHIFT;
-                smpr += (sample * d.right_gain) >> SHIFT;
+                // gains are the pan tables' entries DecodeSlot looked up, times
+                // the slot's volume (ScaleGains).
+                m_DSP.SetSample((sample * d.dsp_mix) >> (SHIFT - 2), d.isel, d.imxl);
+                smpl += (sample * d.left_mix) >> SHIFT;
+                smpr += (sample * d.right_mix) >> SHIFT;
             }
             ++m_BUFPTR;
             m_BUFPTR &= 63;
@@ -382,8 +386,10 @@ inline int32_t Scsp::EG_Apply(SCSP_SLOT *slot, int32_t sample) {
     if constexpr (kSteppedDecay) {
         const uint32_t n = slot->eg_samples++;
         if (slot->EG.state != SCSP_ATTACK) {
-            const int att = DecayStep(slot, n);
-            return att > 0x3bf ? 0 : (sample * m_EG_TABLE[0x3ff - att]) >> SHIFT;
+            // Between two steps nothing changes: DecayStep runs at the step's
+            // sample, at a change of EG state, and after a register write.
+            if (n >= slot->eg_next || slot->EG.state != slot->eg_state) DecayStep(slot, n);
+            return (sample * slot->eg_gain) >> SHIFT;
         }
     }
     if (slot->EG.state == SCSP_ATTACK) return (sample * EG_Update(slot)) >> SHIFT;
@@ -398,9 +404,10 @@ inline int32_t Scsp::EG_Apply(SCSP_SLOT *slot, int32_t sample) {
 // current entry of its row (rate - 2: the row's kind is (rate - 2) & 3, its
 // periods halve every four rates); from 0x30 every other sample, by 1-8 as the
 // steps taken so far select. Over the 0x3bf units it decays MAME's times are
-// ~7 % shorter (HANDOFF.md, 18 Oct 2026). Returns the attenuation; past 0x3bf
-// the slot is silent, and stopped in release.
-int Scsp::DecayStep(SCSP_SLOT *slot, uint32_t n) {
+// ~7 % shorter (HANDOFF.md, 18 Oct 2026). Past 0x3bf the slot is silent, and
+// stopped in release. Sets the envelope's gain (eg_gain) and the next sample
+// at which something can change (eg_next): the samples in between need no call.
+void Scsp::DecayStep(SCSP_SLOT *slot, uint32_t n) {
     // log2 of the periods at rate 2-5, 0 ends a row
     static constexpr uint8_t kRows[4][8] = {{13, 12, 12}, {13, 12, 12, 12, 12, 12, 12}, {12}, {12, 12, 12, 11, 11}};
     static constexpr uint8_t kAdd[13][4] = {{1, 1, 1, 1}, {2, 1, 1, 1}, {2, 1, 2, 1}, {2, 2, 2, 1}, {2, 2, 2, 2},
@@ -408,6 +415,7 @@ int Scsp::DecayStep(SCSP_SLOT *slot, uint32_t n) {
                                             {8, 4, 8, 4}, {8, 8, 8, 4}, {8, 8, 8, 8}};
     if (slot->eg_state != slot->EG.state) slot->eg_state = int8_t(slot->EG.state), slot->eg_column = 0;
     int att = 0x3ff - (slot->EG.volume >> EG_SHIFT);
+    slot->eg_next = UINT32_MAX; // past 0x3bf, or a rate below 2: no more steps
     if (att < 0x3bf) {
         const int R = slot->EG.state == SCSP_DECAY1 ? int(D1R(slot)) : slot->EG.state == SCSP_DECAY2 ? int(D2R(slot)) : int(RR(slot));
         const int rate = std::clamp(slot->dec.decay_base + 2 * R, 0, 0x3c);
@@ -427,9 +435,19 @@ int Scsp::DecayStep(SCSP_SLOT *slot, uint32_t n) {
         if (step) ++slot->eg_steps, att += add;
         if (slot->EG.state == SCSP_DECAY1 && (att >> 5) >= int(DL(slot))) slot->EG.state = SCSP_DECAY2;
         slot->EG.volume = (0x3ff - att) << EG_SHIFT;
+        // The next sample that can step: the next even one from rate 0x30, else
+        // the next multiple of the (new) column's period. A new EG state runs
+        // DecayStep at the next sample anyway (its column starts at 0).
+        if (att < 0x3bf && rate >= 2) {
+            if (rate >= 0x30) slot->eg_next = (n | 1u) + 1;
+            else {
+                const uint32_t period = 1u << (kRows[(rate - 2) & 3][slot->eg_column] - ((rate - 2) >> 2));
+                slot->eg_next = (n & ~(period - 1)) + period;
+            }
+        }
     }
     if (att > 0x3bf && slot->EG.state == SCSP_RELEASE) StopSlot(slot, 0);
-    return att;
+    slot->eg_gain = att > 0x3bf ? 0 : m_EG_TABLE[0x3ff - att];
 }
 
 uint32_t Scsp::Step(SCSP_SLOT *slot) {
@@ -447,6 +465,7 @@ void Scsp::Compute_LFO(SCSP_SLOT *slot) {
 
 void Scsp::StartSlot(SCSP_SLOT *slot) {
     slot->effect = host_.scsp_slot_effect(int(slot - m_Slots));
+    ScaleGains(slot);
     slot->active = 1;
     slot->cur_addr = 0;
     slot->nxt_addr = 1 << SHIFT;
@@ -456,7 +475,7 @@ void Scsp::StartSlot(SCSP_SLOT *slot) {
     slot->EG.volume = 0x17F << EG_SHIFT;
     slot->Prev = 0;
     slot->Backwards = 0;
-    slot->eg_samples = slot->eg_steps = 0, slot->eg_column = 0, slot->eg_state = -1;
+    slot->eg_samples = slot->eg_steps = slot->eg_next = 0, slot->eg_column = 0, slot->eg_state = -1;
 
     Compute_LFO(slot);
 }
@@ -813,7 +832,24 @@ void Scsp::DecodeSlot(SCSP_SLOT *slot) {
     d.right_gain = m_RPANTABLE[direct];
     d.ring_gain = m_LPANTABLE[uint16_t(tl | (0x7 << 0xd))];
     d.decay_base = KRS(slot) == 0xf ? 0 : int(KRS(slot)) * 2 + int((FNS(slot) >> 9) & 1) + (int(OCT(slot) ^ 8) - 8);
+    ScaleGains(slot);
+    slot->eg_next = 0; // the rates may have changed: DecayStep at the next sample
     slot->decoded = true;
+}
+
+// The slot's mix gains: its pan-table gains times its volume (music or
+// effects). Both volumes 1: the gains themselves (MAME's output). Run when
+// the gains, the slot's owner or the volumes change, not per sample.
+void Scsp::ScaleGains(SCSP_SLOT *slot) {
+    SCSP_SLOT::Decoded &d = slot->dec;
+    if (unity_) {
+        d.dsp_mix = d.dsp_gain, d.left_mix = d.left_gain, d.right_mix = d.right_gain;
+        return;
+    }
+    const float volume = slot->effect ? effects_ : music_;
+    d.dsp_mix = int(float(d.dsp_gain) * volume);
+    d.left_mix = int(float(d.left_gain) * volume);
+    d.right_mix = int(float(d.right_gain) * volume);
 }
 
 // UpdateSlot for the common slot (DecodeSlot's `plain`: SSCTL 0, no pitch or
