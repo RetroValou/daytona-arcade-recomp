@@ -2,6 +2,7 @@
     "git.ignoredRepositories": [
         "extern/mame",
         "extern/kos-dc",
-        "extern/sm2-emu"
+        "extern/sm2-emu",
+        "extern/yabause"
     ]
 }

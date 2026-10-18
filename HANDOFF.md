@@ -1,5 +1,48 @@
 # Handoff
 
+## VF2 sound: Yabause's SCSP compared with MAME's (2026-10-18)
+
+extern/yabause (https://github.com/Yabause/yabause, 7e38821, GPL-2: reference
+only, nothing copied; in .vscode git.ignoredRepositories). Three SCSPs in it:
+scsp.c's default one (2004-2012, table-driven), scsp2.c (its threaded
+variant, a build option) and scsp.c's "new SCSP" (use_new_scsp, off by
+default: hardware-derived envelope steps and level maths, but no
+interpolation, op6 empty). Against ours (MAME's), for what VF2 uses (8-bit
+samples, no LFO, no modulation; slot probe and key-on trace of 2026-10-17):
+- Level (TL, EG): the same scale (0.375 dB per TL step, 3/32 dB per EG
+  unit). The new SCSP turns attenuation into gain by a piecewise-linear
+  mantissa and shift (as hardware would); against MAME's exact powf:
+  -0.29..+0.51 dB. Not a balance change.
+- Envelope decay/release: the new SCSP's step tables decay ~7 % slower
+  than MAME's time table (1.06-1.12 x over 0x3bf units, every rate 2-60;
+  MAME spreads its ms times over 1023 units, which is 1023/0x3bf = 1.067).
+  Attack: MAME ramps the amplitude linearly from 0x17F, the new SCSP steps
+  the attenuation exponentially from 0x280 (the same start point).
+  Key-on only from RELEASE in both. The default Yabause SCSP decays
+  linearly in amplitude (a much louder tail): not a hardware reference.
+- Pan: MAME 3 dB per DIPAN/EFPAN unit (bit weights 3/6/12/24, the
+  manual's law). New SCSP 6 dB per unit (a shift), default SCSP 6 dB per
+  two units: both coarser; VF2's music pans 3 and 8 would be 9-24 dB lower
+  on one side there, not a correction.
+- Send levels (DISDL, IMXL, EFSDL): 6 dB per step in all three; the
+  direct/DSP/effect-return ratios are the same (Yabause /4 overall).
+- MVOL: MAME linear MVOL/15, new SCSP 6 dB per step: overall level only.
+- DSP (scspdsp.c vs MAME): COEF >> 3 in both; MIXS/EXTS scaling as MAME
+  (EXTS unused on Model 2). Differences: EFREG overwritten (MAME adds;
+  VF2 writes each of EF0-3 once: no effect), ACC wrapped to 24 bits (MAME
+  26), MRD/MWT pipelined one step later and allowed on even steps (MAME
+  odd only; VF2's 82 steps access memory on odd steps only, IWT two steps
+  after MRD: the same values), SHIFT 3 gives 0 (a Yabause bug: shift == 2
+  tested twice). VF2's program has no SHIFT 3.
+Conclusion: Yabause shows no MAME error that would change VF2's balance
+(speech vs music); its hardware-derived parts differ by <= 0.5 dB and ~7 %
+decay time. Candidates if wanted (off by default, to be measured on the
+WAV first): the new SCSP's decay steps (notes ~7 % longer) and its
+log-to-linear level curve. Neither explains a quiet end-of-fight speech.
+Temporary key-on trace (voice table's 16 bytes at key-on, SCSP_KEYLOG) left
+uncommitted in the working tree; the idle-fight run was stopped by the
+user before the end of a round, no result.
+
 ## VF2 sound: MAME vs sm2-emu vs ours; the end-of-fight speech (2026-10-17)
 
 extern/sm2-emu (https://github.com/dmanlfc/sm2-emu, df14ed4, BSD-3; added
