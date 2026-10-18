@@ -4,7 +4,11 @@
 
 * A Linux, macOS or WSL computer where the project is set up: your ROM sets in
   `roms/` (`daytona93.zip` for Daytona USA, `srallyc.zip` or `srallycb.zip` for
-  Sega Rally Championship), then `python3 scripts/setup.py` (see [README.md](README.md)).
+  Sega Rally Championship, `vf2.zip` for Virtua Fighter 2), then
+  `python3 scripts/setup.py` (see [README.md](README.md)).
+* Complete MAME ROM sets, **full merged**: every file of the set in the archive,
+  the parent's included. Split sets (a clone with only its own files) are
+  refused; every file is checked by name and CRC, on the computer and on the Vita.
 * [VitaSDK](https://vitasdk.org) with its default packages (SDL2 and taiHEN are used),
   and `VITASDK` set.
 * On the Vita: homebrew enabled and `libshacccg.suprx` extracted

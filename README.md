@@ -18,4 +18,14 @@ input wiring, hooks) lives in `src/games/` and `scripts/games.py`; the rest
 is the Model 2 board, shared by every game. To add one, see
 [docs/adding-a-game.md](docs/adding-a-game.md).
 
+## ROM sets
+
+You need your own ROM sets, as complete MAME sets: **full merged** archives
+(`.zip`, or `.7z` on the computer), each holding every file of the set,
+including the files a clone shares with its parent. A split set (a clone's
+archive with only the files that differ from its parent) is refused: the
+importer checks every file of the set by name and CRC. Put them in `roms/`
+as `daytona93.zip`, `srallyc.zip` (or MAME's merged `srallycb.zip`) and
+`vf2.zip`; on the Vita, see [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md).
+
 The original README is kept in [README_fork.md](README_fork.md).

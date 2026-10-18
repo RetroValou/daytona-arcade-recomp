@@ -80,7 +80,7 @@ building an empty game if a generated source group is missing.
 
 ## Install and play
 
-Install the VPK with VitaShell and put your complete ZIP ROM set at
+Install the VPK with VitaShell and put your complete (MAME full merged) ZIP ROM set at
 `ux0:data/<set>/<set>.zip`: `daytona93`, `srallyc` (MAME's merged `srallycb.zip`
 works, renamed) or `vf2`. The importer checks every file's CRC; a renamed other set
 is refused. The Vita reads `.zip` only (no 7z decoder: its memory peaks); repack a

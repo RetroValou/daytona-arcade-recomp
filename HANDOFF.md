@@ -1,5 +1,12 @@
 # Handoff
 
+## Docs: complete MAME ROM sets, full merged (2026-10-18)
+
+README.md (new "ROM sets" section), HOW_TO_COMPILE_RELEASE.md (You need) and
+platform/vita/README.md now say the ROM sets must be complete MAME sets,
+full merged (every file of the set, the parent's included): a split clone
+archive is refused, the importer checking every file by name and CRC.
+
 ## SCSP music/effects: by the voice's MIDI channel, not its owner (2026-10-18)
 
 The user heard, on VF2 with the music lowered, the first match's round 1
