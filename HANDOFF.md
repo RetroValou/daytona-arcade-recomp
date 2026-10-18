@@ -1,5 +1,22 @@
 # Handoff
 
+## Virtua Cop 2: the bal g14 inline texts; its level raised to Daytona's (2026-10-18)
+
+The user, on the console: 0x38254 has no code (after "SCENE"). A second kind
+of inline text: the routines 0x79c0, 0x7a70 and 0x7adc are called as bal
+...,g14 with a NUL-terminated text after the call, read byte by byte, and
+return to the next 4-byte boundary past the NUL (subo g14,0,r15; and
+3,r15,r15; addo r15,g14,g14; bx (g14)). Every return point from the 32
+calls: 29 new seeds (seeds/vcop2.txt 1,620). Searched every game for a bx
+(g14) after a change of g14: only these three (VF2's three restore g14 from
+the stack: plain returns). Checked: the scripted 9,000-frame game and the
+14,000-frame continue run go through.
+Level: m2run WAVs, a 9,000-frame game RMS -32.6 dBFS, peak -15.8; attract
+-32.5, -16.5; Daytona (daytona93) race_basic -16.4, peak -1.0, attract
+-22.0, -6.0. Game::output_gain 5.5 (+14.8 dB): its game's peaks at
+Daytona's race. As for Sega Rally and VF2, the frontends only (m2run's WAV
+and the parity checks stay at the board's output).
+
 ## Virtua Cop 2 and VF2: the code after inline texts (2026-10-18)
 
 The user, on the console: Virtua Cop 2 stops on 0x2faac (no code) when the

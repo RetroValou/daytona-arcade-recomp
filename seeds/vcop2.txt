@@ -1596,3 +1596,39 @@
 0004a818
 0004a838
 0004a858
+# The other inline texts (18 Oct 2026; the console stopped on 0x38254 after
+# "SCENE"): the routines 0x79c0, 0x7a70 and 0x7adc are called as bal ...,g14
+# with a NUL-terminated text after the call; they read it byte by byte and
+# return to the next 4-byte boundary past the NUL (subo g14,0,r15; and
+# 3,r15,r15; addo r15,g14,g14; bx (g14)). Every return point from the 32
+# calls (3 were already seeds); no other bx (g14) in the program follows a
+# change of g14.
+00006e88
+000381a8
+000381c8
+000381e4
+000381f8
+0003823c
+00038254
+00038290
+000382a8
+000382c0
+000382d8
+000382ec
+00038330
+00038384
+0003841c
+00038484
+0003851c
+00038578
+000385c8
+000385e0
+000385f4
+0003860c
+00038620
+00038664
+000386b8
+00038750
+000387b8
+00038850
+0003d588
