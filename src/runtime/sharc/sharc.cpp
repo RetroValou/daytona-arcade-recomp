@@ -351,8 +351,12 @@ void adsp21062_device::program_space::write_qword(uint32_t address, uint64_t dat
 {
 	address &= 0xffffff;
 	if (address < 0x20000 || address >= 0x40000 || (address & 0x7fff) >= 0x5000) return;
+	const uint64_t before = d.m_gen_end && address < d.m_gen_end ? read_qword(address) : 0;
 	if (address & 0x18000) d.pm_w<1>(address & 0x7fff, data, mem_mask);
 	else d.pm_w<0>(address & 0x7fff, data, mem_mask);
+	// Ours: the recompiled program cannot follow a rewrite of its own code.
+	if (d.m_gen_end && address < d.m_gen_end && address >= 0x20000 && read_qword(address) != before)
+		throw SharcFatal(emu_fatalerror::fmt("SHARC program memory rewritten at %05x (recompiled code)", address));
 }
 
 // data_2m: the IOP registers, the two blocks (32-bit words at 0x20000-0x27fff,
@@ -510,14 +514,24 @@ void adsp21062_device::check_interrupts()
 	}
 }
 
-// MAME execute_run (interpreter), one instruction: the interrupt check, the
-// pipeline step, the loop end, the instruction, the system register latency
-// and the DMA cycle. Ours: an idle SHARC with no interrupt pending runs its
-// active DMAs one cycle (MAME runs them for the rest of its timeslice); the
-// delayed IOP write (a timer in MAME) is due after its count of instructions.
-void adsp21062_device::step()
+// MAME execute_run (interpreter), one instruction, in the pieces the
+// recompiled program (m2sharcrecomp) runs too: step_pre (the delayed IOP
+// write, idling, interrupts), step_fetch (the pipeline and ASTAT history),
+// step_loop_end (at a do-until's end address), the instruction, step_after
+// (the system register latency and the DMA cycle). Ours: an idle SHARC with no
+// interrupt pending runs its active DMAs one cycle (MAME runs them for the rest
+// of its timeslice); the delayed IOP write (a timer in MAME) is due after its
+// count of instructions; the interpreter loop's body is upstream's.
+
+#if defined(__GNUC__)
+#define SHARC_INLINE inline __attribute__((always_inline))
+#else
+#define SHARC_INLINE __forceinline
+#endif
+
+// False when the SHARC idles (no instruction this step).
+SHARC_INLINE bool adsp21062_device::step_pre()
 {
-	if (m_halted) return;
 	if (m_iop_delay > 0 && --m_iop_delay == 0) sharc_iop_delayed_write_callback();
 	if (m_core->idle && m_core->irq_pending == 0)
 	{
@@ -526,99 +540,113 @@ void adsp21062_device::step()
 			dma_run_cycle(6);
 			dma_run_cycle(7);
 		}
-		return;
+		return false;
 	}
-		if (m_core->irq_pending != 0)
+	if (m_core->irq_pending != 0)
+	{
+		check_interrupts();
+		m_core->idle = 0;
+	}
+	return !m_core->idle && !m_core->write_stalled;
+}
+
+SHARC_INLINE void adsp21062_device::step_fetch(uint64_t opcode)
+{
+	m_core->pc = m_core->daddr;
+	m_core->daddr = m_core->faddr;
+	m_core->faddr = m_core->nfaddr;
+	m_core->nfaddr++;
+
+	m_core->astat_old_old_old = m_core->astat_old_old;
+	m_core->astat_old_old = m_core->astat_old;
+	m_core->astat_old = m_core->astat;
+
+	m_core->opcode = opcode;
+	if (m_trace) m_trace(m_trace_ctx, *this); // where MAME's M2TRACE_SHARCPC logs (patch 0005)
+}
+
+inline void adsp21062_device::step_loop_end()
+{
+	// handle looping
+	if (!(m_core->stky & LSEM) && (m_core->pc == m_core->laddr.addr))
+	{
+		switch (m_core->laddr.loop_type)
 		{
-			check_interrupts();
-			m_core->idle = 0;
-		}
-
-		if (!m_core->idle && !m_core->write_stalled)
+		case 0:     // arithmetic condition-based
 		{
-			m_core->pc = m_core->daddr;
-			m_core->daddr = m_core->faddr;
-			m_core->faddr = m_core->nfaddr;
-			m_core->nfaddr++;
-
-			m_core->astat_old_old_old = m_core->astat_old_old;
-			m_core->astat_old_old = m_core->astat_old;
-			m_core->astat_old = m_core->astat;
-
-			m_core->opcode = m_program.read_qword(m_core->pc);
-			if (m_trace) m_trace(m_trace_ctx, *this); // where MAME's M2TRACE_SHARCPC logs (patch 0005)
-
-			// handle looping
-			if (!(m_core->stky & LSEM) && (m_core->pc == m_core->laddr.addr))
+			if ((m_core->pc - TOP_PC()) > 2)
 			{
-				switch (m_core->laddr.loop_type)
-				{
-				case 0:     // arithmetic condition-based
-				{
-					if ((m_core->pc - TOP_PC()) > 2)
-					{
-						m_core->astat = m_core->astat_old_old_old;
-					}
-
-					if (DO_CONDITION_CODE(m_core->laddr.code))
-					{
-						POP_LOOP();
-						POP_PC();
-					}
-					else
-					{
-						CHANGE_PC(TOP_PC());
-					}
-
-					m_core->astat = m_core->astat_old;
-					break;
-				}
-				case 1:     // counter-based, length 1
-				{
-					//throw emu_fatalerror("SHARC: counter-based loop, length 1 at %08X\n", m_pc);
-					//break;
-				}
-				case 2:     // counter-based, length 2
-				{
-					//throw emu_fatalerror("SHARC: counter-based loop, length 2 at %08X\n", m_pc);
-					//break;
-				}
-				case 3:     // counter-based, length >2
-				{
-					--m_core->curlcntr;
-					if (m_core->curlcntr == 0)
-					{
-						POP_LOOP();
-						POP_PC();
-					}
-					else
-					{
-						CHANGE_PC(TOP_PC());
-					}
-				}
-				}
+				m_core->astat = m_core->astat_old_old_old;
 			}
 
-			(this->*m_sharc_op[(m_core->opcode >> 39) & 0x1ff])();
-
-
-			// System register latency effect
-			if (m_core->systemreg_latency_cycles > 0)
+			if (DO_CONDITION_CODE(m_core->laddr.code))
 			{
-				--m_core->systemreg_latency_cycles;
-				if (m_core->systemreg_latency_cycles <= 0)
-				{
-					systemreg_write_latency_effect();
-				}
+				POP_LOOP();
+				POP_PC();
+			}
+			else
+			{
+				CHANGE_PC(TOP_PC());
 			}
 
-			if (!m_core->write_stalled)
-			{
-				dma_run_cycle(6);
-				dma_run_cycle(7);
-			}
-
+			m_core->astat = m_core->astat_old;
+			break;
 		}
+		case 1:     // counter-based, length 1
+		{
+			//throw emu_fatalerror("SHARC: counter-based loop, length 1 at %08X\n", m_pc);
+			//break;
+		}
+		case 2:     // counter-based, length 2
+		{
+			//throw emu_fatalerror("SHARC: counter-based loop, length 2 at %08X\n", m_pc);
+			//break;
+		}
+		case 3:     // counter-based, length >2
+		{
+			--m_core->curlcntr;
+			if (m_core->curlcntr == 0)
+			{
+				POP_LOOP();
+				POP_PC();
+			}
+			else
+			{
+				CHANGE_PC(TOP_PC());
+			}
+		}
+		}
+	}
+}
+
+SHARC_INLINE void adsp21062_device::step_after()
+{
+	// System register latency effect
+	if (m_core->systemreg_latency_cycles > 0)
+	{
+		--m_core->systemreg_latency_cycles;
+		if (m_core->systemreg_latency_cycles <= 0)
+		{
+			systemreg_write_latency_effect();
+		}
+	}
+
+	// Ours: the calls only while a DMA runs (dma_run_cycle tests the same bits).
+	if (!m_core->write_stalled && (m_core->dma_status & ((1 << 6) | (1 << 7))))
+	{
+		dma_run_cycle(6);
+		dma_run_cycle(7);
+	}
+	++m_instructions;
+}
+
+void adsp21062_device::step()
+{
+	if (m_halted || !step_pre()) return;
+	step_fetch(m_program.read_qword(m_core->daddr));
+	step_loop_end();
+	(this->*m_sharc_op[(m_core->opcode >> 39) & 0x1ff])();
+	step_after();
 }
 
 } // namespace rt::sharc

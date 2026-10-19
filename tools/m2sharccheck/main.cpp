@@ -18,6 +18,9 @@
 
 #include "runtime/sharc/sharc.h"
 
+// M2SHARC_GEN (m2sharccheck_gen): the recompiled program (m2sharcrecomp)
+// instead of the interpreter.
+
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
@@ -88,6 +91,11 @@ struct LogBus : rt::sharc::Bus {
     const std::vector<uint32_t> &rom;
     size_t pos = 0;
     uint64_t fifo_in = 0, fifo_out = 0, buffer_reads = 0, buffer_writes = 0;
+    rt::sharc::adsp21062_device *sharc = nullptr;
+    // FLAG0 (input FIFO empty): clear exactly when MAME's next event is an input.
+    void update_flag() {
+        if (sharc) sharc->set_flag_input(0, next_is_input() ? 0 : 1);
+    }
     LogBus(const std::vector<Ev> &l, const std::vector<uint32_t> &r) : log(l), rom(r) {}
 
     const Ev &expect(Ev::Kind k, uint32_t a, uint32_t b, bool check_b) {
@@ -98,13 +106,14 @@ struct LogBus : rt::sharc::Bus {
             throw Divergence(std::string("event ") + std::to_string(pos) + ": MAME " + kind_name(e.kind) + " " + hex(e.a) + " " +
                              hex(e.b) + ", ours " + kind_name(k) + " " + hex(a) + (check_b ? " " + hex(b) : std::string()));
         ++pos;
+        update_flag();
         return e;
     }
     bool next_is_input() const { return pos < log.size() && log[pos].kind == Ev::In; }
 
     uint32_t read(uint32_t address) override {
         if (address >= 0x400000 && address < 0xc00000) {
-            if (pos < log.size() && log[pos].kind == Ev::InEmpty) { ++pos; return 0; }
+            if (pos < log.size() && log[pos].kind == Ev::InEmpty) { ++pos; update_flag(); return 0; }
             ++fifo_in;
             return expect(Ev::In, 0, 0, false).b;
         }
@@ -189,9 +198,12 @@ int main(int argc, char **argv) {
             throw Divergence("MAME uploaded " + std::to_string(up.a) + " words, sharc_program.bin has " + std::to_string(program.size() / 2));
         for (uint32_t i = 0; i < up.a; ++i) sharc.external_dma_write(i, program[i * 2] | program[i * 2 + 1] << 8);
         sharc.set_halted(false);
+        bus.sharc = &sharc;
+        bus.update_flag();
 
         const auto t0 = std::chrono::steady_clock::now();
         uint64_t idle_steps = 0;
+        double sharc_seconds = 0; // M2SHARC_GEN: in the recompiled program's calls
         struct Tracer {
             PcLog *pcs;
             uint32_t last_pc = ~0u;
@@ -215,11 +227,22 @@ int main(int argc, char **argv) {
                 sharc.external_iop_write(log[bus.pos].a, log[bus.pos].b);
                 ++bus.pos;
             }
-            sharc.set_flag_input(0, bus.next_is_input() ? 0 : 1);
             const size_t before = bus.pos;
+            const uint64_t steps_before = steps;
+#ifdef M2SHARC_GEN
+            // The recompiled program: until it waits or a million instructions.
+            const uint64_t at = sharc.instructions();
+            const auto r0 = std::chrono::steady_clock::now();
+            const bool waiting = sharc.run_generated(1'000'000);
+            sharc_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - r0).count();
+            steps += sharc.instructions() - at;
+            if (waiting && bus.pos == before && !bus.next_is_input() && bus.pos < log.size() && log[bus.pos].kind != Ev::Iop)
+                throw Divergence(std::string("the SHARC waits for input; MAME's next event is ") + kind_name(log[bus.pos].kind));
+#else
             sharc.step();
             ++steps;
-            idle_steps = bus.pos == before ? idle_steps + 1 : 0;
+#endif
+            idle_steps = bus.pos == before ? idle_steps + (steps - steps_before) + 1 : 0;
             if (idle_steps > 50'000'000) throw Divergence("the SHARC made no event in 50 M instructions (next MAME event " +
                                                           std::string(kind_name(log[bus.pos].kind)) + ")");
         }
@@ -228,6 +251,9 @@ int main(int argc, char **argv) {
                     " writes, identical to MAME; %" PRIu64 " SHARC instructions%s%s; %.2f s\n",
                     log.size(), bus.fifo_in, bus.fifo_out, bus.buffer_reads, bus.buffer_writes, steps,
                     pcs ? ", instruction log identical over " : "", pcs ? (std::to_string(tr.lines) + " lines").c_str() : "", s);
+        if (sharc_seconds > 0)
+            std::printf("  in the recompiled program: %.2f s, %.1f M SHARC instructions/s (with the log's bus)\n", sharc_seconds,
+                        double(steps) / sharc_seconds / 1e6);
         return 0;
     } catch (const Divergence &d) {
         std::printf("m2sharccheck: DIVERGED after %" PRIu64 " SHARC instructions: %s\n", steps, d.what());

@@ -223,6 +223,7 @@ if(NOT MSVC)
 endif()
 add_executable(m2sharccheck tools/m2sharccheck/main.cpp)
 target_link_libraries(m2sharccheck PRIVATE sharc)
+add_executable(m2sharcrecomp tools/m2sharcrecomp/main.cpp)
 
 add_executable(m2replay tools/m2replay/main.cpp)
 target_link_libraries(m2replay PRIVATE refcore)
@@ -307,6 +308,17 @@ set(SND_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_snd/snd_gen.cpp)
 # The SCSP DSP program, recompiled (m2dsprecomp; optional: without it, or for a set
 # with no program, the DSP interpreter runs).
 set(DSP_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_dsp/dsp_gen.cpp)
+# Model 2B: the recompiled SHARC program (m2sharcrecomp; it compiles the lifted
+# core in), and m2sharccheck on it.
+set(SHARC_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_sharc/sharc_gen.cpp)
+if(EXISTS ${SHARC_GEN})
+    add_executable(m2sharccheck_gen tools/m2sharccheck/main.cpp ${SHARC_GEN})
+    target_include_directories(m2sharccheck_gen PRIVATE src)
+    target_compile_definitions(m2sharccheck_gen PRIVATE M2SHARC_GEN)
+    if(NOT MSVC)
+        set_source_files_properties(${SHARC_GEN} PROPERTIES COMPILE_OPTIONS -w)
+    endif()
+endif()
 if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
     file(GLOB GEN_SOURCES ${GEN_DIR}/*.cpp)
     if(EXISTS ${DSP_GEN})

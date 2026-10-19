@@ -127,7 +127,7 @@ def main():
         run(build_cmd + ["--target", "m2import"])
         if subprocess.run([tool(build, args.config, "m2import"), roms[0], cache], cwd=ROOT).returncode:
             sys.exit(ROM_REJECTED_EXIT)  # m2import printed which file is missing or wrong
-    run(build_cmd + ["--target", "m2recomp", "m2tgprecomp", "m2sndrecomp", "m2dsprecomp"])
+    run(build_cmd + ["--target", "m2recomp", "m2tgprecomp", "m2sndrecomp", "m2dsprecomp", "m2sharcrecomp"])
 
     gen = os.path.join(gen_root, args.set)
     if os.path.isdir(gen):
@@ -166,6 +166,15 @@ def main():
     dsp = os.path.join(gen_root, args.set + "_dsp")
     os.makedirs(dsp, exist_ok=True)
     run([tool(build, args.config, "m2dsprecomp"), os.path.join(cache, "dsp_program.bin"), os.path.join(dsp, "dsp_gen.cpp")])
+
+    # Model 2B: the SHARC program (Game::sharc; m2import writes it only for such a set).
+    sharc_program = os.path.join(cache, "sharc_program.bin")
+    if os.path.exists(sharc_program):
+        sharc = os.path.join(gen_root, args.set + "_sharc")
+        os.makedirs(sharc, exist_ok=True)
+        run([tool(build, args.config, "m2sharcrecomp"), sharc_program, os.path.join(sharc, "sharc_gen.cpp"),
+             "--ops", os.path.join(ROOT, "src/runtime/sharc/sharcops_table.inc"),
+             "--sharcops", os.path.join(ROOT, "src/runtime/sharc/sharcops.hxx")])
 
     if args.recomp_only:
         print(f"recompile: recompiled into {games.gen_root(args.set)}/ (--recomp-only: the desktop game is not built)")

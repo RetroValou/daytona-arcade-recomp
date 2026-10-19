@@ -62,6 +62,12 @@ public:
     uint32_t mode1() const;
     uint32_t r(int i) const;
     bool idle() const;
+    uint64_t instructions() const { return m_instructions; }
+    // The recompiled program (m2sharcrecomp's output, which compiles this core
+    // into its own file): runs up to `budget` instructions; true when it stopped
+    // because the SHARC waits (idle, halted, or polling its flags in a one-nop
+    // do-until loop), false when the budget ran out.
+    bool run_generated(uint64_t budget);
     // Called after each opcode fetch, before the instruction runs (m2sharccheck).
     void set_trace(void (*trace)(void *, const adsp21062_device &), void *ctx) { m_trace = trace, m_trace_ctx = ctx; }
 
@@ -270,7 +276,64 @@ private:
     bool m_halted = true;
     void (*m_trace)(void *, const adsp21062_device &) = nullptr;
     void *m_trace_ctx = nullptr;
-    int m_iop_delay = 0; // instructions until the delayed IOP write (MAME: a timer)
+    int m_iop_delay = 0;
+    uint64_t m_instructions = 0;
+    bool m_gen_checked = false; // run_generated compared program memory with its program
+    uint32_t m_gen_end = 0;     // the recompiled program's end (0x20000 up): writes there are fatal
+
+    // The recompiled program's handlers (m2sharcrecomp writes their definitions:
+    // upstream's sharcop_* and COMPUTE, the opcode a template parameter).
+    template <uint32_t OPCODE> void COMPUTE_t();
+    template <int CHUNK> int run_chunk(uint64_t &done, uint64_t budget);
+    template <uint64_t OPCODE> void sharcop_compute_dreg_dm_dreg_pm_t();
+    template <uint64_t OPCODE> void sharcop_compute_t();
+    template <uint64_t OPCODE> void sharcop_compute_ureg_dmpm_premod_t();
+    template <uint64_t OPCODE> void sharcop_compute_ureg_dmpm_postmod_t();
+    template <uint64_t OPCODE> void sharcop_compute_dm_to_dreg_immmod_t();
+    template <uint64_t OPCODE> void sharcop_compute_dreg_to_dm_immmod_t();
+    template <uint64_t OPCODE> void sharcop_compute_pm_to_dreg_immmod_t();
+    template <uint64_t OPCODE> void sharcop_compute_dreg_to_pm_immmod_t();
+    template <uint64_t OPCODE> void sharcop_compute_ureg_to_ureg_t();
+    template <uint64_t OPCODE> void sharcop_imm_shift_dreg_dmpm_t();
+    template <uint64_t OPCODE> void sharcop_imm_shift_t();
+    template <uint64_t OPCODE> void sharcop_compute_modify_t();
+    template <uint64_t OPCODE> void sharcop_direct_call_t();
+    template <uint64_t OPCODE> void sharcop_direct_jump_t();
+    template <uint64_t OPCODE> void sharcop_relative_call_t();
+    template <uint64_t OPCODE> void sharcop_relative_jump_t();
+    template <uint64_t OPCODE> void sharcop_indirect_jump_t();
+    template <uint64_t OPCODE> void sharcop_indirect_call_t();
+    template <uint64_t OPCODE> void sharcop_relative_jump_compute_t();
+    template <uint64_t OPCODE> void sharcop_relative_call_compute_t();
+    template <uint64_t OPCODE> void sharcop_indirect_jump_compute_dreg_dm_t();
+    template <uint64_t OPCODE> void sharcop_relative_jump_compute_dreg_dm_t();
+    template <uint64_t OPCODE> void sharcop_rts_t();
+    template <uint64_t OPCODE> void sharcop_rti_t();
+    template <uint64_t OPCODE> void sharcop_do_until_counter_imm_t();
+    template <uint64_t OPCODE> void sharcop_do_until_counter_ureg_t();
+    template <uint64_t OPCODE> void sharcop_do_until_t();
+    template <uint64_t OPCODE> void sharcop_dm_to_ureg_direct_t();
+    template <uint64_t OPCODE> void sharcop_ureg_to_dm_direct_t();
+    template <uint64_t OPCODE> void sharcop_pm_to_ureg_direct_t();
+    template <uint64_t OPCODE> void sharcop_ureg_to_pm_direct_t();
+    template <uint64_t OPCODE> void sharcop_dm_to_ureg_indirect_t();
+    template <uint64_t OPCODE> void sharcop_ureg_to_dm_indirect_t();
+    template <uint64_t OPCODE> void sharcop_pm_to_ureg_indirect_t();
+    template <uint64_t OPCODE> void sharcop_ureg_to_pm_indirect_t();
+    template <uint64_t OPCODE> void sharcop_imm_to_dmpm_t();
+    template <uint64_t OPCODE> void sharcop_imm_to_ureg_t();
+    template <uint64_t OPCODE> void sharcop_sysreg_bitop_t();
+    template <uint64_t OPCODE> void sharcop_modify_t();
+    template <uint64_t OPCODE> void sharcop_bit_reverse_t();
+    template <uint64_t OPCODE> void sharcop_push_pop_stacks_t();
+    template <uint64_t OPCODE> void sharcop_nop_t();
+    template <uint64_t OPCODE> void sharcop_idle_t();
+    template <uint64_t OPCODE> [[noreturn]] void sharcop_unimplemented_t();
+
+    inline bool step_pre();
+    inline void step_fetch(uint64_t opcode);
+    inline void step_loop_end();
+    inline void step_after(); // instructions until the delayed IOP write (MAME: a timer)
 
     const char *tag() const { return ":copro_adsp"; }
     // For sharcop_unimplemented's message (no disassembler here: the opcode in hex).

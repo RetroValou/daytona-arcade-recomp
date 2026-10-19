@@ -1,5 +1,47 @@
 # Handoff
 
+## The SHARC recompiled: m2sharcrecomp, identical to MAME (2026-10-19)
+
+tools/m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops sharcops_table.inc]
+[--sharcops sharcops.hxx], run by recompile.py when the set has a SHARC
+program (gen/<set>_sharc/sharc_gen.cpp; CMake SHARC_GEN, m2sharccheck_gen).
+- Every instruction of the upload is recompiled (no reachability analysis):
+  per instruction the interpreter's step split into shared pieces
+  (src/runtime/sharc/sharc.cpp step_pre, step_fetch, step_loop_end, step_after;
+  step() uses the same pieces, always_inline) and the handler called on a
+  constant opcode. step_loop_end only at do-until targets (76; laddr is only
+  ever a do-until's target); a one-nop do-until loop that loops again (2:
+  the SHARC polling its flags) returns "waiting".
+- The handlers: the generator copies every sharcop_* of sharcops.hxx and
+  COMPUTE into the output as templates on the opcode (m_core->opcode and
+  COMPUTE's parameter replaced by the template parameter, COMPUTE(x) calls
+  by COMPUTE_t<x>()), at each run from the file as it is: MAME's code word
+  for word, its decoding folded per instruction (sharc.h declares the 45
+  templates).
+- The output includes sharc.cpp (the core's other build: link it instead of
+  the `sharc` library), compares program memory with its program on the
+  first run, and makes a later write to its code fatal (pm write guard).
+- 256-instruction chunks, one function each: one function for the program
+  took 9 min 14 s to compile (-O2), the chunks 1 min 45 s, one file.
+Checks (m2sharccheck_gen; FLAG0 now updated by the checker's bus after each
+event, as the recompiled code runs many instructions a call): attract MATCH
+with the instruction log (458,948 lines); fvipers_fight MATCH (613.7 M
+instructions, 50.1 M events). Speed, fight, with the checker's bus: the
+interpreter 24.8 M instructions/s, recompiled with plain handler calls 44.5,
+helpers inlined and DMA calls only while a DMA runs 50.2, templated handlers
+63.3, chunked 62.5 (x2.5). The game needs ~102 k SHARC instructions a frame
+(5.9 M/s; the i960 runs ~107 k): the Vita, ~10-15x slower a core, is at the
+edge.
+Executed instructions by family in the fight (a temporary probe, removed):
+compute 20.7 %, compute+ureg dm/pm postmod 13.0, ureg to dm indirect 8.4,
+compute+ureg premod 8.3, direct jump 6.4, imm to ureg 6.1, imm shift 3.9,
+compute dm to dreg immmod 3.9, relative jump 3.5, compute ureg to ureg 3.3.
+Next: the SHARC on the board (M2Board's copro on 2B: the FIFOs, buffer RAM,
+copro data ROM, FLAG0/FLAG1 as MAME sets them, run on demand as the TGP),
+the 2B video, the game on the PC, the spin check; then the Vita's speed
+(GET_UREG/SET_UREG and the conditions as templates too, the chunks spread
+over several files to compile in parallel).
+
 ## build_vita.py --game all (2026-10-19)
 
 Builds, with the same options, every game whose main set's archive is in
