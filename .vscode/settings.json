@@ -5,6 +5,8 @@
         "extern/sm2-emu",
         "extern/yabause",
         "extern/PS2Recomp",
-        "extern/PCSX_AwO"
+        "extern/PCSX_AwO",
+        "extern/N64Recomp",
+        "extern/rexglue-sdk"
     ]
 }

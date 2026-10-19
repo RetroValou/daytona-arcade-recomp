@@ -1,5 +1,19 @@
 # Handoff
 
+## Tidy: traces in one folder per ROM set (2026-10-19)
+
+scripts/m2_check.sh writes and reads traces/<set>/: hdr.m2in (the input
+stream header, was traces/hdr_<set>.m2in; daytona93's traces/hdr.m2in) and
+check_<scenario> with its .irq/.geo/.snd/.tgp/.m2in (was traces/check_<set>_
+<scenario>; a scenario named after its set loses the prefix: fvipers_fight
+-> traces/fvipers/check_fight). The local traces were moved so (fvipers'
+check_attract, check_fight and the SHARC logs sharc_*.sharc/.sharcpc;
+hdr.m2in for manxttc, srallyc, vcop, vcop2, vf2): commands in older entries
+name the old paths. DIAG02-validation.txt (a September validation note)
+moved from the root to platform/vita/docs/. .vscode/settings.json: the
+extern/ clones read for ideas (PS2Recomp, PCSX_AwO, N64Recomp, rexglue-sdk)
+in git.ignoredRepositories.
+
 ## Vita: the polygon sort moved to the geometry thread (2026-10-19)
 
 Core 0's "polygon priority sort" (VF2 fight, 17 Oct log: 0.66 ms of 17.0,
