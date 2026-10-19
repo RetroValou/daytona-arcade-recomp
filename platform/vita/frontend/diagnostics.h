@@ -13,6 +13,7 @@
 #include "runtime/board/game_loop.h"
 #include "runtime/cpu/i960_profile.h"
 #include "runtime/sound/native/native_sound_engine.h"
+#include "runtime/sharc/sharc_profile.h"
 #include "runtime/tgp/tgp_profile.h"
 #include "runtime/video/geo.h"
 #include "system/async_log.h"
@@ -134,6 +135,10 @@ private:
     // TGP profiling (build_vita.py --tgp-profile): a TGP section in each perf.log report.
     rt::TgpBench tgp_bench_;
     rt::TgpProfileReport tgp_report_;
+#endif
+#ifdef M2_SHARC_PROFILE
+    // SHARC profiling (build_vita.py --sharc-profile): a SHARC section in each perf.log report.
+    rt::sharc::SharcProfileReport sharc_report_;
 #endif
 #ifdef M2_I960_PROFILE
     // i960 profiling (build_vita.py --i960-profile): an i960 section in each perf.log report.

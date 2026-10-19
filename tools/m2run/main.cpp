@@ -29,6 +29,7 @@
 
 #include "runtime/board/game_loop.h"
 #include "runtime/cpu/i960_profile.h"
+#include "runtime/sharc/sharc_profile.h"
 #include "runtime/tgp/tgp_profile.h"
 #include "../common/input_script.h"
 #include "runtime/sound/native/native_sound_engine.h"
@@ -165,6 +166,16 @@ int main(int argc, char **argv) {
         rt::TgpProfileReport tgp_report;
         tgp_report.start(game.board().tgp().tgp_instructions());
 #endif
+#ifdef M2_SHARC_PROFILE
+        // SHARC profiling (recompile.py --sharc-profile): steady_clock in ns.
+        rt::sharc::sharc_profile.clock = [] {
+            return uint64_t(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count());
+        };
+        rt::sharc::sharc_profile.ticks_per_second = 1000000000u;
+        rt::sharc::SharcProfileReport sharc_report;
+        sharc_report.start(game.board().tgp().sharc_instructions(), game.board().tgp().sharc_counts());
+#endif
 #ifdef M2_I960_PROFILE
         // i960 profiling (recompile.py --i960-profile): steady_clock in ns.
         rt::i960_profile.clock = [] {
@@ -237,6 +248,14 @@ int main(int argc, char **argv) {
 #endif
             i960_report.format(report, sizeof report, game.frames(), game.instructions(), uint64_t(game.interrupts()), 0,
                                tgp_ms, s * 1000.0 / double(game.frames() ? game.frames() : 1), "the whole m2run frame");
+            std::fputs(report, stdout);
+        }
+#endif
+#ifdef M2_SHARC_PROFILE
+        if (game.board().tgp().has_sharc()) {
+            static char report[16384];
+            sharc_report.format(report, sizeof report, game.frames(), game.board().tgp().sharc_instructions(),
+                                game.board().tgp().sharc_counts(), 0);
             std::fputs(report, stdout);
         }
 #endif

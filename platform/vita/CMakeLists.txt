@@ -149,7 +149,7 @@ target_compile_options(vita_ymfm PRIVATE -w)
 set(RUNTIME_FILES
     board/m2_board board/game_loop
     cpu/cpu cpu/i960_profile cpu/replay_bus cpu/lockstep
-    tgp/tgp tgp/tgp_board tgp/tgp_profile
+    tgp/tgp tgp/tgp_board tgp/tgp_profile sharc/sharc_profile
     video/raster video/video
     sound/snd_cpu sound/model1_board sound/multipcm sound/scsp sound/scsp_board
     sound/native/native_sample_mixer sound/native/native_sound_sequencer sound/native/native_sound_engine
@@ -185,7 +185,7 @@ target_compile_definitions(vita_runtime PUBLIC M2_FAST_GEN=1)
 # --no-fast-paths) builds the runtime as the desktop does, for comparison.
 option(DAYTONA_VITA_FAST_PATHS "Shared runtime fast paths (M2_FAST_BUS/TGP/CPU/GEO)" ON)
 if(DAYTONA_VITA_FAST_PATHS)
-    target_compile_definitions(vita_runtime PUBLIC M2_FAST_BUS=1 M2_FAST_TGP=1 M2_FAST_CPU=1 M2_FAST_GEO=1)
+    target_compile_definitions(vita_runtime PUBLIC M2_FAST_BUS=1 M2_FAST_TGP=1 M2_FAST_SHARC=1 M2_FAST_CPU=1 M2_FAST_GEO=1)
 endif()
 # TGP profiling (build_vita.py --tgp-profile, src/runtime/tgp/tgp_profile.h): a TGP section
 # in perf.log (diagnostics builds); the TGP code is generated with m2tgprecomp --profile.
@@ -198,6 +198,12 @@ endif()
 option(DAYTONA_VITA_I960_PROFILE "i960 time, work, bus calls and hot blocks in perf.log" OFF)
 if(DAYTONA_VITA_I960_PROFILE)
     target_compile_definitions(vita_runtime PUBLIC M2_I960_PROFILE=1)
+endif()
+# SHARC profiling (build_vita.py --sharc-profile, src/runtime/sharc/sharc_profile.h): a
+# SHARC section in perf.log (diagnostics builds); the same generated code.
+option(DAYTONA_VITA_SHARC_PROFILE "SHARC time by caller, run_generated, memory and hot instructions in perf.log" OFF)
+if(DAYTONA_VITA_SHARC_PROFILE)
+    target_compile_definitions(vita_runtime PUBLIC M2_SHARC_PROFILE=1)
 endif()
 # The game's wait loop skipped by whole passes (Game::spin, M2Board::spin_skip), as
 # the desktop: the same state, fewer instructions run. ON by default.

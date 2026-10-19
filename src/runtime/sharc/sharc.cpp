@@ -21,6 +21,10 @@ namespace rt::sharc {
 #include "runtime/sharc/sharcinternal.ipp"
 #include "runtime/sharc/sharc_step.h"
 
+#ifdef M2_SHARC_PROFILE
+SharcProfile sharc_profile; // sharc_profile.h
+#endif
+
 // ---- upstream sharc.cpp ----
 
 // MAME: a scheduler timer `cycles` SHARC cycles on; here counted in
@@ -327,6 +331,7 @@ void adsp21062_device::external_dma_write(offs_t address, uint64_t data)
 // 0x20000-0x24fff; nothing else (unmapped reads 0).
 uint64_t adsp21062_device::program_space::read_qword(uint32_t address)
 {
+	M2SHARC_EV(pm_r);
 	address &= 0xffffff;
 	if (address < 0x20000 || address >= 0x40000 || (address & 0x7fff) >= 0x5000) return 0;
 	return (address & 0x18000) ? d.pm_r<1>(address & 0x7fff) : d.pm_r<0>(address & 0x7fff);
@@ -334,8 +339,12 @@ uint64_t adsp21062_device::program_space::read_qword(uint32_t address)
 
 void adsp21062_device::program_space::write_qword(uint32_t address, uint64_t data, uint64_t mem_mask)
 {
+	M2SHARC_EV(pm_w);
 	address &= 0xffffff;
 	if (address < 0x20000 || address >= 0x40000 || (address & 0x7fff) >= 0x5000) return;
+#ifdef M2_SHARC_PROFILE
+	if (d.m_gen_end && address < d.m_gen_end) M2SHARC_EV(pm_w_code);
+#endif
 	const uint64_t before = d.m_gen_end && address < d.m_gen_end ? read_qword(address) : 0;
 	if (address & 0x18000) d.pm_w<1>(address & 0x7fff, data, mem_mask);
 	else d.pm_w<0>(address & 0x7fff, data, mem_mask);
@@ -350,29 +359,31 @@ void adsp21062_device::program_space::write_qword(uint32_t address, uint64_t dat
 // 0x400000 the board (model2b copro_sharc_map).
 uint32_t adsp21062_device::data_space::read_dword(uint32_t address)
 {
-	if (address < 0x100) return d.iop_r(address);
-	if (address >= 0x20000 && address < 0x40000) return d.m_blocks[(address & 0x18000) ? 1 : 0][address & 0x7fff];
+	if (address < 0x100) return M2SHARC_EV(iop_r), d.iop_r(address);
+	if (address >= 0x20000 && address < 0x40000) return M2SHARC_EV(dm_r), d.m_blocks[(address & 0x18000) ? 1 : 0][address & 0x7fff];
 	if (address >= 0x40000 && address < 0x80000) {
+		M2SHARC_EV(short_r);
 		const unsigned n = (address & 0x30000) ? 1 : 0;
 		const offs_t o = address & 0xffff;
 		if (d.m_short_se) return n ? d.dm_short_se_r<1>(o) : d.dm_short_se_r<0>(o);
 		return n ? d.dm_short_r<1>(o) : d.dm_short_r<0>(o);
 	}
-	if (address >= 0x400000) return d.m_bus.read(address);
+	if (address >= 0x400000) return M2SHARC_EV(ext_r), d.m_bus.read(address);
 	return 0;
 }
 
 void adsp21062_device::data_space::write_dword(uint32_t address, uint32_t data)
 {
-	if (address < 0x100) { d.iop_w(address, data); return; }
-	if (address >= 0x20000 && address < 0x40000) { d.m_blocks[(address & 0x18000) ? 1 : 0][address & 0x7fff] = data; return; }
+	if (address < 0x100) { M2SHARC_EV(iop_w); d.iop_w(address, data); return; }
+	if (address >= 0x20000 && address < 0x40000) { M2SHARC_EV(dm_w); d.m_blocks[(address & 0x18000) ? 1 : 0][address & 0x7fff] = data; return; }
 	if (address >= 0x40000 && address < 0x80000) {
+		M2SHARC_EV(short_w);
 		const offs_t o = address & 0xffff;
 		if (address & 0x30000) d.dm_short_w<1>(o, data);
 		else d.dm_short_w<0>(o, data);
 		return;
 	}
-	if (address >= 0x400000) d.m_bus.write(address, data);
+	if (address >= 0x400000) { M2SHARC_EV(ext_w); d.m_bus.write(address, data); }
 }
 
 adsp21062_device::adsp21062_device(Bus &bus) : m_bus(bus)
@@ -454,6 +465,40 @@ std::string adsp21062_device::disassemble_one(uint32_t pc, uint64_t opcode)
 	return b;
 }
 
+adsp21062_device::ProbeState adsp21062_device::probe(uint64_t opcode, const ProbeState &in)
+{
+	// The probes keep their addresses in internal RAM's first 0x200 words (the
+	// DAGs' I registers there, small modifiers): only the words such accesses
+	// reach are cleared and hashed (32-bit data at 0x20000 and its mirror, the
+	// packed 48-bit rows of program memory at +0x1000 and +0x2000).
+	static constexpr uint32_t kProbeRanges[] = {0x0000, 0x1000, 0x2000};
+	for (uint32_t n = 0; n < 2; ++n)
+		for (uint32_t r : kProbeRanges) std::fill(m_blocks[n] + r, m_blocks[n] + r + 0x300, 0);
+	for (int k = 0; k < 16; ++k) {
+		m_core->r[k].r = int32_t(in.r[k]);
+		auto &dag = k < 8 ? m_core->dag1 : m_core->dag2;
+		dag.i[k & 7] = in.i[k]; dag.m[k & 7] = in.m[k]; dag.l[k & 7] = in.l[k]; dag.b[k & 7] = in.b[k];
+	}
+	m_core->astat = in.astat; m_core->mode1 = in.mode1; m_core->stky = in.stky;
+	m_core->mrf = in.mrf; m_core->mrb = in.mrb;
+	m_core->pc = 0x20000; m_core->daddr = 0x20001; m_core->faddr = 0x20002; m_core->nfaddr = 0x20003;
+	m_core->opcode = opcode;
+	(this->*m_sharc_op[(opcode >> 39) & 0x1ff])();
+	ProbeState out = in;
+	for (int k = 0; k < 16; ++k) {
+		out.r[k] = uint32_t(m_core->r[k].r);
+		const auto &dag = k < 8 ? m_core->dag1 : m_core->dag2;
+		out.i[k] = dag.i[k & 7];
+	}
+	out.astat = m_core->astat; out.stky = m_core->stky; out.mrf = m_core->mrf; out.mrb = m_core->mrb;
+	uint64_t h = 1469598103934665603ull;
+	for (uint32_t n = 0; n < 2; ++n)
+		for (uint32_t r : kProbeRanges)
+			for (uint32_t w = r; w < r + 0x300; ++w) h = (h ^ m_blocks[n][w]) * 1099511628211ull;
+	out.ram_hash = h;
+	return out;
+}
+
 uint32_t adsp21062_device::pc() const { return m_core->pc; }
 uint32_t adsp21062_device::daddr() const { return m_core->daddr; }
 uint64_t adsp21062_device::opcode() const { return m_core->opcode; }
@@ -511,10 +556,7 @@ void adsp21062_device::check_interrupts()
 void adsp21062_device::step()
 {
 	if (m_halted || !step_pre()) return;
-	step_fetch(m_program.read_qword(m_core->daddr));
-	step_loop_end();
-	(this->*m_sharc_op[(m_core->opcode >> 39) & 0x1ff])();
-	step_after();
+	step_body();
 }
 
 } // namespace rt::sharc

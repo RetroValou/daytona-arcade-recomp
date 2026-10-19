@@ -13,6 +13,10 @@
 //              read and the last plain RAM page written, remembered.
 // M2_FAST_TGP  the TGP's FIFOs as a ring (WordFifo), read and written by the
 //              TGP directly instead of through TgpBus's virtual calls.
+// M2_FAST_SHARC  the recompiled SHARC's board accesses (Model 2B: its input and
+//              output FIFOs, buffer RAM, the copro data ROM) read and written
+//              directly (TgpBoard::SharcCopro sets the pointers) instead of
+//              through data_space and the Bus's virtual calls (needs M2_FAST_TGP).
 // M2_FAST_CPU  register frames copied as 16 words; spills to and refills from
 //              work RAM straight through Cpu::work_ram (needs M2_FAST_GEN).
 // M2_FAST_GEO  geometrizer: block reads of points and texture words, no
@@ -31,6 +35,9 @@
 #ifndef M2_FAST_TGP
 #define M2_FAST_TGP 1
 #endif
+#ifndef M2_FAST_SHARC
+#define M2_FAST_SHARC 1
+#endif
 #ifndef M2_FAST_CPU
 #define M2_FAST_CPU 1
 #endif
@@ -41,4 +48,8 @@
 
 #if defined(M2_FAST_CPU) && !defined(M2_FAST_GEN)
 #error "M2_FAST_CPU spills register frames through Cpu::work_ram: define M2_FAST_GEN too"
+#endif
+
+#if defined(M2_FAST_SHARC) && !defined(M2_FAST_TGP)
+#error "M2_FAST_SHARC needs M2_FAST_TGP (the board's FIFOs as WordFifo)"
 #endif

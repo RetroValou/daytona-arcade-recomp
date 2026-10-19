@@ -60,6 +60,11 @@ void Diagnostics::game_started(rt::GameLoop &game) {
     tgp_bench_ = rt::tgp_microbench(game.board().tgp()); // about 0.1 s, once per game start
     tgp_report_.start(game.board().tgp().tgp_instructions());
 #endif
+#ifdef M2_SHARC_PROFILE
+    rt::sharc::sharc_profile.clock = ticks_us;
+    rt::sharc::sharc_profile.ticks_per_second = 1000000u;
+    sharc_report_.start(game.board().tgp().sharc_instructions(), game.board().tgp().sharc_counts());
+#endif
 #ifdef M2_I960_PROFILE
     rt::i960_profile.clock = ticks_us;
     rt::i960_profile.ticks_per_second = 1000000u;
@@ -283,6 +288,9 @@ void Diagnostics::window_done(const LoopEnd &e, rt::GameLoop *game, Audio &audio
 #ifdef M2_I960_PROFILE
             if (game) i960_report_.start(game->instructions(), uint64_t(game->interrupts()));
 #endif
+#ifdef M2_SHARC_PROFILE
+            if (game) sharc_report_.start(game->board().tgp().sharc_instructions(), game->board().tgp().sharc_counts());
+#endif
         } else {
             perf_window(game, geo_delta_, audio, native, sound, e.native_audio);
         }
@@ -403,6 +411,11 @@ void Diagnostics::perf_window(rt::GameLoop *game, const rt::Geo::Stats &geo_delt
                                    "the i960+TGP lines (game logic + vblank handler)", tgp_bench_);
         tgp_report_.start(game->board().tgp().tgp_instructions());
     }
+#endif
+#ifdef M2_SHARC_PROFILE
+    if (game && game->board().tgp().has_sharc())
+        size += sharc_report_.format(report + size, sizeof report - size, c.board_frames, game->board().tgp().sharc_instructions(),
+                                     game->board().tgp().sharc_counts(), h.cpu_mhz);
 #endif
     perf_file_.submit(report, size);
     const uint64_t reported = ticks_us();

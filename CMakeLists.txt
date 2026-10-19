@@ -108,6 +108,7 @@ add_library(runtime STATIC
     src/runtime/tgp/tgp.cpp
     src/runtime/tgp/tgp_profile.cpp
     src/runtime/cpu/i960_profile.cpp
+    src/runtime/sharc/sharc_profile.cpp
     src/runtime/tgp/tgp_board.cpp
     src/runtime/video/geo.cpp
     src/runtime/video/raster.cpp
@@ -145,6 +146,12 @@ target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
 option(M2_TGP_PROFILE "TGP time, work and hot blocks (m2tgprecomp --profile code)" OFF)
 if(M2_TGP_PROFILE)
     target_compile_definitions(runtime PUBLIC M2_TGP_PROFILE=1)
+endif()
+# SHARC profiling (src/runtime/sharc/sharc_profile.h; recompile.py --sharc-profile): the
+# same generated code (its probes are macros). m2run prints the report.
+option(M2_SHARC_PROFILE "SHARC time by caller, run_generated, memory and hot instructions" OFF)
+if(M2_SHARC_PROFILE)
+    target_compile_definitions(runtime PUBLIC M2_SHARC_PROFILE=1)
 endif()
 # The game's wait loop skipped by whole passes (Game::spin, M2Board::spin_skip): the
 # same state, fewer host instructions. On by default; OFF runs every pass.
@@ -224,6 +231,7 @@ endif()
 add_executable(m2sharccheck tools/m2sharccheck/main.cpp)
 target_link_libraries(m2sharccheck PRIVATE sharc)
 add_executable(m2sharcrecomp tools/m2sharcrecomp/main.cpp)
+target_link_libraries(m2sharcrecomp PRIVATE sharc) # the core, for the flag analysis's probes
 
 add_executable(m2replay tools/m2replay/main.cpp)
 target_link_libraries(m2replay PRIVATE refcore)
@@ -327,6 +335,10 @@ if(EXISTS ${SHARC_GEN})
     add_executable(m2sharccheck_gen tools/m2sharccheck/main.cpp ${SHARC_SOURCES})
     target_include_directories(m2sharccheck_gen PRIVATE src)
     target_compile_definitions(m2sharccheck_gen PRIVATE M2SHARC_GEN)
+    # The same with per-instruction execution counts (m2sharccheck --profile).
+    add_executable(m2sharcprof tools/m2sharccheck/main.cpp ${SHARC_SOURCES})
+    target_include_directories(m2sharcprof PRIVATE src)
+    target_compile_definitions(m2sharcprof PRIVATE M2SHARC_GEN M2_SHARC_PROFILE)
 endif()
 if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
     file(GLOB GEN_SOURCES ${GEN_DIR}/*.cpp)

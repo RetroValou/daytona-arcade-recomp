@@ -1,5 +1,175 @@
 # Handoff
 
+## SHARC: branches in plain runs, full steps only where needed, as on the TGP; --sharc-profile (PC +46 %, Vita +51 %) (2026-10-19)
+
+Vita, three versions of the recompiled SHARC in one diagnostics package,
+alternated a perf window each (same session; extern/result_perf_vita/
+fvipers/perf_three_versions.log): specialised (MAME's handlers templated on
+each opcode, step pieces inline) 3.22 M SHARC instructions/s, 40 ms a frame;
+compact (shared handlers, step pieces called; a few dozen bytes an
+instruction) 2.37 M, 55 ms. The instruction cache was not the limit (the
+previous entry's analysis was wrong): the Vita is ~40x the PC uniformly,
+~140 cycles a SHARC instruction. Only the specialised version is kept
+(compact, mixed, set_variant, the *_ool step pieces, --variant and the Vita's
+alternation removed).
+Where the cycles go (arm-vita-eabi-g++ -O3 of the 40 hottest instructions of
+the fight, 35 % of the work; m2sharcprof's per-address counts): a handler is
+2-47 ARM instructions (~15 on average); the full step (step_fetch, step_after,
+step_pre) ~45 on its fast path, ~35 of them loads/stores (pipeline and ASTAT
+history shifts, the opcode, the latency/DMA/IOP/interrupt tests, a 64-bit
+count). 57.5 % of executed instructions ran a full step, ~10 % by nature.
+The TGP's recompiler already had none of this (constant pc, no per-
+instruction checks, repeats as native loops; ~30 cycles an instruction on
+the Vita): the SHARC's is now aligned on it, generically (decided from the
+opcodes and MAME's handler sources, no per-game profile):
+- Delay slots: the two after a branch only when it is delayed (J bit, opcode
+  bit 26; the generator finds the handlers calling CHANGE_PC_DELAYED in
+  sharcops.hxx and refuses one not reading op_get_jump_j).
+- ASTAT history: the three before the end of a loop on a condition (do until,
+  loop_type 0) stay plain and only shift it; counter loops never read it.
+- Counter loop ends (types 1-3) plain, step_loop_end's counter part inline;
+  the run ends where it loops back, with a direct goto to the top when the
+  loop has one do-until in the same chunk.
+- What no opcode tells (a MODE1 write's 2-instruction latency, from a
+  register write, sysreg_bitop or a status stack pop; a non-linear pipeline,
+  e.g. a delay slot entered across chunks) is checked where a plain
+  instruction is entered after a full step or a dispatch (plain_ready); the
+  interpreter's steps (step_body, shared with step()) run until it is gone:
+  54,761 times, 88,489 instructions of 613.7 M in the fight check.
+- Full steps fetch with step_fetch_gen: the opcode only for the trace (the
+  handlers have it as a template parameter).
+- Branches "pinned" in plain runs (m2tgprecomp's direct gotos): direct,
+  relative and indirect jumps and calls (and their compute forms), rts and
+  the do-untils run MAME's handler on the pipeline a linear arrival leaves
+  (four constants), inside the run; taken (daddr moved), the count, budget
+  and step_pre as at a run's end, then a goto to a constant target in the
+  chunk, else the dispatch. A delayed branch keeps its two delay slots in the
+  run when they are plain, in its chunk and no loop end (to a fixed point;
+  else the three are full steps as before): `pending` holds the target
+  CHANGE_PC_DELAYED left in nfaddr, taken after the second slot with the
+  pipeline MAME's fetch of the target finds (pc = second slot, daddr = target).
+  Not pinned: a jump with CI (status stack pop, MODE1 latency,
+  interrupt_active), rti, a branch at a loop end. The generator refuses a
+  pinned handler whose upstream body touches SET_UREG, idle, imask,
+  irq_pending, the latency, DMA or the IOP, or interrupt_active without CI.
+Executed instructions in plain runs: 95.9 % (42.5 % this morning; 15.9 %
+pinned branches, 5.1 % shifting the ASTAT history); full steps: 2.1 %
+control flow (CI jumps, rti, system register writes), 2.0 % ends of loops on
+a condition (m2sharcrecomp prints this with M2SHARC_PROFILE_FILE=<m2sharcprof
+output>). Step by step on the PC fight check (M SHARC instructions/s): 145.6;
+narrower full steps 182.5; counter loop ends plain 186-190; branches pinned
+209-216.
+Checks after each step: m2sharccheck_gen MATCH on fvipers_fight (613,709,679
+instructions, the same count each time) and the attract (459,076); fvipers
+ctest 23/23. The per-instruction log (SHARC.pc) cannot follow the recompiled
+code since plain runs (no trace hook in them): the event log is the check.
+Vita (user, diagnostics, fast-inaccuracy; before the pinned branches; against
+perf_plain_runs.log, another session): fight 3.22 -> 3.77 M instructions/s,
+40 -> 34.4 ms a frame of SHARC for ~130 k instructions, 18.2-18.6 -> 20.1-
+20.7 fps; ~75 k-instruction windows 2.76 -> 3.25. Still ~118 cycles a SHARC
+instruction for ~25 ARM instructions estimated: stalls (memory, caches)
+dominate, not measured yet. Full speed needs the SHARC on its own core (core
+1: geometry, a few %) and ~2x more speed (17.4 ms a frame for ~130 k
+instructions: ~7.7 M/s). An approximate SHARC (fast-math, skipped flags,
+per-block counts) would gain a few % at most: the cost is the instructions
+and their bookkeeping, not their precision; replacing the program by native
+geometry would be per game (not wanted: the recompiler stays generic).
+Flag liveness, measured and not applied: 64 % of the flag writes of plain
+instructions are dead statically but only 1.14 dead writes an executed
+instruction (1.78 written): a few per cent at best (the generator still
+prints the statistics; ProbeState/probe run a handler on a chosen state).
+Vita with the pinned branches (user, perf.log, same scenes): fight 4.81-4.93
+M SHARC instructions/s (3.77 before them, 3.22 this morning), ~27 ms a frame
+of SHARC for ~130 k instructions, 24.1-24.6 fps (20.1-20.7, 18.4).
+SHARC profiling, --sharc-profile (build_vita.py, recompile.py; CMake
+M2_SHARC_PROFILE / DAYTONA_VITA_SHARC_PROFILE; src/runtime/sharc/
+sharc_profile.h): the same generated code (probes are macros: M2SHARC_EV,
+M2SHARC_SIZE, M2SHARC_EXIT, M2SHARC_COUNT; sharc_gen.cpp also gets each
+instruction's handler name and kind under the macro). perf.log and m2run get:
+time by caller (run to the wait, need an output word, 256-instruction slice),
+run_generated calls by size and exit, dispatches, run ends, branches taken,
+loop backs, full and interpreter steps per 1000 instructions, the data space
+by region, program memory data (and writes into the code's range: the
+rewrite check reads twice), the board by kind, the handlers' shares, the hot
+set and the 16 hottest instructions. PerfLog's report buffer 12 -> 24 KB.
+First PC run (fvipers_fight, 6,000 frames, 101.8 k instructions a frame):
+99 % of the SHARC's instructions run from need_output, ~500 calls a frame
+making 4,490 run_generated calls of ~21 instructions (budget 16: 4,185
+budget exits a frame); 110 dispatches, 55 branches taken, 58 loop backs,
+47 full steps per 1000 instructions; memory per 1000: internal r 164 w 143,
+board r 55 w 32, PM data r 24 w 39, none into the code's range; the hottest
+instruction is the input wait loop's nop (0x20133, full: a one-nop do-until).
+extern/PS2Recomp (GPL: ideas only) read for ideas: delay slots inlined in
+the branch's path (done here as pinned branches), budget checks on backward
+edges only (not done: the SHARC's budget slices it against the i960), an
+inline RAM fast path (not done; it gave nothing on the i960).
+Vita profile (user, --i960-profile --sharc-profile, fight, 20 fps, a frame
+50.7 ms): vblank handler 41.4 ms, of which SHARC 32.4 ms for 130.7 k
+instructions (248 ns, 110 cycles each, counting builds); need_output 574
+calls making 5,712 run_generated calls (21 instructions each), slices 384
+calls of ~2 instructions at ~2.4 us (two clock reads of 0.73 us included):
+~1 us of bookkeeping a run_generated call, ~6 ms a frame. The ARM code of
+the hottest chunk (vitasdk g++ -O3, a marker a SHARC instruction) showed
+why the Vita is ~50x the PC: GCC called most templated handlers (203 bl to
+sharcop_*_t in one chunk) and IF_CONDITION_CODE, GET_UREG_i/SET_UREG_i,
+FMUL/FADD, compute_*; each call saves registers and reloads m_core.
+Changes (generic):
+- Every templated handler, COMPUTE_t, compute.hxx's member functions and
+  sharcops.hxx's inline helpers copied by the generator are SHARC_INLINE
+  (always_inline); the handlers' dm_read32/dm_write32 become dm_read32_i/
+  dm_write32_i (sharc_step.h): internal memory (0x20000-0x3ffff) inline,
+  the rest through data_space. The hot chunk: 0 handler calls (203), twice
+  the ARM code (10,171 instructions against 5,769), 9.4 s to compile.
+- need_output: one run_generated call with a 1 M budget, ended by the output
+  FIFO's write (TgpBoard::stop_on_output_ -> adsp21062_device::end_run:
+  m_budget = 0, which the chunks now read instead of a parameter): the run
+  returns at its next check (a plain run's end, a branch taken, a full step)
+  instead of after 16-instruction calls. run_sharc_slice skips while the
+  SHARC waits on an empty input FIFO (sharc_starved_, cleared by FIFO and
+  IOP writes and the boot): its polls are not run (not counted).
+PC: fight check 209-216 -> 300-320 M SHARC instructions/s (inlining; MATCH,
+613,709,679 instructions; attract MATCH); m2native attract MATCH (596 of
+596 screens, 5,631 SHARC words); fvipers_fight 6,000 frames native, 184
+fps; profile: run_generated 6,100 -> 675 calls a frame (150 instructions a
+call), slices 385 -> 5; ctest 23/23. Vita: not measured yet.
+Vita (user, same profiled build, fight): SHARC 32.4 -> 22.5 ms a frame (110
+-> 75 cycles an instruction), run_generated 6,100 -> 717 calls a frame,
+slices 384 -> 3, vblank handler 41.4 -> 31.2 ms, a frame 50.7 -> 38.7 ms,
+20 -> 26.0-27.4 fps. The doubled code did not hurt the instruction cache.
+Compared with the TGP (m2tgprecomp/tgp.h, VF2's tgp_gen.cpp compiled for the
+Vita: no handler calls, only Tgp::io_r/io_w), what the SHARC still lacked:
+- M2_FAST_TGP's direct FIFOs: now M2_FAST_SHARC (fast_paths.h; the Vita
+  defines it; needs M2_FAST_TGP): the recompiled code's board accesses
+  (dm_read32_i / dm_write32_i above 0x400000: input FIFO with FLAG0, output
+  FIFO with need_output's end_run, buffer RAM, the copro data ROM) go to
+  TgpBoard's WordFifos and arrays through pointers SharcCopro sets
+  (adsp21062_device::set_direct_board) instead of data_space and the Bus's
+  virtual call; m2sharccheck sets none (its log bus). WordFifo moved to
+  src/runtime/tgp/word_fifo.h. Profile: ~11,400 such accesses a frame.
+  Also, always: the handlers' pm_read32/pm_write32 inline (pm_data32: the
+  internal word program_space and pm_r/pm_w reach with the 32-bit mask;
+  writes into the code's range still go through the rewrite check).
+  Checks: m2sharccheck_gen MATCH (fight, attract; same counts); a PC build
+  with -DM2_FAST_TGP=1 -DM2_FAST_SHARC=1: m2native attract MATCH (596 of
+  596 screens), fvipers_fight 6,000 frames identical to the build without
+  it (291,664,897 i960 instructions, last screen 2fcd2223eeb056c0).
+- One function for the whole program: chunks stay at 256 instructions
+  (m2sharcrecomp --chunk, a power of two). Bigger chunks cut the chunk
+  calls (4,116 a frame at 256, 2,300 at 1024, 1,279 at 2048) but the PC
+  fight check got slower (alternated on a quiet machine: 256 309-317 M
+  instructions/s, 1024 280-286; 2048 269-273), the Vita's compiler takes
+  133 s for a 1024 chunk and 183 s / 800 MB for a 2048 one (desktop build
+  14 s -> 43 s -> 5 min 47 s).
+Read for ideas, extern/PCSX_AwO (GPL v2, ideas only; PCSX ReARMed for the
+Vita: a MIPS->ARM JIT, NEON GTE): its JIT keeps guest registers in host
+registers across a block (ours reload m_core->r[] after every store: a
+uint32_t store may alias the int32_t registers); -marm (tried in thought
+only: Thumb-2 is the Vita compiler's default, ARM code ~25 % bigger; the
+user dropped it); no unwind tables (our handlers throw on stack faults).
+Next: the Vita profile of the direct board; the SHARC on its own core; the
+registers kept in host registers across a plain run; the TGP's flag
+liveness.
+
 ## SHARC: plain runs and inline register accessors (PC x1.9; Vita unchanged) (2026-10-19)
 
 m2sharcrecomp: plain instructions (compute, the dm/pm moves, immediate loads,
@@ -4249,6 +4419,21 @@ Also found:
   unconfirmed on the PCB.
 
 ## What not to re-propose
+
+- The SHARC as compact code (shared handlers, step pieces out of line) for
+  the Vita's instruction cache: 26 % slower on the console than the
+  specialised code (3.22 against 2.37 M instructions/s, same session).
+- Applying SHARC flag liveness: ~1.1 dead flag writes an executed instruction.
+- Bigger SHARC chunks (1024, 2048 instructions) to cut chunk calls: slower
+  on the PC fight check (~10 %), minutes more to compile for the Vita.
+- -marm for the Vita's SHARC code: dropped by the user (Thumb-2 kept; ARM
+  code ~25 % bigger, gains on the Cortex-A9 usually 0-5 %).
+- An approximate SHARC/TGP (fast-math, skipped flags) "because it is only
+  visual": their output FIFO words feed the i960's game logic, and the cost
+  is not in the floating-point maths.
+- Shifting the SHARC's ASTAT history only in the three instructions before
+  a conditional loop end, full steps included: exact only if no jump lands in
+  that window; full steps keep shifting it.
 
 - Fewer i960 blocks for VF2 on the Vita (seeds not block starts, or fewer
   seeds): no measurable gain in a fight; the TGP and rendering fill core 0

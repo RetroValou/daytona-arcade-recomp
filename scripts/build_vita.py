@@ -237,6 +237,9 @@ def main(argv=None):
     ap.add_argument("--i960-profile", action="store_true",
                     help="i960 profiling in perf.log (time, work, bus calls by region, hottest blocks; "
                          "src/runtime/cpu/i960_profile.h); implies --diagnostics, needs --fast-inaccuracy (the i960 code is made here)")
+    ap.add_argument("--sharc-profile", action="store_true",
+                    help="SHARC profiling in perf.log (Model 2B: time by caller, run_generated, memory, hottest "
+                         "instructions; src/runtime/sharc/sharc_profile.h); implies --diagnostics")
     code = ap.add_mutually_exclusive_group()
     code.add_argument("--fast-inaccuracy", dest="code", action="store_const", const="fast_inaccuracy",
                       help="Vita game code made here (BUILD_DIR/gen_vita): i960 m2recomp --fast_inaccuracy with direct "
@@ -260,7 +263,7 @@ def main(argv=None):
     game = dict(games.GAMES[args.game], **SETS[args.set])
     if args.link is None:
         args.link = game["vita_link"]
-    if args.tgp_profile or args.i960_profile:
+    if args.tgp_profile or args.i960_profile or args.sharc_profile:
         args.diagnostics = True  # checked against --release below
     if args.build_dir is None:  # diagnostics: its own build directory, the release one is left as it is
         args.build_dir = Path(games.vita_dir(args.game, args.diagnostics))
@@ -279,6 +282,8 @@ def main(argv=None):
             ap.error(f"{flag} writes perf.log: it needs --diagnostics, not --release")
         if not args.code:
             ap.error(f"{flag} makes the game code here: add --fast-inaccuracy" + (" or --fast-gen" if flag == "--tgp-profile" else ""))
+    if args.sharc_profile and args.release:
+        ap.error("--sharc-profile writes perf.log: it needs --diagnostics, not --release")
     if args.i960_profile and args.code == "fast_gen":
         ap.error("--i960-profile needs --fast-inaccuracy (fast_gen.py does not know the block counters)")
     if args.jobs < 1:
@@ -346,6 +351,7 @@ def main(argv=None):
          f"-DDAYTONA_VITA_DIAGNOSTICS={'ON' if args.diagnostics else 'OFF'}",
          f"-DDAYTONA_VITA_TGP_PROFILE={'ON' if args.tgp_profile else 'OFF'}",
          f"-DDAYTONA_VITA_I960_PROFILE={'ON' if args.i960_profile else 'OFF'}",
+         f"-DDAYTONA_VITA_SHARC_PROFILE={'ON' if args.sharc_profile else 'OFF'}",
          f"-DDAYTONA_VITA_LTO={'ON' if args.release else 'OFF'}",
          f"-DDAYTONA_VITA_FREE_CORES={'ON' if args.free_core else 'OFF'}",
          f"-DDAYTONA_VITA_LINK={'ON' if args.link else 'OFF'}",

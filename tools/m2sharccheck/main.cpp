@@ -1,6 +1,9 @@
 // m2sharccheck: lockstep check of the SHARC (Model 2B's copro) against MAME.
 //
-//   m2sharccheck IMAGES_DIR SHARC.log [SHARC.pc]
+//   m2sharccheck IMAGES_DIR SHARC.log [SHARC.pc] [--profile FILE]
+//
+// --profile (the M2_SHARC_PROFILE build, m2sharcprof): each instruction's
+// executions, written as "address count" lines, most executed first.
 //
 // SHARC.log is MAME's SHARC-side event log (M2TRACE_SHARCLOG, patch 0005): the
 // i960's IOP writes, the program upload, every word the SHARC popped from its
@@ -21,6 +24,7 @@
 // M2SHARC_GEN (m2sharccheck_gen): the recompiled program (m2sharcrecomp)
 // instead of the interpreter.
 
+#include <algorithm>
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
@@ -170,8 +174,16 @@ std::string our_line(const rt::sharc::adsp21062_device &s) {
 } // namespace
 
 int main(int argc, char **argv) {
+    std::string profile_path;
+    std::vector<char *> args;
+    for (int i = 0; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--profile") && i + 1 < argc) profile_path = argv[++i];
+        else args.push_back(argv[i]);
+    }
+    argc = int(args.size());
+    argv = args.data();
     if (argc != 3 && argc != 4) {
-        std::fprintf(stderr, "usage: m2sharccheck IMAGES_DIR SHARC.log [SHARC.pc]\n");
+        std::fprintf(stderr, "usage: m2sharccheck IMAGES_DIR SHARC.log [SHARC.pc] [--profile FILE]\n");
         return 2;
     }
     uint64_t steps = 0;
@@ -198,6 +210,12 @@ int main(int argc, char **argv) {
             throw Divergence("MAME uploaded " + std::to_string(up.a) + " words, sharc_program.bin has " + std::to_string(program.size() / 2));
         for (uint32_t i = 0; i < up.a; ++i) sharc.external_dma_write(i, program[i * 2] | program[i * 2 + 1] << 8);
         sharc.set_halted(false);
+        std::vector<uint32_t> profile(program.size() / 6);
+#ifdef M2_SHARC_PROFILE
+        sharc.set_profile(profile.data());
+#else
+        if (!profile_path.empty()) throw std::runtime_error("--profile needs the M2_SHARC_PROFILE build (m2sharcprof)");
+#endif
         bus.sharc = &sharc;
         bus.update_flag();
 
@@ -251,6 +269,16 @@ int main(int argc, char **argv) {
                     " writes, identical to MAME; %" PRIu64 " SHARC instructions%s%s; %.2f s\n",
                     log.size(), bus.fifo_in, bus.fifo_out, bus.buffer_reads, bus.buffer_writes, steps,
                     pcs ? ", instruction log identical over " : "", pcs ? (std::to_string(tr.lines) + " lines").c_str() : "", s);
+        if (!profile_path.empty()) {
+            std::vector<std::pair<uint32_t, uint32_t>> rows;
+            for (size_t k = 0; k < profile.size(); ++k)
+                if (profile[k]) rows.push_back({profile[k], uint32_t(0x20000 + k)});
+            std::sort(rows.rbegin(), rows.rend());
+            FILE *f = std::fopen(profile_path.c_str(), "w");
+            if (!f) throw std::runtime_error("cannot write " + profile_path);
+            for (const auto &[count, address] : rows) std::fprintf(f, "%05x %u\n", address, count);
+            std::fclose(f);
+        }
         if (sharc_seconds > 0)
             std::printf("  in the recompiled program: %.2f s, %.1f M SHARC instructions/s (with the log's bus)\n", sharc_seconds,
                         double(steps) / sharc_seconds / 1e6);

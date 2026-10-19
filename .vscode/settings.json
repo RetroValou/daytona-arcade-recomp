@@ -3,6 +3,8 @@
         "extern/mame",
         "extern/kos-dc",
         "extern/sm2-emu",
-        "extern/yabause"
+        "extern/yabause",
+        "extern/PS2Recomp",
+        "extern/PCSX_AwO"
     ]
 }

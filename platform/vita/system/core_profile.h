@@ -459,7 +459,7 @@ public:
 #else
     static constexpr const char *kPath = "ux0:data/daytona93/perf.log";
 #endif
-    static constexpr std::size_t kCapacity = 12 * 1024;      // one report
+    static constexpr std::size_t kCapacity = 24 * 1024;      // one report (the i960 and SHARC profiles add ~8 KB)
     static constexpr std::size_t kFileLimit = 8u * 1024u * 1024u;
 
     PerfLog() = default;

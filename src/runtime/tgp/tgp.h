@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "runtime/board/fast_paths.h"
+#include "runtime/tgp/word_fifo.h"
 
 // M2_DC_SPEED (Dreamcast): the one-line status helpers inline even at -Os,
 // where the generated code otherwise calls them (a call is as big as they are).
@@ -50,32 +51,6 @@ struct TgpFatal : std::runtime_error {
     using std::runtime_error::runtime_error;
 };
 
-#ifdef M2_FAST_TGP
-// The TGP's FIFOs as a growing ring (std::deque's block bookkeeping costs
-// on every word: the SH-4 first, the Vita too). The same order and contents.
-class WordFifo {
-public:
-    bool empty() const { return head_ == tail_; }
-    uint32_t front() const { return buf_[head_ & mask_]; }
-    void pop_front() { ++head_; }
-    void push_back(uint32_t v) {
-        if (tail_ - head_ == buf_.size()) grow();
-        buf_[tail_++ & mask_] = v;
-    }
-
-private:
-    void grow() {
-        std::vector<uint32_t> bigger(buf_.size() * 2);
-        for (uint32_t i = head_; i != tail_; ++i) bigger[i - head_] = buf_[i & mask_];
-        tail_ -= head_;
-        head_ = 0;
-        buf_.swap(bigger);
-        mask_ = uint32_t(buf_.size() - 1);
-    }
-    std::vector<uint32_t> buf_ = std::vector<uint32_t>(1024);
-    uint32_t mask_ = 1023, head_ = 0, tail_ = 0; // free-running counts, masked
-};
-#endif
 
 struct Tgp {
     static constexpr uint32_t F_ZRC = 0x00000001, F_ZRD = 0x00000002, F_SGD = 0x00000008, F_CPD = 0x00000020,

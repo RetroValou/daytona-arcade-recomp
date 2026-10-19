@@ -3,7 +3,7 @@
 program to native C++ and build them. Same steps on Linux, macOS and Windows.
 
   recompile.py [--game GAME] [--set SET] [--config Release] [--fast_inaccuracy] [--tgp-profile]
-               [--i960-profile] [--inline-bus] [--recomp-only]
+               [--i960-profile] [--sharc-profile] [--inline-bus] [--recomp-only]
 
 The game is one of scripts/games.py's (daytona, the default, segarally);
 --set picks another of its sets (daytona: daytona93, the default, or
@@ -37,7 +37,9 @@ for slow targets, above all the PS Vita:
 runtime's TGP profiling (CMake M2_TGP_PROFILE): m2run prints where the TGP's
 time goes (src/runtime/tgp/tgp_profile.h). Results unchanged; run again without
 it to go back. --i960-profile: the same for the i960 (m2recomp --profile,
-CMake M2_I960_PROFILE, src/runtime/cpu/i960_profile.h).
+CMake M2_I960_PROFILE, src/runtime/cpu/i960_profile.h). --sharc-profile: the
+SHARC's (Model 2B; CMake M2_SHARC_PROFILE, src/runtime/sharc/sharc_profile.h;
+the generated code is the same).
 --inline-bus: the i960 code with the set's board bus inlined (m2recomp
 --board, CMake M2_INLINE_BUS; build_vita.py --inline-bus on the Vita, off by
 default there too: no measurable gain): the same results, for checking it
@@ -94,6 +96,8 @@ def main():
                     help="TGP profiling: block counters in the TGP code, time and work report in m2run")
     ap.add_argument("--i960-profile", action="store_true",
                     help="i960 profiling: block counters in the i960 code, time, work and bus report in m2run")
+    ap.add_argument("--sharc-profile", action="store_true",
+                    help="SHARC profiling (Model 2B): time by caller, run_generated, memory, hottest instructions in m2run")
     ap.add_argument("--inline-bus", action="store_true",
                     help="the board's bus inlined in the i960 code (m2recomp --board, CMake M2_INLINE_BUS)")
     ap.add_argument("--recomp-only", action="store_true",
@@ -118,6 +122,7 @@ def main():
     run(["cmake", "-S", ".", "-B", build, "-DM2_ROMSET=" + args.set, "-DM2_GAME=" + args.game, "-DM2_GEN_ROOT=" + gen_root,
          "-DM2_TGP_PROFILE=" + ("ON" if args.tgp_profile else "OFF"),
          "-DM2_I960_PROFILE=" + ("ON" if args.i960_profile else "OFF"),
+         "-DM2_SHARC_PROFILE=" + ("ON" if args.sharc_profile else "OFF"),
          "-DM2_INLINE_BUS=" + ("ON" if args.inline_bus else "OFF")] +
         (["-DCMAKE_BUILD_TYPE=" + args.config] if fresh else []))
     if not all(os.path.exists(os.path.join(cache, f))

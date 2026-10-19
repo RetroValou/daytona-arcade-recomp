@@ -47,35 +47,85 @@ std::vector<uint32_t> words(const std::vector<uint8_t> &b) {
 // FIFO has no limit).
 class SharcCopro : public sharc::Bus {
 public:
-    explicit SharcCopro(TgpBoard &b) : b_(b), sharc_(*this) { sharc_.set_flag_input(1, 0); }
+    explicit SharcCopro(TgpBoard &b) : b_(b), sharc_(*this) {
+        sharc_.set_flag_input(1, 0);
+#if defined(M2_FAST_SHARC) && !defined(M2_DC_MEMORY)
+        sharc_.set_direct_board({&b_.in_, &b_.out_, b_.buffer_, b_.copro_data_.data(), uint32_t(b_.copro_data_.size() - 1),
+                                 &b_.stop_on_output_});
+#endif
+#ifdef M2_SHARC_PROFILE
+        counts_.assign(0x8000, 0); // every program address the recompiled code can count
+        sharc_.set_profile(counts_.data());
+#endif
+    }
     uint32_t read(uint32_t address) override {
         if (address >= 0x400000 && address < 0xc00000) {
-            if (b_.in_.empty()) return 0;
+            if (b_.in_.empty()) return M2SHARC_EV(fifo_in_empty), 0;
+            M2SHARC_EV(fifo_in);
             const uint32_t v = b_.in_.front();
             b_.in_.pop_front();
             if (b_.in_.empty()) sharc_.set_flag_input(0, 1);
             return v;
         }
-        if (address >= 0x1400000 && address < 0x1c00000) return b_.buffer_[address & 0x7fff];
-        if (address >= 0x1c00000 && address < 0x1e00000) return b_.mem_r(0x800000 | (address - 0x1c00000));
-        return 0;
+        if (address >= 0x1400000 && address < 0x1c00000) return M2SHARC_EV(buffer_r), b_.buffer_[address & 0x7fff];
+        if (address >= 0x1c00000 && address < 0x1e00000) return M2SHARC_EV(rom_r), b_.mem_r(0x800000 | (address - 0x1c00000));
+        return M2SHARC_EV(other), 0;
     }
     void write(uint32_t address, uint32_t data) override {
-        if (address >= 0xc00000 && address < 0x1400000) b_.out_.push_back(data);
-        else if (address >= 0x1400000 && address < 0x1c00000) b_.buffer_[address & 0x7fff] = data;
+        if (address >= 0xc00000 && address < 0x1400000) {
+            M2SHARC_EV(fifo_out);
+            b_.out_.push_back(data);
+            if (b_.stop_on_output_) sharc_.end_run(); // need_output: the word the i960 waits for
+        }
+        else if (address >= 0x1400000 && address < 0x1c00000) M2SHARC_EV(buffer_w), b_.buffer_[address & 0x7fff] = data;
+        else M2SHARC_EV(other);
     }
     sharc::adsp21062_device &core() { return sharc_; }
+#ifdef M2_SHARC_PROFILE
+    const uint32_t *counts() const { return counts_.data(); }
+#endif
 
 private:
     TgpBoard &b_;
     sharc::adsp21062_device sharc_;
+#ifdef M2_SHARC_PROFILE
+    std::vector<uint32_t> counts_; // executions by program address - 0x20000
+#endif
 };
+
+#ifdef M2_SHARC_PROFILE
+// One caller's call (sharc_profile.h): the clock pair, the instructions.
+namespace {
+struct SharcCall {
+    sharc::SharcCaller who;
+    const sharc::adsp21062_device &s;
+    uint64_t at = s.instructions(), t0 = sharc::sharc_profile.clock ? sharc::sharc_profile.clock() : 0;
+    SharcCall(sharc::SharcCaller w, const sharc::adsp21062_device &core) : who(w), s(core) {}
+    ~SharcCall() {
+        sharc::SharcProfile &p = sharc::sharc_profile;
+        ++p.calls[who];
+        p.instructions[who] += s.instructions() - at;
+        if (p.clock) p.ticks[who] += p.clock() - t0;
+    }
+};
+} // namespace
+#define M2SHARC_CALL(who) SharcCall sharc_call_{sharc::who, sharc_->core()}
+#define M2SHARC_RUN(who) (++sharc::sharc_profile.runs[sharc::who])
+#else
+#define M2SHARC_CALL(who) ((void)0)
+#define M2SHARC_RUN(who) ((void)0)
+#endif
 
 TgpBoard::~TgpBoard() = default;
 
 uint64_t TgpBoard::sharc_instructions() const { return sharc_ ? sharc_->core().instructions() : 0; }
 
+#ifdef M2_SHARC_PROFILE
+const uint32_t *TgpBoard::sharc_counts() const { return sharc_ ? sharc_->counts() : nullptr; }
+#endif
+
 void TgpBoard::sharc_iop_w(uint32_t offset, uint32_t data) {
+    sharc_starved_ = false;
     if (sharc_) sharc_->core().external_iop_write(offset, data);
 }
 
@@ -83,6 +133,7 @@ void TgpBoard::sharc_iop_w(uint32_t offset, uint32_t data) {
 // "waiting"), or idles. 50 M instructions without waiting: a fault.
 void TgpBoard::run_sharc() {
     const uint64_t t0 = clock_ ? clock_() : 0;
+    M2SHARC_CALL(SharcToWait);
     run_sharc_to_wait();
     if (clock_) sharc_ticks_ += clock_() - t0;
 }
@@ -92,9 +143,10 @@ void TgpBoard::run_sharc_to_wait() {
     for (uint64_t done = 0; done < 50'000'000;) {
         s.set_flag_input(0, in_.empty() ? 1 : 0);
         const uint64_t at = s.instructions();
+        M2SHARC_RUN(SharcToWait);
         const bool waiting = s.run_generated(1'000'000);
         done += s.instructions() - at;
-        if (waiting && in_.empty()) return;
+        if (waiting && in_.empty()) { sharc_starved_ = true; return; }
         if (waiting && s.instructions() == at) return; // idle, or polling with input left: nothing more now
     }
     throw TgpFatal("the SHARC ran 50 M instructions without waiting for input");
@@ -135,6 +187,7 @@ void TgpBoard::coproctl_w(uint32_t data, uint32_t mask) {
         // recompiled program on its first run.
         if (data & 0x80000000) upload_count_ = 0, booted_ = false;
         else sharc_->core().set_halted(false), booted_ = true;
+        sharc_starved_ = false;
     } else if ((data ^ coproctl_) == 0x80000000) {
         if (data & 0x80000000) { // start upload: the TGP is held
             upload_.clear();
@@ -177,7 +230,9 @@ void TgpBoard::run_tgp() {
 // The TGP: until it waits (all its input processed). The SHARC (Model 2B) only
 // until the word the i960 waits for is there: MAME's SHARC runs behind the
 // i960, in slices, and the i960 stalled on the empty FIFO goes on once that
-// word arrives. Run to the end instead, it processed commands the i960 had
+// word arrives. One run_generated call, ended by the output FIFO's write
+// (end_run: at the recompiled code's next check, a plain run's end or a branch
+// taken; 16-instruction calls before, ~1 us each on the Vita, 5,700 a frame). Run to the end instead, it processed commands the i960 had
 // pushed before clearing the SHARC's work area in buffer RAM (Fighting
 // Vipers' fight, 19 Oct 2026: word 0x7c5f, written by the SHARC, cleared by
 // the i960 right after, read back by the SHARC 3,000 input words later; in
@@ -186,21 +241,34 @@ void TgpBoard::need_output() {
     if (!sharc_) return run_tgp();
     if (!booted_) return;
     const uint64_t t0 = clock_ ? clock_() : 0;
-    for (uint64_t done = 0; out_.empty() && done < 50'000'000; done += 16) {
+    M2SHARC_CALL(SharcNeedOutput);
+    stop_on_output_ = true;
+    for (uint64_t done = 0; out_.empty() && done < 50'000'000;) {
         sharc::adsp21062_device &s = sharc_->core();
         s.set_flag_input(0, in_.empty() ? 1 : 0);
         const uint64_t at = s.instructions();
-        if (s.run_generated(16) && (in_.empty() || s.instructions() == at)) break; // waits for input
+        M2SHARC_RUN(SharcNeedOutput);
+        const bool waiting = s.run_generated(1'000'000);
+        done += s.instructions() - at;
+        if (waiting && (in_.empty() || s.instructions() == at)) { // waits for input
+            sharc_starved_ = in_.empty();
+            break;
+        }
     }
+    stop_on_output_ = false;
     if (clock_) sharc_ticks_ += clock_() - t0;
 }
 
 void TgpBoard::run_sharc_slice(uint64_t instructions) {
-    if (!sharc_ || !booted_) return;
+    // Polling an empty input FIFO, it can only poll again: nothing to run (the
+    // polls are not counted; ~1 us a call on the Vita, 380 a frame).
+    if (!sharc_ || !booted_ || (sharc_starved_ && in_.empty())) return;
     sharc::adsp21062_device &s = sharc_->core();
     const uint64_t t0 = clock_ ? clock_() : 0;
+    M2SHARC_CALL(SharcSlice);
+    M2SHARC_RUN(SharcSlice);
     s.set_flag_input(0, in_.empty() ? 1 : 0);
-    s.run_generated(instructions);
+    sharc_starved_ = s.run_generated(instructions) && in_.empty();
     if (clock_) sharc_ticks_ += clock_() - t0;
 }
 

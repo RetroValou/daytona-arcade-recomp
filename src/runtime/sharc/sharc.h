@@ -11,6 +11,9 @@
 // instead of a scheduler timer. The declarations below are upstream's.
 #pragma once
 
+#include "runtime/board/fast_paths.h"
+#include "runtime/sharc/sharc_profile.h"
+#include "runtime/tgp/word_fifo.h"
 #include "runtime/sharc/sharc_shim.h"
 
 #include <cstdint>
@@ -68,6 +71,34 @@ public:
     // because the SHARC waits (idle, halted, or polling its flags in a one-nop
     // do-until loop), false when the budget ran out.
     bool run_generated(uint64_t budget);
+    // Called from the bus during run_generated: it returns (false, as on its
+    // budget) at its next check: a plain run's end, a branch taken, a full step.
+    void end_run() { m_budget = 0; }
+#ifdef M2_FAST_SHARC
+    // Model 2B's copro map (MAME model2b copro_sharc_map) for the recompiled
+    // code's direct accesses: TgpBoard's FIFOs, buffer RAM, the copro data
+    // ROM, its need_output flag. Unset (in null), the data space's bus serves
+    // them (m2sharccheck's log).
+    struct DirectBoard {
+        WordFifo *in = nullptr, *out = nullptr;
+        uint32_t *buffer = nullptr;            // 0x8000 words
+        const uint32_t *rom = nullptr;         // rom_mask + 1 words
+        uint32_t rom_mask = 0;
+        const bool *stop_on_output = nullptr;  // end_run on an output word
+    };
+    void set_direct_board(const DirectBoard &b) { m_direct = b; }
+#endif
+    // For m2sharcrecomp's flag analysis: one instruction's handler run on a given
+    // state (registers, ASTAT, MODE1, STKY, the DAGs' I/M/L/B, MRF/MRB, internal
+    // RAM), out of the pipeline; the state it leaves.
+    struct ProbeState {
+        uint32_t r[16], astat, mode1, stky, i[16], m[16], l[16], b[16];
+        uint64_t mrf, mrb, ram_hash;
+    };
+    ProbeState probe(uint64_t opcode, const ProbeState &in);
+    // M2_SHARC_PROFILE builds: executions per instruction of the program (the
+    // recompiled code counts into it; nullptr: none).
+    void set_profile(uint32_t *counts) { m_profile = counts; }
     // Called after each opcode fetch, before the instruction runs (m2sharccheck).
     void set_trace(void (*trace)(void *, const adsp21062_device &), void *ctx) { m_trace = trace, m_trace_ctx = ctx; }
 
@@ -280,6 +311,7 @@ private:
     uint64_t m_instructions = 0;
     bool m_gen_checked = false; // run_generated compared program memory with its program
     uint32_t m_gen_end = 0;     // the recompiled program's end (0x20000 up): writes there are fatal
+    uint32_t *m_profile = nullptr;
 
     // The recompiled program's handlers (m2sharcrecomp writes their definitions:
     // upstream's sharcop_* and COMPUTE, the opcode a template parameter).
@@ -289,7 +321,18 @@ private:
     inline uint32_t GET_UREG_i(int ureg);
     inline void SET_UREG_i(int ureg, uint32_t data);
     inline void SHIFT_OPERATION_IMM_i(int shiftop, int data, int rn, int rx);
-    template <int CHUNK> int run_chunk(uint64_t &done, uint64_t budget);
+    inline uint32_t dm_read32_i(uint32_t address);
+    inline void dm_write32_i(uint32_t address, uint32_t data);
+    inline uint32_t *pm_data32(uint32_t address);
+    inline uint32_t pm_read32_i(uint32_t address);
+    inline void pm_write32_i(uint32_t address, uint32_t data);
+#ifdef M2_FAST_SHARC
+    DirectBoard m_direct;
+    inline uint32_t board_read(uint32_t address);
+    inline void board_write(uint32_t address, uint32_t data);
+#endif
+    template <int CHUNK> int run_chunk(uint64_t &done);
+    uint64_t m_budget = 0; // run_generated's, read by the chunks (end_run lowers it)
     template <uint64_t OPCODE> void sharcop_compute_dreg_dm_dreg_pm_t();
     template <uint64_t OPCODE> void sharcop_compute_t();
     template <uint64_t OPCODE> void sharcop_compute_ureg_dmpm_premod_t();
@@ -337,7 +380,10 @@ private:
 
     inline bool step_pre();
     inline void step_fetch(uint64_t opcode);
+    inline void step_fetch_gen(uint64_t opcode);
     inline void step_loop_end();
+    inline void step_body();
+    inline bool plain_ready() const;
     inline void step_after(); // instructions until the delayed IOP write (MAME: a timer)
 
     const char *tag() const { return ":copro_adsp"; }

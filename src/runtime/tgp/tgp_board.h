@@ -45,10 +45,12 @@ public:
     // generated code); the upload and the TGP run stay out of line.
     void function_port_w(uint32_t offset, uint32_t data) { // 0x00880000
         in_.push_back((data & 0x800fffff) | ((offset >> 2) & 0xff) << 23);
+        sharc_starved_ = false;
     }
     void fifo_w(uint32_t data) { // 0x00884000
         if (coproctl_ & 0x80000000) [[unlikely]] return upload_w(data);
         in_.push_back(data);
+        sharc_starved_ = false;
     }
     uint32_t fifo_r() { // 0x00884000
         if (out_.empty()) [[unlikely]] refill();
@@ -85,6 +87,10 @@ public:
     // SHARC runs is summed in sharc_ticks (the clock's units).
     void set_profile_clock(uint64_t (*clock)()) { clock_ = clock; }
     uint64_t sharc_ticks() const { return sharc_ticks_; }
+#ifdef M2_SHARC_PROFILE
+    // The SHARC's executions by program address - 0x20000 (sharc_profile.h).
+    const uint32_t *sharc_counts() const;
+#endif
     // Run the TGP until it waits on an empty input FIFO. The game polls the
     // TGP's mailbox in buffer RAM for results; the TGP must have caught up.
     void sync() { run_tgp(); }
@@ -123,6 +129,8 @@ private:
     uint32_t upload_count_ = 0;
     uint64_t (*clock_)() = nullptr;
     uint64_t sharc_ticks_ = 0;
+    bool stop_on_output_ = false; // need_output: the SHARC's run ends at its next output word
+    bool sharc_starved_ = false;  // the SHARC waits on an empty input FIFO (run_sharc_slice skips)
     void run_sharc();
     void run_sharc_to_wait();
     void need_output(); // the i960 needs an output word: the TGP all, the SHARC until one
