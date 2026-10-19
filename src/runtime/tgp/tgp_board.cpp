@@ -130,6 +130,12 @@ void TgpBoard::mem_w(uint32_t adr, uint32_t v) {
 }
 
 void TgpBoard::buffer_w(uint32_t byte_offset, uint32_t data, uint32_t mask) {
+    // The TGP runs alongside the i960 in MAME: by the time the i960 writes to
+    // buffer RAM, the TGP has processed the input it already had. Manx TT
+    // writes the TGP's next display list pointer to word 0x6000 right after
+    // the command that reads the previous one (19 Oct 2026): ours, run on
+    // demand, would read the new pointer twice.
+    if (!in_.empty()) run_tgp();
     uint32_t &w = buffer_[(byte_offset >> 2) & 0x7fff];
     w = (w & ~mask) | (data & mask);
 }

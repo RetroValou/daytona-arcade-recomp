@@ -66,8 +66,8 @@ local READ_TAPS = {
 	{ 0x10000000, 0x105fffff, "render" },
 }
 local IRQ_ACK = 0x00e80000
-local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE", ":P1_X", ":P1_Y" } -- P1_X/Y: vcop's light gun
-local GEAR_BITS = { port = ":IN1", mask = 0x70 } -- computed from GEARS, not replayed
+local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE", ":P1_X", ":P1_Y", ":THROTTLE", ":BANK" } -- P1_X/Y: vcop's light gun; THROTTLE/BANK: manxtt's bike
+local GEAR_BITS = { port = ":IN1", mask = 0x70 } -- computed from GEARS (when the set has them), not replayed
 
 local cfg = {}
 local out            -- trace file
@@ -194,7 +194,7 @@ local function collect_fields()
 		if port then
 			for _, field in pairs(port.fields) do
 				local skip = field.type_class == "dipswitch" or field.type_class == "config"
-					or (tag == GEAR_BITS.port and (field.mask & GEAR_BITS.mask) ~= 0)
+					or (ports[":GEARS"] and tag == GEAR_BITS.port and (field.mask & GEAR_BITS.mask) ~= 0)
 				if not skip then
 					fields[#fields + 1] = {
 						port = tag, mask = field.mask, defvalue = field.defvalue & field.mask,

@@ -43,6 +43,7 @@ int main(int argc, char **argv) {
         write(out + "/pcm1.bin", img.pcm1.data(), img.pcm1.size());
         write(out + "/pcm2.bin", img.pcm2.data(), img.pcm2.size());
         write(out + "/samples.bin", img.samples.data(), img.samples.size());
+        if (!img.eeprom.empty()) write(out + "/eeprom.bin", img.eeprom.data(), img.eeprom.size()); // the set's default settings
         const std::vector<uint8_t> tgp = rt::tgp_program(img); // the TGP program the i960 uploads at boot
         write(out + "/tgp_program.bin", tgp.data(), tgp.size());
         const std::vector<uint8_t> dsp = rt::dsp_program(img); // the SCSP DSP program (empty: none)

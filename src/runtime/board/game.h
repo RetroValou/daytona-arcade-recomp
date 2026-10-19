@@ -53,12 +53,14 @@ struct GunRange {
 // 0, or 2-3, offset 2, of each dword) for the i960-side regions; the sound
 // regions load whole files (the 68000 program and the SCSP samples
 // byte-swapped: ROM_LOAD16_WORD_SWAP).
-enum class LoadRegion : uint8_t { Program, MainData, CoproData, Polygons, Textures, CoproTables, SoundProgram, Pcm1, Pcm2, Samples };
+// Eeprom: the settings EEPROM's default contents (MAME's "eeprom" region, 128
+// bytes: a game whose set ships them, such as manxttc's Twin cabinet setting).
+enum class LoadRegion : uint8_t { Program, MainData, CoproData, Polygons, Textures, CoproTables, SoundProgram, Pcm1, Pcm2, Samples, Eeprom };
 namespace rom_regions { // for the ROM tables in src/games: `using namespace rom_regions;`
 inline constexpr LoadRegion Program = LoadRegion::Program, MainData = LoadRegion::MainData, CoproData = LoadRegion::CoproData,
                            Polygons = LoadRegion::Polygons, Textures = LoadRegion::Textures, CoproTables = LoadRegion::CoproTables,
                            SoundProgram = LoadRegion::SoundProgram, Pcm1 = LoadRegion::Pcm1, Pcm2 = LoadRegion::Pcm2,
-                           Samples = LoadRegion::Samples;
+                           Samples = LoadRegion::Samples, Eeprom = LoadRegion::Eeprom;
 } // namespace rom_regions
 struct RomLoad {
     const char *file;
@@ -121,7 +123,7 @@ struct FrontendDefaults {
     int music_volume = 100;
     // The effects against the music: Daytona's effects cover its music on the
     // Vita's speakers, so 20 % by default.
-    int effects_volume = 20;
+    int effects_volume = 100;
 };
 
 // How the cabinet's controls reach a Model 2A-CRX board's 315-5649 I/O chip

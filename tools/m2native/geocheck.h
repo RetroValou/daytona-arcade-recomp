@@ -95,6 +95,7 @@ private:
         f_.seekg(fr.off);
         if (fr.parse) {
             geo_.zclip_w(bus_.peek(0x0181c000));
+            board_.sync(); // the TGP's buffer RAM writes before the parse, as M2Board::vblank_start
             geo_.record_pushes = true;
             geo_.parse(board_.geo_read_start());
             video_.frame_start();

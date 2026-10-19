@@ -270,6 +270,9 @@ M2Board::M2Board(Images images)
 #endif
     io_.wiring = img_.game->io;
     io_.gun = img_.game->gun;
+    // The set's default settings (MAME loads its "eeprom" region the same way);
+    // a frontend's saved EEPROM replaces them after.
+    if (img_.eeprom.size() == io_.eeprom.size()) std::copy(img_.eeprom.begin(), img_.eeprom.end(), io_.eeprom.begin());
 #ifdef M2_SPIN_SKIP
     std::copy(std::begin(img_.game->spin), std::end(img_.game->spin), std::begin(spin_));
 #endif
@@ -402,6 +405,11 @@ void M2Board::vblank_start() {
         }
 #endif
         geo_->zclip_w(zclip_);
+        // The TGP runs alongside the i960 in MAME: by vblank it has written
+        // to buffer RAM whatever its input asked for. Ours runs on demand, so
+        // it catches up before the geometrizer reads the display list (Manx
+        // TT has the TGP write display list words there, 19 Oct 2026).
+        tgp_.sync();
         geo_->parse(tgp_.geo_read_start());
         video_->frame_start();
     }

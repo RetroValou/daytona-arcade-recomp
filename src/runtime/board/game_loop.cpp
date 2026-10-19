@@ -5,6 +5,7 @@
 #include "runtime/sound/model1_board.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 
@@ -35,6 +36,7 @@ GameLoop::GameLoop(const std::string &dir, bool sound_enabled) : GameLoop([&] {
     img.pcm1 = load(dir + "/pcm1.bin");
     img.pcm2 = load(dir + "/pcm2.bin");
     if (game().sound == SoundBoardType::Scsp) img.samples = load(dir + "/samples.bin");
+    if (std::filesystem::exists(dir + "/eeprom.bin")) img.eeprom = load(dir + "/eeprom.bin"); // the set's default settings
     return img;
 }(), sound_enabled) {}
 

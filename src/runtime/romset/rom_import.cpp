@@ -79,6 +79,7 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
             continue;
         case LoadRegion::Pcm1: std::copy(data.begin(), data.end(), img.pcm1.begin() + l.offset); continue;
         case LoadRegion::Pcm2: std::copy(data.begin(), data.end(), img.pcm2.begin() + l.offset); continue;
+        case LoadRegion::Eeprom: img.eeprom = data; continue; // 16-bit little-endian words, as the 93C46 holds them
         }
         for (uint32_t w = 0; w < l.size / 2; w++) {
             (*r)[l.offset + w * 4] = data[w * 2];

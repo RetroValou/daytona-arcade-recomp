@@ -113,6 +113,7 @@ public:
         std::vector<uint8_t> program, main_data, copro_tables, copro_data, polygons, textures;
         std::vector<uint8_t> sound_program, pcm1, pcm2; // sound board (68000 program, MultiPCM samples)
         std::vector<uint8_t> samples;                   // SCSP sound board: the sample ROMs, as the 68000 sees them from 0x800000
+        std::vector<uint8_t> eeprom;                    // the settings EEPROM's default contents (128 bytes), or empty: blank
         const Game *game = &rt::game();                   // the game these images are for (and its board)
 #ifdef M2_DC_MEMORY
         // The Dreamcast: program, main_data, polygons, textures and copro_data

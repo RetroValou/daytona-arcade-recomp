@@ -1,5 +1,29 @@
 # Handoff
 
+## A set's default EEPROM; the TGP catches up before the vblank parse and i960 buffer writes (2026-10-19)
+
+Default EEPROM: LoadRegion::Eeprom (MAME's "eeprom" region, 128 bytes):
+rom_import keeps it in Images::eeprom, m2import writes eeprom.bin when the
+set has one, GameLoop loads it if present, and M2Board starts the 93C46
+from it; a frontend's saved EEPROM still replaces it. Only manxttc uses it
+(manxttc_twin_nvran: the Twin cabinet).
+TGP: M2Board::vblank_start (and m2native's geometrizer check) now runs the
+TGP to its FIFO wait before the geometrizer parses buffer RAM. MAME's TGP
+runs alongside the i960; ours on demand, and Manx TT has the TGP write
+display list words to buffer RAM with nothing else making it catch up:
+frame 834 of its boot read a stale 0 (MAME 1) and the geometrizer looped on
+a texture data block's garbage count.
+Second case, in a race (frame 1015): TgpBoard::buffer_w now runs the TGP on
+the input it already has before an i960 write to buffer RAM. Manx TT keeps
+the TGP's display list write pointer in buffer RAM word 0x6000: the i960
+writes 0x128, pushes the command that reads it, then writes 0x2cc; MAME's
+TGP read 0x128 in between, ours (run later) read 0x2cc twice and wrote its
+matrix at 0xb3 instead of 0x4a. Found with temporary logs of the buffer
+writes and a MAME Lua dump of buffer RAM (removed). i960 reads of buffer RAM
+already caught the TGP up.
+Checked, both: daytona93 race_basic, srallyc_race, vf2_fight and vcop_shoot
+m2run hash and WAV identical before and after.
+
 ## Virtua Cop 2: the bal g14 inline texts; its level raised to Daytona's (2026-10-18)
 
 The user, on the console: 0x38254 has no code (after "SCENE"). A second kind

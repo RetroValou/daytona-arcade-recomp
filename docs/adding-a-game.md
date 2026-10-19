@@ -27,7 +27,10 @@ Define one `extern const rt::Game <set>_game = {...};` per set
 - `roms`: MAME's `ROM_START(<set>)` as `RomLoad` lines (file, CRC, region,
   offset, size). `ROM_LOAD32_WORD` pairs go to offsets 0 and 2. Load only the
   regions the runtime uses. `mirror_from`: main_data's `ROM_COPY` source, or
-  0 for none.
+  0 for none. A set whose MAME entry ships an `eeprom` region (the default
+  settings, 128 bytes) loads it as `Eeprom`: the board starts from it, as
+  MAME does (Manx TT: the Twin cabinet setting; without it the game boots as
+  another cabinet). A frontend's saved EEPROM still replaces it.
 - `tgp`: where the TGP program the i960 uploads at boot sits, with its length
   in words and its CRC. Find it by dumping MAME's `copro_tgp_program` after
   boot and searching the ROMs for it.
