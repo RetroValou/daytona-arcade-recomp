@@ -1,0 +1,2 @@
+# manxttc: boot and the first attract screens, no input (the Twin EEPROM's boot)
+frames 1200

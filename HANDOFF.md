@@ -1,5 +1,53 @@
 # Handoff
 
+## Manx TT Superbike, Twin (manxttc; Model 2A-CRX), one player (2026-10-19)
+
+The user's choice after comparing the two cabinets in MAME (18 Oct 2026): the
+DX (manxtt, Revision D) adds a Model 1 sound board (68000 epr-18742, one
+MultiPCM with 75 samples in mpr-18743; its YM3438 never keys on) that plays
+only the engine (two families of 8 samples whose pitch follows the revs, plus
+two short sounds), and a moving bike whose check screen MAME never leaves.
+The Twin (manxttc, Revision C, its EEPROM set to Twin) has the SCSP board
+only: its driver plays the engine itself (37 % more SCSP key-ons and 55 %
+more pitch writes than the DX's in a race); the game is the same (course and
+transmission select, the race, the ranking). Captures: extern/test_son/manxtt/.
+Added as the other games: src/games/manxttc.cpp (the Twin's sound program
+epr-18826.30 and sample ROM mpr-18827.31; the program in ROM, main_data
+mirrored from 0xc00000; TGP program at 0x787e8, 1,782 words; DSP program at
+0x8f14, 74 steps; both equal to MAME's after boot), scripts/games.py (game
+manxtt, Vita MANX00098, ux0:data/manxttc/manxttc.zip; set manxttc in MAME's
+merged manxtt.zip, whose manxttc/ folder the importer reads by file name),
+seeds/manxttc.txt (MAME harvest of attract, a race and a test-mode walk, 413
+targets, then seed_scan.py: 1,325), seeds/manxttc_snd.txt (six jump tables,
+153 entries, and 53 function starts after rts/rte from the harvest's
+M2TRACE_SNDPCS), scripts/inputs/manxttc_race.txt, manxttc_boot.txt.
+Controls: THROTTLE, BRAKE, BANK on the 315-5649's channels 0-2 (accel,
+brake, steer, rescaled to 0x00-0xff as Sega Rally's), Start 0x40, shift
+up/down on IN1 0x10/0x20 from the view buttons (Control::View1/View2).
+The m2trace plugin now records :THROTTLE and :BANK, and skips IN1's gear
+bits only for a set with a :GEARS port (Manx TT's shift buttons are there).
+Wait loop 0x3f1c-0x3f33 (videoctl's frame bit, as Sega Rally's; 87 % of the
+interrupts), idle only.
+Sound: the SCSP voice table {0x2800, 0x10, 4}: channels 0-9 the music
+(owner 0), the engine, brakes, effects and voices on 0x0e and 0xff:
+music_channels 0x03ff; effects at 100 % by default (the engine is one).
+output_gain 3.4 (race peak -11.7 dBFS against Daytona's -1.0). POLYGON ORDER
+scale 10.0 (race w p99.9 20,900, max 23,100; temporary probe, removed).
+Wrong turns: without the default EEPROM the game boots as the DX and waits
+on the moving bike's check (below); the first sound seeds missed the
+function starts after rts (0x6048a8) and the sixth table (0x6048a4 jmp (A4)).
+Checked: lockstep against MAME after the fixes below: the boot (1,200
+frames) and manxttc_race (6,000 frames, the throttle, brake and lean: 1.06 G
+i960 and 134 M TGP instructions, 185 M device events, 4.3 M polygons, 4,622
+3D layers and 5,996 screens identical, buffer RAM hash at 5,938 of 5,938
+samples, sound MATCH). On the PC the race runs through (two laps, ranking,
+attract); the test mode opens, moves, opens SOUND TEST and GAME ASSIGNMENTS
+(CABINET TYPE TWIN) and leaves them, as in MAME. --fast-inaccuracy
+(vita_fast): the race (the same 9,079 sound bytes), 8,000 frames of attract
+and the test walk run through. Music/effects split: m2run --volumes 1,0 and
+0,1 on the race: the menus' effects and the engine follow the effects
+volume, the music the music volume (extern/test_son/manxtt/twin_pc_*.wav).
+
 ## A set's default EEPROM; the TGP catches up before the vblank parse and i960 buffer writes (2026-10-19)
 
 Default EEPROM: LoadRegion::Eeprom (MAME's "eeprom" region, 128 bytes):

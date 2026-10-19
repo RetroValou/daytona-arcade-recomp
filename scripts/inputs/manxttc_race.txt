@@ -1,0 +1,14 @@
+# manxttc: coin up, start, confirm the course and transmission screens with
+# Start, then the throttle held, leaning left and right in turn.
+# Frames at 57.52 Hz. The title screen is up by 1000; one coin a credit (Twin).
+frames 6000
+1000-1009 coin=1
+1150-1159 start=1
+1400-1409 start=1
+1650-1659 start=1
+1900-5999 accel=0xe0
+2400-2499 steer=0x40
+2700-2799 steer=0xc0
+3000-3059 brake=0xe0
+3300-3399 steer=0x40
+3600-3699 steer=0xc0

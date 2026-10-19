@@ -82,6 +82,10 @@ GAMES = {
         "title": "Virtua Cop 2", "sets": ("vcop2",),
         "vita_title_id": "VCOP00097", "vita_name": "Virtua Cop 2", "vita_link": False,
     },
+    "manxtt": {
+        "title": "Manx TT Superbike", "sets": ("manxttc",),
+        "vita_title_id": "MANX00098", "vita_name": "Manx TT Superbike", "vita_link": False,
+    },
 }
 
 # The game the scripts build when none is given.
@@ -148,6 +152,23 @@ SETS = {
         "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
         "full_range": False,
+    },
+    # Manx TT Superbike, Revision C, the Twin cabinet (MAME's manxttc: its
+    # EEPROM is set to Twin, with the Twin sound ROMs; the DX's Model 1 sound
+    # board and moving bike are not used). Model 2A-CRX like vf2 (program in
+    # ROM, --no-mirror; SCSP sound). The bike: THROTTLE, BRAKE and BANK (the
+    # lean) as accel, brake and steer; Start 0x40; shift up/down on IN1
+    # 0x10/0x20 as vr1/vr2. Its ROMs are in MAME's merged manxtt.zip.
+    # --fast-inaccuracy checked on the PC: manxttc_race (the same 9,079 sound
+    # command bytes as the exact code), 8,000 frames of attract and the test
+    # mode walk run through (no new seed).
+    "manxttc": {
+        "game": "manxtt", "label": "Twin, Revision C",
+        "roms": ["manxttc", "manxtt"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
+        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "inputs": {"start": (":IN0", 0x40), "vr1": (":IN1", 0x10), "vr2": (":IN1", 0x20),
+                   "steer": (":BANK", 0xFF), "accel": (":THROTTLE", 0xFF), "brake": (":BRAKE", 0xFF)},
+        "full_range": True,
     },
 }
 
