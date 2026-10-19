@@ -1,5 +1,18 @@
 # Handoff
 
+## build_vita.py --game all (2026-10-19)
+
+Builds, with the same options, every game whose main set's archive is in
+roms/ (games.rom_archives: .zip or .7z under any of the set's names) and whose
+Vita package works (GAMES "vita", default True; fightingvipers False until its
+SHARC runs on the board). A game whose host code is missing is recompiled
+first (recompile.py --game G --recomp-only); one the requested --fast-* mode
+was not checked on (SETS vita_fast) is skipped; a failure does not stop the
+others; a summary lists each game's package or why not, exit 1 if any failed.
+--set, --title-id, --build-dir and --revision-a-self are refused with all (one
+game's package). tests/scripts/test_build_vita.py: 31 tests pass (3 new).
+Not run end to end here (each game's own build is the one already used).
+
 ## Fighting Vipers (fvipers; Model 2B-CRX): the i960 side matches MAME (2026-10-19)
 
 First Model 2B game (the user's choice: no Virtua Fighter runs on 2B; MAME

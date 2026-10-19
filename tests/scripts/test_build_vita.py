@@ -202,6 +202,43 @@ class BuildVitaTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.call("--compile-check", "--title-id", "sral1")
 
+    def test_all_rejects_one_games_options(self):
+        for option in (["--set", "srallyc"], ["--title-id", "ABCD12345"], ["--build-dir", "x"]):
+            with self.assertRaises(SystemExit):
+                self.call("--game", "all", *option)
+            self.assertIn("not with --game all", self.output.getvalue())
+
+    def test_all_builds_the_games_with_roms_and_the_same_options(self):
+        present = {"srallyc", "vf2", "fvipers", "manxttc"}  # fvipers: no Vita package yet
+        calls = []
+        def fake_main(argv):
+            calls.append(argv)
+            return 1 if "manxtt" in argv else 0
+        for name in BUILD.REQUIRED:  # host code present: no recompilation
+            for romset in present:
+                path = self.root / BUILD.games.gen_root(romset) / name.format(set=romset)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+        with patch.object(BUILD.games, "rom_archives", lambda romset: ["x"] if romset in present else []), \
+             patch.object(BUILD, "main", fake_main), patch.object(BUILD.subprocess, "run") as run, \
+             contextlib.redirect_stdout(self.output):
+            status = BUILD.build_all(["--game", "all", "--release", "--fast-inaccuracy"], "fast_inaccuracy")
+        run.assert_not_called()
+        self.assertEqual(status, 1)  # manxtt failed; the others went on
+        built = [argv[argv.index("--game") + 1] for argv in calls]
+        self.assertEqual(built, ["segarally", "virtuafighter2", "manxtt"])
+        self.assertTrue(all(argv[:2] == ["--release", "--fast-inaccuracy"] for argv in calls))
+        text = self.output.getvalue()
+        self.assertIn("skipped: no roms/daytona93", text)
+        self.assertIn("fightingvipers   skipped: its Vita package does not work yet", text)
+        self.assertIn("manxtt           FAILED", text)
+
+    def test_all_skips_a_mode_not_checked(self):
+        with patch.object(BUILD.games, "rom_archives", lambda romset: ["x"] if romset == "srallyc" else []), \
+             patch.object(BUILD, "main", lambda argv: 0), contextlib.redirect_stdout(self.output):
+            self.assertEqual(BUILD.build_all(["--game", "all", "--fast-gen"], "fast_gen"), 0)
+        self.assertIn("skipped: --fast-gen not checked on srallyc", self.output.getvalue())
+
     def test_srallyc_has_no_fast_gen(self):
         with patch.object(BUILD.subprocess, "run") as run:
             with self.assertRaises(SystemExit):

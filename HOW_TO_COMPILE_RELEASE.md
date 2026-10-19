@@ -38,6 +38,13 @@ python3 scripts/build_vita.py --game GAME --fast-inaccuracy --release
 | Virtua Cop 2 | `virtuacop2` | `build_virtuacop2/vita/virtuacop2.vpk` | VCOP00097 | `ux0:data/vcop2/vcop2.zip` |
 | Manx TT Superbike (Twin) | `manxtt` | `build_manxtt/vita/manxtt.vpk` | MANX00098 | `ux0:data/manxttc/manxttc.zip` (MAME's merged `manxtt.zip`, renamed) |
 
+Every game at once: `python3 scripts/build_vita.py --game all --fast-inaccuracy --release`
+builds, with the same options, each game whose ROM set is in `roms/` (recompiling
+it on the host first if needed: `recompile.py --recomp-only`), skips the others
+and a game the requested mode was not checked on, keeps going when one fails, and
+lists each game's package at the end. Fighting Vipers is not built yet: its Vita
+package waits for the SHARC (`scripts/games.py`, `"vita": False`).
+
 Install the VPK with VitaShell and copy the ROM set to the place above. The games
 are separate apps: they install side by side.
 

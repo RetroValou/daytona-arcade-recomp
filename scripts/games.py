@@ -22,6 +22,8 @@ Per game (GAMES):
                 --link/--no-link override it): only where it was tested on
                 Vitas, Daytona. The menu also needs a set with the
                 communication board (Game::link)
+  vita          the Vita package works (build_vita.py --game all builds only
+                these; default True): Fighting Vipers waits for its SHARC
   The Vita's LiveArea images: platform/vita/logo_livearea/<game>/.
 
 Per set (SETS):
@@ -51,6 +53,8 @@ Per set (SETS):
                 (CONTROLS), and "full_range": its analog inputs are 0x00-0xff
                 rather than 0x20-0xe0
 """
+
+import os
 
 # The common layout: MAME's daytona ports. name -> (port, mask).
 CONTROLS = {
@@ -90,6 +94,7 @@ GAMES = {
     "fightingvipers": {
         "title": "Fighting Vipers", "sets": ("fvipers",),
         "vita_title_id": "FVIP00099", "vita_name": "Fighting Vipers", "vita_link": False,
+        "vita": False,  # the board does not run its SHARC yet
     },
 }
 
@@ -187,6 +192,13 @@ SETS = {
         "full_range": False,
     },
 }
+
+
+def rom_archives(romset):
+    """The set's archives present under roms/ (.zip or .7z, any of its names)."""
+    root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "roms")
+    return [p for n in SETS[romset]["roms"] for ext in ("zip", "7z")
+            if os.path.exists(p := os.path.join(root, f"{n}.{ext}"))]
 
 
 def game_of(romset):

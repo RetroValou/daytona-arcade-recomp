@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cross-compile a game's Vita package from its host recompilation.
 
-  build_vita.py [--game GAME] [--set SET] [--fast-inaccuracy] [--diagnostics | --release] ...
+  build_vita.py [--game GAME|all] [--set SET] [--fast-inaccuracy] [--diagnostics | --release] ...
 
 First recompile the game on the host with your own ROM set (python3
 scripts/recompile.py --game GAME, once, in any mode; --recomp-only is
@@ -15,6 +15,11 @@ ROM data. --compile-check builds objects without ROMs and does not make a VPK.
 The renderer is vitaGL (pinned by scripts/setup_vitagl.py, else the VitaSDK's;
 libshacccg.suprx on the Vita), the only one: --gpu-gl, --gpu-fast (vita2d) and the
 CPU frontend were removed on 2026-10-16.
+--game all builds, with the same options, every game whose ROM set is under
+roms/ and whose Vita package works (scripts/games.py "vita"), recompiling a
+game on the host first (recompile.py --recomp-only) when its code is missing;
+a game the requested --fast-* mode was not checked on is skipped, and one that
+fails does not stop the others.
 """
 import argparse
 import json
@@ -195,9 +200,9 @@ def vitagl_summary(prefix):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--game", choices=sorted(games.GAMES),
+    ap.add_argument("--game", choices=sorted(games.GAMES) + ["all"],
                     help=f"the game (scripts/games.py; default {games.DEFAULT}); each game is its own app, with its own "
-                         "title ID (Daytona DAYT00093, Sega Rally SRAL00094)")
+                         "title ID (Daytona DAYT00093, Sega Rally SRAL00094); all: every game whose ROM set is in roms/")
     ap.add_argument("--set", choices=sorted(SETS), help="another set of the game (default: its main set)")
     ap.add_argument("--title-id", default="", help="override the package's title ID (4 capital letters, 5 digits)")
     ap.add_argument("--revision-a-self", type=Path,
@@ -238,6 +243,14 @@ def main(argv=None):
                       help="i960 default output rewritten by scripts/fast_gen.py (exact, slower on the Vita), "
                            "TGP fast mode. Without either: the host-generated code as it is")
     args = ap.parse_args(argv)
+    if args.game == "all":
+        for flag, value in (("--set", args.set), ("--title-id", args.title_id), ("--build-dir", args.build_dir),
+                            ("--revision-a-self", args.revision_a_self)):
+            if value:
+                ap.error(f"{flag} names one game's package: not with --game all")
+        if args.vitasdk is None:
+            ap.error("set VITASDK or pass --vitasdk /path/to/vitasdk")
+        return build_all(sys.argv[1:] if argv is None else list(argv), args.code)
     try:
         args.game, args.set = games.resolve(args.game, args.set)
     except ValueError as error:
@@ -366,6 +379,46 @@ def main(argv=None):
               f"Runtime fast paths: {paths}\nLink play: {link_play}\nLiveArea images: {livearea_summary(args.game)}\nTitle ID: {title_id}\n"
               f"ROM location on Vita: ux0:data/{args.set}/{args.set}.zip")
     return 0
+
+
+def build_all(argv, code):
+    """--game all: main() for each game whose ROM set is present, with argv's
+    other options; a summary at the end. 1 if any failed."""
+    i = argv.index("--game") if "--game" in argv else None
+    rest = argv[:i] + argv[i + 2:] if i is not None else [a for a in argv if a != "--game=all"]
+    results = []
+    for game in games.GAMES:
+        romset = games.main_set(game)
+        if not games.rom_archives(romset):
+            results.append((game, "skipped: no roms/" + " or ".join(SETS[romset]["roms"]) + ".zip/.7z"))
+            continue
+        if not games.GAMES[game].get("vita", True):
+            results.append((game, "skipped: its Vita package does not work yet (scripts/games.py)"))
+            continue
+        if code and code not in SETS[romset]["vita_fast"]:
+            results.append((game, f"skipped: --{code.replace('_', '-')} not checked on {romset}"))
+            continue
+        print(f"\n===== build_vita: {games.title(romset)} =====", flush=True)
+        gen = ROOT / games.gen_root(romset)
+        if not all((gen / name.format(set=romset)).is_file() for name in REQUIRED):
+            recompile = [sys.executable, str(ROOT / "scripts/recompile.py"), "--game", game, "--recomp-only"]
+            if subprocess.run(recompile, cwd=ROOT).returncode:
+                results.append((game, "FAILED: host recompilation"))
+                continue
+        try:
+            status = main(rest + ["--game", game])
+        except SystemExit as stop:  # argparse errors
+            status = stop.code or 0
+        except (OSError, subprocess.CalledProcessError, RuntimeError) as error:
+            print(f"build_vita: {error}", file=sys.stderr)
+            status = 1
+        diagnostics = "--diagnostics" in rest
+        package = Path(games.vita_dir(game, diagnostics)) / games.vpk_name(game, diagnostics)
+        results.append((game, f"built: {package}" if status == 0 else "FAILED"))
+    print("\n===== build_vita --game all =====")
+    for game, result in results:
+        print(f"  {game:16s} {result}")
+    return 1 if any("FAILED" in r for _, r in results) else 0
 
 
 if __name__ == "__main__":
