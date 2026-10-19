@@ -147,7 +147,12 @@ int main(int, char **) {
     bool running = true, menu = true, wait_release = true;
     vita::Launcher launcher(test_hold);
     uint32_t previous_buttons = 0;
-    std::string status = "CROSS SELECT. OPTIONS INCLUDE CLOCKS, AUDIO, DISPLAY AND CONTROLS.";
+    // Back in the game (resume, start, reset): the buttons still held from the menu are
+    // ignored, each until it is released; the others and the sticks work at once (not
+    // the whole pad held back until every button is up: a latency when resuming with
+    // the accelerator or a direction held).
+    uint32_t held_from_menu = 0;
+    std::string status = "CROSS SELECT. OPTIONS: GAME, DISPLAY, AUDIO, PERFORMANCE. CONTROLS: BUTTONS, STICK, STEERING.";
     uint64_t last = ticks_us();
 
     // The sound worker joined; a fault stops the game and shows the menu with it.
@@ -266,11 +271,12 @@ int main(int, char **) {
         const vita::Pad pad = read_pad();
         uint32_t pressed = pad.buttons & ~previous_buttons;
         previous_buttons = pad.buttons;
+        held_from_menu &= pad.buttons; // released: counts again
         if (wait_release) {
             pressed = 0; controls.latch(pad.buttons);
             if (!pad.buttons) wait_release = false;
         }
-        if (!menu && !wait_release && vita::menu_chord(pad.buttons)) {
+        if (!menu && !wait_release && vita::menu_chord(pad.buttons & ~held_from_menu)) {
             menu = true; launcher.open();
             sound_ok();
             audio.pause(); native_audio.pause(); save(); clock.reset(); wait_release = true;
@@ -293,13 +299,17 @@ int main(int, char **) {
             }
         }
 
+        if (!menu && wait_release) { held_from_menu = pad.buttons; wait_release = false; }
+        vita::Pad game_pad = pad;
+        game_pad.buttons &= ~held_from_menu;
+
         diag.input_done(now);
         bool simulated = false;
         if (session && !menu) {
             if (session.native_audio()) native_audio.resume();
             const int frames = clock.advance(elapsed);
             for (int n = 0; n < frames; ++n) {
-                const rt::Inputs inputs = map_input(controls.sample(wait_release ? vita::Pad{} : pad));
+                const rt::Inputs inputs = map_input(controls.sample(game_pad));
                 if (!session.run_frame(inputs, test_hold, settings)) {
                     status = session.error();
                     menu = true;

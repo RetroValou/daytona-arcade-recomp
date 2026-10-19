@@ -109,27 +109,38 @@ into the gun's units (`Game::gun`, MAME's range).
 
 Fixed: Start+Select opens the menu; Select+Triangle is the cabinet's Test switch,
 Select+Square its Service switch (in test mode Cross gives VR1, menu next, and Start
-selects); plain Select inserts a coin on release. The Controls page rebinds each of
-the game's controls to one button (Cross then the new button, or Left/Right to cycle;
-a button already used swaps). Bindings are saved as `bind_*` keys; an invalid or
-duplicated set goes back to the game's defaults.
+selects); plain Select inserts a coin on release. Back in the game from the menu,
+a button still held is ignored until it is released; the other buttons and the
+sticks work at once.
 
-The menu: D-pad, Cross, Circle, or the front touch screen. Options lists only what
-can change something for this game in this build (`option_available`,
-`frontend/launcher.cpp`):
+The menu: D-pad, Cross, Circle, or the front touch screen. Both pages list only
+what can change something for this game in this build (`option_available`,
+`bind_rows`, `frontend/launcher.cpp`), under headings.
 
-* CPU / GPU clock (default 444 / 166 MHz; 500 MHz needs an overclock plugin and
-  falls back to 444; the menu shows the actual clock), 4TH CORE (needs a core-unlock
-  plugin; checked by reading the affinity back).
-* Volume, mute, Music and Effects (the MultiPCM voices split by the game's channel;
-  shown when the board can tell them apart, `rt::has_music_effects`), the audio
-  engine (Daytona: the native engine, still being validated).
-* Dead zone, invert steering and steering curve (Linear, Soft, Extra Soft; for a game
-  with a wheel), draw distance (a game with its hook, `Game::draw_distance`), polygon
+Controls (every input setting):
+
+* Stick and steering: dead zone; invert steering, steering curve (Linear, Soft,
+  Extra Soft) and smoothing (a game with a wheel).
+* Buttons: each of the game's controls bound to one button (Cross then the new
+  button, or Left/Right to cycle; a button already used swaps). Bindings are saved
+  as `bind_*` keys; an invalid or duplicated set goes back to the game's defaults.
+* Cabinet: hold Test button (holds Test for three game seconds at the next start,
+  not saved).
+* Reset controls to defaults (all of the above).
+
+Options:
+
+* Game: the ROM switch (a package holding the companion set), save records (backup
+  RAM), skip launcher.
+* Display: draw distance (a game with its hook, `Game::draw_distance`), polygon
   order (ARCADE, the default, or HYBRID: see the renderer below; every game).
-* Skip launcher, save records (backup RAM), hold Test button (holds Test for three
-  game seconds at the next start, not saved), the ROM switch (a package holding the
-  companion set), link play (below), reset defaults.
+* Audio: the audio engine (Daytona: the native engine, still being validated),
+  volume, mute, Music and Effects (the MultiPCM voices split by the game's channel;
+  shown when the board can tell them apart, `rt::has_music_effects`).
+* Performance: CPU / GPU clock (default 444 / 166 MHz; 500 MHz needs an overclock
+  plugin and falls back to 444; the menu shows the actual clock), 4TH CORE (needs a
+  core-unlock plugin; checked by reading the affinity back).
+* Link play (below), then reset defaults (every setting).
 
 The picture is the original 496x384 at 4:3, scaled to the 544 lines and centred.
 

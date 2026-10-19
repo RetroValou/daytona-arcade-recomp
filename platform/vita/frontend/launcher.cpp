@@ -39,29 +39,61 @@ int cycle_value(int value, const int *choices, int count, int direction) {
     return choices[(index + (direction < 0 ? count - 1 : 1)) % count];
 }
 
-// Rows of the Controls page: the game's controls in its own order (rt::Game::
-// control_list), then reset (-1) and back (-2).
-constexpr int kMaxBindRows = vita::ControlCount + 2;
-int bind_rows(int (&rows)[kMaxBindRows]) {
-    const vita::Layout layout = game_layout();
-    int n = 0;
-    for (int i = 0; i < layout.count && n < vita::ControlCount; ++i) rows[n++] = int(layout.defs[i].control);
-    rows[n++] = -1;
-    rows[n++] = -2;
-    return n;
-}
 bool has_steering() {
     const vita::Layout layout = game_layout();
     return layout.has(rt::Control::SteerLeft) || layout.has(rt::Control::SteerRight);
 }
 
-// The Options page's rows, in display order.
+// Rows of the Controls page (every input setting): the stick's dead zone and the
+// wheel's settings (a game with steering), the game's controls in its own order
+// (rt::Game::control_list: rows >= 0), the test button held at start, reset, back.
+enum ControlRow { RowDeadzone = -10, RowInvert, RowSteerCurve, RowSteerSmoothing, RowTestHold, RowReset, RowBack };
+constexpr int kMaxBindRows = vita::ControlCount + 7;
+int bind_rows(int (&rows)[kMaxBindRows]) {
+    const vita::Layout layout = game_layout();
+    int n = 0;
+    rows[n++] = RowDeadzone;
+    if (has_steering()) rows[n++] = RowInvert, rows[n++] = RowSteerCurve, rows[n++] = RowSteerSmoothing;
+    for (int i = 0; i < layout.count && i < vita::ControlCount; ++i) rows[n++] = int(layout.defs[i].control);
+    rows[n++] = RowTestHold;
+    rows[n++] = RowReset;
+    rows[n++] = RowBack;
+    return n;
+}
+// A Controls row's group (a heading where it changes; null: none).
+const char *bind_group(int row) {
+    if (row >= 0) return "BUTTONS";
+    if (row == RowTestHold) return "CABINET";
+    if (row == RowReset || row == RowBack) return nullptr;
+    return has_steering() ? "STICK AND STEERING" : "STICK";
+}
+
+// The Options page's rows, in display order, by group (option_group); the input
+// settings are on the Controls page.
 enum Option {
-    OptCpu, OptGpu, OptVolume, OptMute, OptMusic, OptEffects, OptDeadzone, OptInvert, OptAudioEngine, OptRom,
-    OptDistance, OptZDepth, OptSteerCurve, OptSteerSmoothing, OptSkipLauncher, OptSaveBackup, OptFourthCore,
-    OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync,
-    OptTestHold, OptDefaults, OptBack, kOptions
+    OptRom, OptSaveBackup, OptSkipLauncher,                        // game
+    OptDistance, OptZDepth,                                        // display
+    OptAudioEngine, OptVolume, OptMute, OptMusic, OptEffects,      // audio
+    OptCpu, OptGpu, OptFourthCore,                                 // performance
+    OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync, // link play
+    OptDefaults, OptBack, kOptions
 };
+const char *option_group(Option o) {
+    if (o <= OptSkipLauncher) return "GAME";
+    if (o <= OptZDepth) return "DISPLAY";
+    if (o <= OptEffects) return "AUDIO";
+    if (o <= OptFourthCore) return "PERFORMANCE";
+    if (o <= OptLinkSync) return "LINK PLAY";
+    return nullptr;
+}
+// A heading before a row whose group differs from the previous row's.
+void group_heading(const char *group, const char *&previous) {
+    if (group != previous) {
+        if (group) ImGui::SeparatorText(group);
+        else ImGui::Separator();
+        previous = group;
+    }
+}
 // The package holds the companion set's executable (the ROM option can switch).
 bool rom_switch_packaged() {
     static const bool packaged = companion() &&
@@ -90,7 +122,6 @@ bool option_available(Option o, const VitaSettings &s) {
     case OptLink: return link_play();
     case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
         return link_play() && s.link_enabled;
-    case OptInvert: case OptSteerCurve: case OptSteerSmoothing: return has_steering(); // a wheel to invert or shape
     default: return true;
     }
 }
@@ -122,21 +153,32 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
                                      binds_ != previous_binds;
     if (ImGui::BeginChild("settings", {0, -100}, ImGuiChildFlags_None)) {
         if (binds_) {
+            static const char *const curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
+            static const char *const smoothing[] = {"STEERING SMOOTHING: OFF", "STEERING SMOOTHING: LOW", "STEERING SMOOTHING: HIGH"};
             char rows[kMaxBindRows][64];
             int actions[kMaxBindRows];
             const int bound = bind_rows(actions);
+            const char *group = "";
             for (int i = 0; i < bound; ++i) {
                 const int a = actions[i];
-                const char *label = a == -1 ? "RESET CONTROLS TO DEFAULTS" : "BACK";
-                if (a >= 0) {
+                const char *label = rows[i];
+                switch (a) {
+                case RowDeadzone: std::snprintf(rows[i], sizeof rows[i], "DEAD ZONE: %d%%", settings.deadzone); break;
+                case RowInvert: label = settings.steer_invert ? "INVERT STEERING: ON" : "INVERT STEERING: OFF"; break;
+                case RowSteerCurve: label = curves[settings.steer_curve]; break;
+                case RowSteerSmoothing: label = smoothing[settings.steer_smoothing]; break;
+                case RowTestHold: label = test_hold_.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF"; break;
+                case RowReset: label = "RESET CONTROLS TO DEFAULTS"; break;
+                case RowBack: label = "BACK"; break;
+                default:
                     std::snprintf(rows[i], sizeof rows[i], "%s: %s", game_layout().name(a),
                                   capture_ == a ? "PRESS A BUTTON..." : vita::button_name(settings.bindings.button[a]));
-                    label = rows[i];
                 }
+                group_heading(bind_group(a), group);
                 ImGui::PushID(i);
                 if (ImGui::Selectable(label, selection_ == i, 0, {760, 32})) { selection_ = i; touch_buttons_ = vita::Cross; }
                 if (selection_ == i && scroll_to_selection) ImGui::SetScrollHereY();
-                if (a >= 0) {
+                if (a != RowReset && a != RowBack) {
                     ImGui::SameLine();
                     if (ImGui::SmallButton("<")) { selection_ = i; touch_buttons_ = vita::Left; }
                     ImGui::SameLine();
@@ -163,7 +205,7 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     values[OptListenPort] = link_fields[4]; values[OptNextPort] = link_fields[5];
     values[OptLink] = settings.link_enabled ? "LINK PLAY: ON" : "LINK PLAY: OFF";
     values[OptLinkSync] = settings.link_sync ? "LINK FRAME SYNC: ON" : "LINK FRAME SYNC: OFF";
-    char cpu[64], gpu[32], volume[32], mute[32], music[32], effects[32], deadzone[32], invert[32];
+    char cpu[64], gpu[32], volume[32], mute[32], music[32], effects[32];
     std::snprintf(cpu, sizeof cpu, "CPU CLOCK: %d MHz (ACTUAL %d)", settings.cpu_clock,
                   scePowerGetArmClockFrequency());
     std::snprintf(gpu, sizeof gpu, "GPU CLOCK: %d MHz", settings.gpu_clock);
@@ -171,10 +213,8 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     std::snprintf(mute, sizeof mute, "MUTE: %s", settings.mute ? "ON" : "OFF");
     std::snprintf(music, sizeof music, "MUSIC: %d%%", settings.music_volume);
     std::snprintf(effects, sizeof effects, "EFFECTS: %d%%", settings.effects_volume);
-    std::snprintf(deadzone, sizeof deadzone, "DEAD ZONE: %d%%", settings.deadzone);
-    std::snprintf(invert, sizeof invert, "INVERT STEERING: %s", settings.steer_invert ? "ON" : "OFF");
     values[OptCpu]=cpu; values[OptGpu]=gpu; values[OptVolume]=volume; values[OptMute]=mute;
-    values[OptMusic]=music; values[OptEffects]=effects; values[OptDeadzone]=deadzone; values[OptInvert]=invert;
+    values[OptMusic]=music; values[OptEffects]=effects;
     values[OptAudioEngine]=settings.native_audio ? "AUDIO ENGINE: NATIVE (TEST)" : "AUDIO ENGINE: REFERENCE";
     static std::string rom;
     rom = rom_label(selected_game(settings.use_companion));
@@ -182,20 +222,17 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     static const char* distances[] = {"DISTANCE: SHORTEST", "DISTANCE: SHORTER", "DISTANCE: DEFAULT", "DISTANCE: FURTHER", "DISTANCE: FURTHEST"};
     values[OptDistance]=distances[settings.draw_distance + 2];
     values[OptZDepth]=settings.upgrade_z_depth ? "POLYGON ORDER: HYBRID" : "POLYGON ORDER: ARCADE";
-    values[OptTestHold]=test_hold_.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF";
     values[OptDefaults]="RESET DEFAULTS"; values[OptBack]="BACK";
     values[OptFourthCore]=!settings.fourth_core ? "4TH CORE: OFF" :
         vita::fourth_core_active() ? "4TH CORE: ENABLED" : "4TH CORE: UNAVAILABLE (PLUGIN REQUIRED)";
     values[OptSkipLauncher]=settings.skip_launcher ? "SKIP LAUNCHER: ON" : "SKIP LAUNCHER: OFF";
     values[OptSaveBackup]=settings.save_backup ? "SAVE RECORDS (BACKUP RAM): ON" : "SAVE RECORDS (BACKUP RAM): OFF";
-    static const char* curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
-    values[OptSteerCurve]=curves[settings.steer_curve];
-    static const char* smoothing[] = {"STEERING SMOOTHING: OFF", "STEERING SMOOTHING: LOW", "STEERING SMOOTHING: HIGH"};
-    values[OptSteerSmoothing]=smoothing[settings.steer_smoothing];
     Option rows[kOptions];
     const int listed = listed_options(settings, rows);
 
+            const char *group = "";
             for (int i = 0; i < listed; ++i) {
+                group_heading(option_group(rows[i]), group);
                 ImGui::PushID(i);
                 if (ImGui::Selectable(values[rows[i]], selection_ == i, 0, {760, 32})) { selection_ = i; touch_buttons_ = vita::Cross; }
                 if (selection_ == i && scroll_to_selection) ImGui::SetScrollHereY();
@@ -240,6 +277,7 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
             if (pressed & vita::Down) selection_ = (selection_ + 1) % bound;
             const int action = actions[selection_];
             const int direction = (pressed & vita::Left) ? -1 : ((pressed & vita::Right) ? 1 : 0);
+            const bool step = direction || (pressed & vita::Cross);
             if (pressed & vita::Circle) { binds_ = false; selection_ = 3; wait_release = true; }
             else if (action >= 0 && (pressed & vita::Cross)) {
                 capture_ = action; wait_release = true;
@@ -248,11 +286,32 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
             } else if (action >= 0 && direction) {
                 settings.bindings.cycle(action, direction);
                 commit(false);
-            } else if (action == -1 && (pressed & vita::Cross)) {
+            } else if (action == RowDeadzone && step) {
+                settings.deadzone = std::clamp(settings.deadzone + (direction < 0 ? -5 : 5), 0, 40);
+                commit(false);
+            } else if (action == RowInvert && step) {
+                settings.steer_invert = !settings.steer_invert;
+                commit(false);
+            } else if (action == RowSteerCurve && step) {
+                settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3;
+                commit(false);
+            } else if (action == RowSteerSmoothing && step) {
+                settings.steer_smoothing = (settings.steer_smoothing + (direction < 0 ? 2 : 1)) % 3;
+                commit(false);
+            } else if (action == RowTestHold && step) {
+                if (test_hold_.armed()) test_hold_.cancel(); else test_hold_.arm();
+            } else if (action == RowReset && (pressed & vita::Cross)) {
+                // The buttons and every setting of this page (the test button hold too).
+                const VitaSettings fresh;
                 settings.bindings = vita::Bindings::defaults(game_layout());
+                settings.deadzone = fresh.deadzone;
+                settings.steer_invert = fresh.steer_invert;
+                settings.steer_curve = fresh.steer_curve;
+                settings.steer_smoothing = fresh.steer_smoothing;
+                test_hold_.cancel();
                 commit(false);
                 status = "CONTROLS RESET TO DEFAULTS. " + status;
-            } else if (action == -2 && (pressed & vita::Cross)) {
+            } else if (action == RowBack && (pressed & vita::Cross)) {
                 binds_ = false; selection_ = 3; wait_release = true;
             }
         } else if (options_) {
@@ -296,12 +355,6 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                         changed = true;
                     }
                     break;
-                case OptDeadzone:
-                    if (step) { settings.deadzone = std::clamp(settings.deadzone + (direction < 0 ? -5 : 5), 0, 40); changed = true; }
-                    break;
-                case OptInvert:
-                    if (step) { settings.steer_invert = !settings.steer_invert; changed = true; }
-                    break;
                 case OptAudioEngine:
                     if (step) { settings.native_audio = !settings.native_audio; changed = true; }
                     break;
@@ -319,12 +372,6 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                     break;
                 case OptZDepth:
                     if (step) { settings.upgrade_z_depth = !settings.upgrade_z_depth; changed = true; }
-                    break;
-                case OptSteerCurve:
-                    if (step) { settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true; }
-                    break;
-                case OptSteerSmoothing:
-                    if (step) { settings.steer_smoothing = (settings.steer_smoothing + (direction < 0 ? 2 : 1)) % 3; changed = true; }
                     break;
                 case OptSkipLauncher:
                     if (step) { settings.skip_launcher = !settings.skip_launcher; changed = true; }
@@ -352,9 +399,6 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                     break;
                 case OptLinkSync:
                     if (step) { settings.link_sync = !settings.link_sync; changed = true; }
-                    break;
-                case OptTestHold:
-                    if (step) { if (test_hold_.armed()) test_hold_.cancel(); else test_hold_.arm(); }
                     break;
                 case OptDefaults:
                     if (activate) { test_hold_.cancel(); settings.defaults(); changed = clocks_changed = true; }

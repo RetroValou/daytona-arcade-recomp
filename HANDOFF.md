@@ -1,5 +1,15 @@
 # Handoff
 
+## Vita menu: input settings on Controls, Options by group, resume latency (2026-10-19)
+
+Controls holds every input setting (dead zone, the wheel's invert, curve and
+smoothing, the bindings, hold Test button, a reset of them all); Options is
+ordered by group under headings (game, display, audio, performance, link
+play). Returning from the Start+Select menu blanked the whole pad, sticks too,
+until every button was released: now only the buttons still held are
+ignored, each until released (frontend/main.cpp held_from_menu). Details in
+platform/vita/HANDOFF.md and README.md. Not yet checked on the console.
+
 ## SHARC: branches in plain runs, full steps only where needed, as on the TGP; --sharc-profile (PC +46 %, Vita +51 %) (2026-10-19)
 
 Vita, three versions of the recompiled SHARC in one diagnostics package,

@@ -1,5 +1,22 @@
 # Vita port handoff — 29 September 2026
 
+## Controls page with every input setting; resume latency — 19 October 2026
+
+Controls (launcher.cpp bind_rows, ControlRow) now holds every input setting:
+dead zone, invert steering, steering curve and smoothing (the wheel's three
+for a game with steering), the bindings, hold Test button, reset (bindings
+and the page's settings to their defaults, the hold cancelled), back.
+Options lost those rows and is ordered by group with headings (option_group,
+ImGui SeparatorText): game (ROM, save records, skip launcher), display
+(distance, polygon order), audio (engine, volume, mute, music, effects),
+performance (CPU, GPU, 4th core), link play; reset defaults, back.
+Resume latency (user: a long delay before the game took the buttons after
+the Start+Select menu): back in the game, wait_release blanked the whole pad
+(an empty Pad: sticks too) until every button was up, so a button held from
+the menu (Cross that resumed, a held direction or accelerator) blocked all
+input. main.cpp now ignores only the buttons still held (held_from_menu),
+each until released. Not yet checked on the console.
+
 ## The menu in vita::Launcher — 17 October 2026
 
 frontend/launcher.h/.cpp: the menu's pages and state (options, binds,
