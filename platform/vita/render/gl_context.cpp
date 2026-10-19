@@ -258,7 +258,10 @@ void gl_profile_loop(const GlLoopProfile &p) {
     t.prepare += p.prepare;
 }
 
-void gl_set_upgrade_z_depth(bool on) { g.upgrade_z_depth = on; }
+void gl_set_upgrade_z_depth(bool on) {
+    g.upgrade_z_depth = on;
+    rt::Geo::set_depth_hybrid(on); // the order the geometry thread sorts for (polygon_depth)
+}
 
 void gl_fini() {
     if (!g.ready) return;

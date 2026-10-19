@@ -1,5 +1,28 @@
 # Handoff
 
+## Vita: the polygon sort moved to the geometry thread (2026-10-19)
+
+Core 0's "polygon priority sort" (VF2 fight, 17 Oct log: 0.66 ms of 17.0,
+~4 %) now runs in rt::Geo's job on core 1, right after GeoCore::parse while
+the list is in that core's cache: render/polygon_order.h polygon_depth (the
+renderer's former code: PolygonOrder, arcade or hybrid depth, z_band_key,
+kZDepthBands moved there) fills job_depth_, published with the list
+(front_depth_ swapped with it, no copy). The renderer takes
+rt::Geo::depth_of(list, option) and sorts itself only when that is null
+(Sync mode, another list, the frame the POLYGON ORDER option changes: the
+job records the option it sorted for; gl_set_upgrade_z_depth also sets
+Geo::set_depth_hybrid). Cross-core traffic: ~6 KB of depths a frame
+(~1,500 floats), less than the main core's former reads of the polygons'
+window and depth. Vita compiler syntax check of the three files; release
+VPKs built for Daytona and VF2; not yet measured on the console (expected:
+"polygon priority sort" near 0 on core 0, core 1's parse ~0.7 ms longer).
+Other independent candidates for leaving core 0 (VF2, same log): the sound
+wait (2.9 ms: two sound frames in flight instead of one), the perf.log
+formatting (diagnostics; a 34 ms frame every report). The buffer RAM
+snapshot (0.35 ms) cannot become a buffer swap: buffer RAM holds data the
+i960/TGP read back across frames (a dirty-block copy could halve it).
+Vertex writing (2.1 ms) depends on the main core's textures and palette.
+
 ## SHARC on the Vita stopped: Fighting Vipers stays a test; lighter run boundaries (2026-10-19)
 
 Decision (user): no more SHARC work for the Vita; it will not reach speed

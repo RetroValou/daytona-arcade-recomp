@@ -65,9 +65,7 @@ constexpr bool k2DLayersByDepth = true;
 constexpr int kWorker2DCore = DAYTONA_VITA_2D_CORE;
 constexpr float kForegroundDepth = 0.99999994f; // largest float below 1: z stays inside w
 constexpr float kBackgroundDepth = 0.0f;        // glClear writes 0 (glClearDepthf(0))
-// The hybrid depth (the Vita option POLYGON ORDER): the polygons' depth range cut into
-// this many equal bands, one per Model 2 window (model2_polygons.cpp, kVertexShader).
-constexpr unsigned kZDepthBands = 32;
+// kZDepthBands (the hybrid depth's bands): render/polygon_order.h.
 
 // vitaGL's glDrawArrays reads a fixed index table of 0xC000 entries (MAX_IDX_NUMBER):
 // never draw more vertices in one call. Multiple of 3.

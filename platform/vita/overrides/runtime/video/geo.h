@@ -18,6 +18,10 @@
 //     list is swapped in (published), never copied.
 //   * polys.size() (the polygon count register read by the i960) joins the
 //     newest parse and returns its count, as the reference does.
+//   * After its parse the job also sorts the list into one depth per polygon
+//     (render/polygon_order.h polygon_depth: the Model 2 draw priority, the
+//     arcade or the hybrid order), published with it (depth_of): the main
+//     core's renderer no longer sorts.
 //
 // Two modes, nothing in between:
 //   Sync       single core: the parse on the main core, the reference image
@@ -120,6 +124,12 @@ public:
     const Worker &worker() const { return worker_; }
     // Join the running parse without publishing it (failures kept for later).
     void wait();
+    // The polygon depths the geometry thread computed with `list` (a Geo's shown
+    // list) for that order (the POLYGON ORDER option: hybrid or arcade), or null:
+    // another list, another order, none yet. Main thread.
+    static const float *depth_of(const std::vector<GeoPoly> &list, bool hybrid);
+    // The order the next parses compute depths for (the renderer's option).
+    static void set_depth_hybrid(bool hybrid) { depth_hybrid_.store(hybrid, std::memory_order_relaxed); }
 
 private:
     void rethrow_pending();
@@ -144,6 +154,12 @@ private:
     Read pair_ = Read::None;
     std::vector<GeoPoly> front_;
     int front_windows_ = 0;
+    // The depths of front_ and of the job's list (polygon_depth), and their order.
+    struct DepthScratch;                   // the sort's buffers (geo.cpp)
+    std::unique_ptr<DepthScratch> depth_scratch_;
+    std::vector<float> front_depth_, job_depth_;
+    bool front_hybrid_ = false, job_hybrid_ = false;
+    static std::atomic<bool> depth_hybrid_;
     uint32_t latest_count_ = 0;
     std::exception_ptr pending_error_;
     Stats stats_;

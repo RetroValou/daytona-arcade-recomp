@@ -7,16 +7,6 @@
 namespace vita {
 using namespace gldraw;
 
-namespace {
-// The hybrid depth's band key of a window: its group's first window when the game
-// groups it with others (rt::Game::update_z_depth_window_groups), else its own.
-unsigned z_band_key(unsigned window) {
-    for (const auto &r : rt::game().update_z_depth_window_groups)
-        if (r.first < r.last && r.first <= window && window <= r.last) return r.first;
-    return window;
-}
-} // namespace
-
 // ---- Renderer: Model 2 polygons --------------------------------------------------------
 void GpuGlRenderer::draw_polygons(rt::Video &video) {
     const auto &polys = video.gpu_polys();
@@ -140,35 +130,13 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         light.ok = true;
     };
 
-    // Model 2 draw priority -> one depth per polygon (see the Depth comment at the top).
+    // Model 2 draw priority -> one depth per polygon: the geometry thread's, computed
+    // with the list (render/polygon_order.h polygon_depth), else here.
     const uint64_t sort_begin = now_us();
-    if (!polys.empty()) {
-        const auto &order = g.order.sort(polys); // first = drawn first = wins
-        g.depth.resize(polys.size());
-        if (!g.upgrade_z_depth) {
-            const float step = 1.0f / float(polys.size() + 1);
-            for (size_t rank = 0; rank < order.size(); ++rank) g.depth[order[rank].index] = 1.0f - float(rank + 1) * step;
-        } else {
-            // The hybrid depth (the Vita option): a Model 2 window is drawn over the ones
-            // before it, so each keeps its own band and the shader mixes rank and distance
-            // inside it only. Coded as 1 + band + the rank inside the band, in (0, 1),
-            // larger in front (kVertexShader decodes it). The order runs window by window,
-            // front (highest) first: the front window gets band kZDepthBands - 1; past
-            // kZDepthBands windows, the backmost share band 0. The windows a game groups
-            // (Game::update_z_depth_window_groups, contiguous in the order) share one band.
-            for (size_t first = 0, run = 0; first < order.size(); ++run) {
-                const unsigned band = run < kZDepthBands - 1 ? unsigned(kZDepthBands - 1 - run) : 0u;
-                size_t end = first + 1;
-                while (end < order.size() &&
-                       (band == 0 || z_band_key(polys[order[end].index].window) ==
-                                         z_band_key(polys[order[end - 1].index].window)))
-                    ++end;
-                const float step = 1.0f / float(end - first + 1);
-                for (size_t rank = first; rank < end; ++rank)
-                    g.depth[order[rank].index] = 1.0f + float(band) + (1.0f - float(rank - first + 1) * step);
-                first = end;
-            }
-        }
+    const float *depth = rt::Geo::depth_of(polys, g.upgrade_z_depth);
+    if (!depth) {
+        polygon_depth(polys, g.upgrade_z_depth, g.order, g.depth);
+        depth = g.depth.data();
     }
     last_sort_us_ = now_us() - sort_begin;
 
@@ -201,7 +169,7 @@ void GpuGlRenderer::draw_polygons(rt::Video &video) {
         const float base_x = sx(float(crtc_x + poly.center[0]));
         const float base_y = sy(float(384 - poly.center[1] + crtc_y));
         g.batches[mat.batch].poly_refs.push_back({
-            &poly, base_x, base_y, mat.u_scale, mat.v_scale, light.palette, g.depth[pi], light.color
+            &poly, base_x, base_y, mat.u_scale, mat.v_scale, light.palette, depth[pi], light.color
         });
     }
     clip_changes_ = unsigned(g.clips.size());

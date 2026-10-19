@@ -21,6 +21,7 @@
 
 // ---- 2. rt::Geo -------------------------------------------------------------------
 #include "runtime/video/geo.h" // now declares the wrapper
+#include "render/polygon_order.h" // polygon_depth: the sort, on the geometry thread
 
 namespace rt {
 
@@ -60,8 +61,22 @@ const char *geo_mode_name(GeoMode mode) {
     return "?";
 }
 
+struct Geo::DepthScratch {
+    vita::PolygonOrder order;
+};
+std::atomic<bool> Geo::depth_hybrid_{false};
+
+const float *Geo::depth_of(const std::vector<GeoPoly> &list, bool hybrid) {
+    for (const Geo *geo : registry())
+        if (&geo->front_ == &list)
+            return geo->front_hybrid_ == hybrid && geo->front_depth_.size() == list.size() && !list.empty()
+                ? geo->front_depth_.data() : nullptr;
+    return nullptr;
+}
+
 Geo::Geo(const std::vector<uint8_t> &polygons, const std::vector<uint8_t> &textures, uint32_t *buffer)
-    : live_(buffer), snapshot_(new uint32_t[kBufferWords]), core_(polygons, textures, snapshot_.get()) {
+    : live_(buffer), snapshot_(new uint32_t[kBufferWords]), core_(polygons, textures, snapshot_.get()),
+      depth_scratch_(std::make_unique<DepthScratch>()) {
     std::memcpy(snapshot_.get(), live_, kBufferWords * sizeof(uint32_t));
     registry().push_back(this);
 }
@@ -164,8 +179,13 @@ void Geo::run_job(Geo &self) {
     try {
         self.core_.zclip_w(self.job_zclip_);
         self.core_.parse(self.job_read_start_);
+        // The renderer's sort, here: the list is in this core's cache, and the main
+        // core then only reads the depths (published with the list).
+        self.job_hybrid_ = depth_hybrid_.load(std::memory_order_relaxed);
+        vita::polygon_depth(self.core_.polys, self.job_hybrid_, self.depth_scratch_->order, self.job_depth_);
     } catch (...) {
         self.job_error_ = std::current_exception();
+        self.job_depth_.clear();
     }
     self.job_count_ = uint32_t(self.core_.polys.size());
     self.job_windows_ = self.core_.windows();
@@ -208,6 +228,8 @@ void Geo::rethrow_pending() {
 void Geo::publish() {
     if (!unpublished_) return;
     front_.swap(core_.polys); // GeoCore keeps the old capacity for its next parse
+    front_depth_.swap(job_depth_);
+    front_hybrid_ = job_hybrid_;
     front_windows_ = job_windows_;
     unpublished_ = false;
 }
