@@ -125,7 +125,8 @@ struct FrontendDefaults {
     // Vita's speakers, so 20 % by default.
     int effects_volume = 100;
     // The Vita's steering curve (0 linear, 1 soft, 2 extra soft) and smoothing
-    // (0 off, 1 low, 2 high): a wheel turns rather than jumps, so low by default
+    // (0 off, 1 low, 2 high: the wheel's top speed, platform/vita/frontend/
+    // controls.h kSteerRate): a wheel turns rather than jumps, so low by default
     // (the d-pad's left/right too); Manx TT's lean softer still.
     int steer_curve = 0, steer_smoothing = 1;
 };

@@ -18,10 +18,19 @@ struct Pad {
     bool touch = false;                   // the front touch screen, in screen pixels (960x544)
     float tx = 0.f, ty = 0.f;
 };
-// Steering smoothing, as a wheel turns rather than jumps: the share of the way
-// to the new position the wheel goes each board frame (57.52 Hz): off, low
-// (90 % of the way in 3.3 frames, 58 ms), high (14 frames, 245 ms).
-inline constexpr float kSteerSmoothing[] = {1.0f, 0.5f, 0.15f};
+// Steering smoothing, as a wheel turns rather than jumps. Each board frame
+// (57.52 Hz; the wheel's range is -1 to 1) the wheel moves d / (1 + |d| / r)
+// of the distance d to the input: a short correction almost all at once
+// (what is left is about d * d / r), a long one at up to r a frame; and r
+// shrinks toward the ends of the wheel's travel (half of it at full lock), so
+// the wheel is slower there. r at the centre: off (none), low, high.
+inline constexpr float kSteerRate[] = {0.0f, 0.15f, 0.07f};
+inline float steer_step(float wheel, float input, int level) {
+    const float d = input - wheel;
+    if (kSteerRate[level] <= 0.f) return input;
+    const float r = kSteerRate[level] * (1.f - 0.5f * std::min(std::abs(wheel), 1.f));
+    return wheel + d / (1.f + std::abs(d) / r);
+}
 struct Input {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20;
     uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;
@@ -168,8 +177,7 @@ public:
             if (held(Control::SteerLeft) || held(Control::SteerRight))
                 steer = float(held(Control::SteerRight)) - float(held(Control::SteerLeft));
             if (steer_invert_) steer = -steer;
-            steer_ += (steer - steer_) * kSteerSmoothing[steer_smoothing_];
-            if (std::abs(steer - steer_) < 1e-3f) steer_ = steer;
+            steer_ = steer_step(steer_, steer, steer_smoothing_);
             steer = steer_;
         }
         if (pedals_) {

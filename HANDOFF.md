@@ -8,12 +8,18 @@ right input (reported on the Vita). Channel 2 is now full_range(0x100 - steer)
 (0x80 stays the centre). The lockstep never saw it: the trace replays MAME's
 port values, not our analog(). The PC and Vita builds compile; the lean's
 direction is still to be checked on the Vita.
-Vita steering smoothing (platform/vita/frontend/controls.h, settings,
-launcher): STEERING SMOOTHING: OFF / LOW / HIGH for any game with a wheel,
-the stick and the d-pad's left/right alike, so the wheel turns rather than
-jumps (each board frame it goes 100 / 50 / 15 % of the way to the input: 90 %
-in 3.3 frames, 58 ms, at LOW; 14 frames, 245 ms, at HIGH; host test: 0x80 to
-0xe0 in 4-60 frames). New rt::FrontendDefaults steer_curve and
+Vita steering smoothing (platform/vita/frontend/controls.h steer_step,
+settings, launcher): STEERING SMOOTHING: OFF / LOW / HIGH for any game with a
+wheel, the stick and the d-pad's left/right alike, so it turns like a wheel:
+each board frame it moves d / (1 + |d| / r) of the distance d to the input
+(a short correction near all at once, a long one at up to r a frame), r
+halving from the centre to full lock (slower at the ends); r 0.15 at LOW,
+0.07 at HIGH. From the centre to within one step: LOW 0.1 in 3 frames (52
+ms), 0.3 in 5, full lock in 13 (226 ms); HIGH 4, 8, 24 frames (417 ms).
+Wrong turns the same day: a proportional ease (a fixed share of the way each
+frame: the same time for any distance, not what a wheel does) and a plain
+rate limit (the user wanted the speed to vary continuously with the distance,
+not a threshold). New rt::FrontendDefaults steer_curve and
 steer_smoothing: LOW for every racing game by default (Daytona, Sega Rally),
 Manx TT SOFT curve and HIGH. vita.cfg key steer_smoothing. The PC frontend is
 unchanged (its own rate limit on digital steering, src/app/controls.cpp).

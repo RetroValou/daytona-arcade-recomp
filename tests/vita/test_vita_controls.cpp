@@ -122,7 +122,9 @@ int main() {
         curved.set_steer_invert(true);
         CHECK(curved.sample({0, 192, 128}).steer == 256 - right);
     }
-    // Smoothing: the wheel eases toward the input, monotonic, and settles on it.
+    // Smoothing: the wheel turns toward the input, monotonic, and settles on it;
+    // its speed grows with the distance, so a short correction is near instant
+    // and a full lock takes many frames.
     for (int level = 1; level <= 2; ++level) {
         vita::Controls smooth = driving();
         smooth.set_steer_smoothing(level);
@@ -133,9 +135,15 @@ int main() {
             previous = steer;
             if (steer == 0xe0) break;
         }
-        CHECK(frames > 3 && frames < 60);
+        CHECK(frames > 8 && frames < 90);
         for (frames = 0; frames < 200 && smooth.sample({}).steer != 0x80; ++frames) {}
-        CHECK(frames < 60);
+        CHECK(frames < 90);
+        vita::Controls small = driving();
+        small.set_deadzone(0.f);
+        small.set_steer_smoothing(level);
+        const int target = 128 + int(std::lround(96.f * 8.f / 127.f));
+        small.sample({0, 136, 128});
+        CHECK(std::abs(small.sample({0, 136, 128}).steer - target) <= 1); // within one step in two frames
     }
     // Rebinding: one button per control; taking a used button swaps the two.
     {
