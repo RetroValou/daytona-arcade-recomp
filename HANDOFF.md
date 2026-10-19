@@ -1,5 +1,14 @@
 # Handoff
 
+## README: which Manx TT archive loads (2026-10-19)
+
+The user's merged archive did not load on the Vita. The README now says
+the archive must hold the parent manxtt and the Twin's Revision C files
+(root or a manxttc/ folder: epr-18822c-18825c, epr-18826.30, mpr-18827.31,
+manxttc_twin_nvran), and that such an archive only needs renaming to
+manxttc.zip on the Vita (ux0:data/manxttc/). Not yet known why the user's
+archive did not load (the message or vita-diag.log was asked for).
+
 ## Manx TT Superbike, Twin (manxttc; Model 2A-CRX), one player (2026-10-19)
 
 The user's choice after comparing the two cabinets in MAME (18 Oct 2026): the

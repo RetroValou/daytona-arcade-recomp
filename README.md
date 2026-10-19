@@ -34,10 +34,14 @@ as `daytona93.zip`, `srallyc.zip` (or MAME's merged `srallycb.zip`),
 Manx TT Superbike is built from its **Twin** version, MAME's `manxttc`
 (Revision C, set to the Twin cabinet: the SCSP sound board only). The
 DX version (`manxtt`, `manxttdx`) adds a Model 1 sound board for the
-engine and a moving bike, which are not emulated. MAME's merged
-`manxtt.zip` holds `manxttc` (its own files in a `manxttc/` folder: the
-program `epr-18822c` to `epr-18825c`, the Twin's sound program
-`epr-18826.30` and first sample ROM `mpr-18827.31`), plus the files it
-shares with `manxtt`; a `manxttc.zip` with every file works too.
+engine and a moving bike, which are not emulated. The archive must hold
+**both** the parent set `manxtt` and the Twin's Revision C files, at its
+root or in a `manxttc/` folder (as MAME's merged `manxtt.zip` has them):
+the program `epr-18822c` to `epr-18825c`, the Twin's sound program
+`epr-18826.30`, its first sample ROM `mpr-18827.31` and its default
+EEPROM `manxttc_twin_nvran`. A merged `manxtt.zip` without the
+`manxttc` files does not load. If yours has them, only its name
+changes: in `roms/` it can stay `manxtt.zip`; on the Vita, rename it
+`manxttc.zip` and copy it to `ux0:data/manxttc/manxttc.zip`.
 
 The original README is kept in [README_fork.md](README_fork.md).
