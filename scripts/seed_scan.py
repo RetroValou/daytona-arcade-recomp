@@ -112,7 +112,11 @@ def main():
 
     def fstart(a):
         # After a ret or an unconditional branch, past up to 3 zero words of
-        # padding (vcop aligns its functions to 16 bytes).
+        # padding (vcop aligns its functions to 16 bytes). Or a bare ret: an
+        # empty handler, wherever it sits (fvipers' 0x6d0c0, after data, in a
+        # two-entry table of its data ROM).
+        if word(a) == RET:
+            return True
         b = a - 4
         for _ in range(3):
             if word(b) != 0:

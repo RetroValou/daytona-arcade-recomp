@@ -163,6 +163,8 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     sync(gen / f"{game}_snd", out / f"{game}_snd")
     if (gen / f"{game}_dsp").is_dir():  # the recompiled SCSP DSP program (optional)
         sync(gen / f"{game}_dsp", out / f"{game}_dsp")
+    if (gen / f"{game}_sharc").is_dir():  # Model 2B: the recompiled SHARC program
+        sync(gen / f"{game}_sharc", out / f"{game}_sharc")
     shutil.rmtree(tmp, ignore_errors=True)
     for old in ("gen_fast", "gen_ram"):  # earlier versions of this script
         shutil.rmtree(build / old, ignore_errors=True)

@@ -320,10 +320,22 @@ M2Board::M2Board(Images images)
     map(0x12000000, 0x121fffff, Tex, img_.texture_ram, 0x200000);
     map(0x12400000, 0x125fffff, Tex, img_.texture_ram + 0x200000, 0x200000);
 #else
-    map(0x12000000, 0x121fffff, Tex, tex0_.data(), 0x200000);
-    map(0x12400000, 0x125fffff, Tex, tex1_.data(), 0x200000);
+    if (model2b()) {
+        // MAME model2b_crx_mem: texture RAM as plain RAM, 1 MB a sheet mirrored
+        // once, stored as 2A's tex0_w/tex1_w store it (ram_written tracks its
+        // pages); luma RAM bytes (umask16 0x00ff), kept in 2A's layout (dev_r/w);
+        // the SHARC's IOP port; the sound UART at 0x009c0000.
+        map(0x11000000, 0x110fffff, Ram, tex0_.data(), 0x100000);
+        map(0x11200000, 0x112fffff, Ram, tex1_.data(), 0x100000);
+        map(0x11400000, 0x1140ffff, Dev, nullptr, 0, true);
+        map(0x008c0000, 0x008c0fff, Dev, nullptr, 0, false);
+        map(0x009c0000, 0x009c0fff, Dev, nullptr, 0, false);
+    } else {
+        map(0x12000000, 0x121fffff, Tex, tex0_.data(), 0x200000);
+        map(0x12400000, 0x125fffff, Tex, tex1_.data(), 0x200000);
+    }
 #endif
-    map(0x12800000, 0x1281ffff, Ram, luma_.data());
+    if (!model2b()) map(0x12800000, 0x1281ffff, Ram, luma_.data());
 
 #ifdef M2_DC_MEMORY
     geo_ = std::make_unique<Geo>(*img_.rom, tgp_.buffer_data());
@@ -579,12 +591,21 @@ void M2Board::receive_sound_bytes(const uint8_t *bytes, size_t n) {
 
 uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
     if (addr >= 0x00900000 && addr <= 0x0097ffff) {
-        tgp_.sync(); // the TGP answers through its mailbox here (0x0091fff0-8)
+        tgp_.sync_buffer_read(); // the TGP answers through its mailbox here (0x0091fff0-8)
         return tgp_.buffer_r(addr & 0x1ffff);
     }
     if (addr >= 0x00800000 && addr <= 0x00803fff) return tgp_.geo_r((addr - 0x00800000) >> 2);
     if (addr >= 0x00804000 && addr <= 0x00807fff) return 0xffffffffu; // geo_prg_r
     if (addr >= 0x00884000 && addr <= 0x00887fff) return tgp_.fifo_r();
+    if (model2b()) {
+        if (addr == 0x00980014) return tgp_.copro_status_r();
+        if (addr >= 0x11400000 && addr <= 0x1140ffff) { // luma RAM: two entries a dword (bytes 0 and 2)
+            const uint32_t k = (addr & 0xffff) >> 1;
+            return uint32_t(luma_[k * 4]) | uint32_t(luma_[(k + 1) * 4]) << 16;
+        }
+        if (addr >= 0x009c0000 && addr <= 0x009c0007) // i8251, umask32 0x000000ff: data, then status
+            return (mask & 0xff) ? (addr & 4 ? uart_status_r() : uart_data_r()) : 0;
+    }
     switch (addr) {
     case 0x00980000: return tgp_.coproctl_r();
     case 0x00980004: {
@@ -629,16 +650,8 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
     }
     if (addr >= 0x01c80000 && addr <= 0x01c80003) { // i8251 (MAME read/status_r/data_r), umask16 0x00ff
         uint32_t v = 0;
-        if (mask & 0x00ff0000) { // status: DSR (unconnected: 1), TxEMPTY, RxRDY, TxRDY (data buffer empty)
-            const bool tx_empty = !uart_have_hold_ && !uart_shift_busy_;
-            v |= uint32_t(0x80 | (tx_empty ? 4 : 0) | (uart_in_.empty() ? 0 : 2) | (uart_have_hold_ ? 0 : 1)) << 16;
-        }
-        if (mask & 0x000000ff) { // data: reading takes the received byte (RxRDY clears when none is left)
-            if (!uart_in_.empty()) {
-                v |= uart_in_.front();
-                uart_in_.pop_front();
-            }
-        }
+        if (mask & 0x00ff0000) v |= uint32_t(uart_status_r()) << 16;
+        if (mask & 0x000000ff) v |= uart_data_r();
         return v;
     }
     if (addr >= 0x10000000 && addr <= 0x101fffff) return uint32_t(render_unk_) << 14 | uint32_t(render_mode_) << 2 | uint32_t(render_test_);
@@ -649,6 +662,20 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
 
 void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
     if (addr >= 0x00900000 && addr <= 0x0097ffff) { tgp_.buffer_w(addr & 0x1ffff, data, mask); return; }
+    if (model2b()) {
+        if (addr >= 0x008c0000 && addr <= 0x008c0fff) { tgp_.sharc_iop_w((addr & 0xfff) >> 2, data & mask); return; }
+        if (addr >= 0x11400000 && addr <= 0x1140ffff) { // luma RAM, 2A's layout (one byte a dword)
+            const uint32_t k = (addr & 0xffff) >> 1;
+            if (mask & 0x000000ff) luma_[k * 4] = uint8_t(data);
+            if (mask & 0x00ff0000) luma_[(k + 1) * 4] = uint8_t(data >> 16);
+            video_->colour_tables_w();
+            return;
+        }
+        if (addr >= 0x009c0000 && addr <= 0x009c0007) { // i8251: data at 0, control at 4 (lane 0)
+            if ((mask & 0xff) && !(addr & 4)) uart_write_data(uint8_t(data));
+            return;
+        }
+    }
     if (addr == 0x00980000) { tgp_.coproctl_w(data, mask); return; }
     const uint32_t d = data & mask; // handlers without a mask see unwritten lanes as 0
     if (addr >= 0x00884000 && addr <= 0x00887fff) { tgp_.fifo_w(d); return; }
@@ -711,6 +738,21 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
     }
 }
 
+// The i8251's status (DSR unconnected: 1, TxEMPTY, RxRDY, TxRDY: the data
+// buffer empty) and data (reading takes the received byte; RxRDY clears when
+// none is left), MAME's read/status_r/data_r.
+uint8_t M2Board::uart_status_r() const {
+    const bool tx_empty = !uart_have_hold_ && !uart_shift_busy_;
+    return uint8_t(0x80 | (tx_empty ? 4 : 0) | (uart_in_.empty() ? 0 : 2) | (uart_have_hold_ ? 0 : 1));
+}
+
+uint8_t M2Board::uart_data_r() {
+    if (uart_in_.empty()) return 0;
+    const uint8_t v = uart_in_.front();
+    uart_in_.pop_front();
+    return v;
+}
+
 // Palette and colour translation live in RAM pages; the video output tracks
 // what MAME's handlers do on each write.
 void M2Board::ram_written(uint32_t addr, uint32_t data, uint32_t mask) {
@@ -729,6 +771,11 @@ void M2Board::ram_written(uint32_t addr, uint32_t data, uint32_t mask) {
         video_->colour_tables_w();
     } else if (addr >= 0x12800000 && addr <= 0x1281ffff) {
         video_->colour_tables_w(); // luma RAM
+    } else if (addr >= 0x11000000 && addr <= 0x113fffff) {
+        // Model 2B texture RAM (plain RAM): its page's generation, as tex_write's.
+        ++tex_generation_;
+        const uint32_t sheet = (addr >> 21) & 1, stored = addr & 0xfffff;
+        tex_page_generation_[sheet * VideoMem::kTexPages + (stored >> 12)] = tex_generation_;
     }
 }
 
@@ -924,7 +971,7 @@ uint32_t M2Board::read_dword(uint32_t addr) {
     if ((addr & 0xffffc000u) == 0x00884000u) return tgp_.fifo_r();
     if (addr == 0x00980004u) return tgp_.fifo_out_empty() ? 1 : 0;
     if (addr - 0x00900000u < 0x80000u) {
-        tgp_.sync();
+        tgp_.sync_buffer_read();
         return tgp_.buffer_r(addr & 0x1ffff);
     }
 #endif

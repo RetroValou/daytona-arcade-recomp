@@ -1,0 +1,44 @@
+# fvipers: the second test-mode walk: game assignment (one setting changed and
+# back to EXIT), coin assignment, bookkeeping (five pages), all initialize (NO),
+# EXIT to attract. fvipers_test.txt's memory test outlasted its wait and shifted
+# the cursor past these.
+frames 6730
+1200-1209 test=1
+1500-1505 service=1
+1530-1535 service=1
+1560-1565 service=1
+1590-1595 service=1
+1620-1625 service=1
+1650-1655 service=1
+1680-1685 service=1
+1710-1719 test=1
+1960-1965 service=1
+2000-2009 test=1
+2060-2069 test=1
+2120-2125 service=1
+2150-2155 service=1
+2180-2185 service=1
+2210-2215 service=1
+2240-2245 service=1
+2270-2275 service=1
+2300-2305 service=1
+2330-2335 service=1
+2360-2365 service=1
+2390-2395 service=1
+2420-2429 test=1
+2670-2675 service=1
+2700-2709 test=1
+2950-2959 test=1
+3200-3205 service=1
+3230-3239 test=1
+3480-3485 service=1
+3570-3575 service=1
+3660-3665 service=1
+3750-3755 service=1
+3840-3849 test=1
+4090-4095 service=1
+4120-4125 service=1
+4150-4159 test=1
+4400-4409 test=1
+4650-4655 service=1
+4680-4689 test=1

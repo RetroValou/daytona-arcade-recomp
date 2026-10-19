@@ -1,0 +1,6 @@
+# fvipers: helpers called with balx whose arguments follow the balx in the code
+# and that return past them (m2recomp --inline; format: seeds/vf2_inline.txt).
+# Our own reading of the program ROM (rules.md rule 7).
+# 0x4e6f0: mov r14,g0; call 0x4e6fc (reads 4 bytes at g0 and on); bx 0x8(r14):
+# two words of arguments (53 call sites: a packed byte word, then 0).
+0004e6f0 8

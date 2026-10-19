@@ -1,5 +1,68 @@
 # Handoff
 
+## Fighting Vipers runs natively (PC 90+ fps; Vita 13-20 fps in a fight) (2026-10-19)
+
+The SHARC on the board: TgpBoard holds it on Model 2B (SharcCopro, its data
+space: the input FIFO, an empty read is 0 as MAME's; the output FIFO; buffer
+RAM; the copro data ROM; FLAG0 follows the input FIFO, FLAG1 stays 0: MAME
+sets it to the input FIFO's fullness at 16 words, ours has no limit), the
+upload through external_dma_write, the IOP port, the copro status (-1 until
+the upload's first word). M2Board: 2B's map (texture RAM 0x11000000/0x11200000
+as plain RAM, its pages' generations kept by ram_written for the Vita's
+texture cache; luma RAM 0x11400000 in 2A's layout; the UART at 0x009c0000,
+the i8251 status/data code shared with 2A's; the IOP port; 0x980014).
+Run behind the i960 (TgpBoard::need_output): the i960 needing an output word
+runs the SHARC only until that word is there (MAME's SHARC runs in slices
+behind the i960, which stalls on an empty FIFO for one word); no catch-up
+before i960 buffer writes; a buffer RAM read runs a 256-instruction slice;
+vblank runs it to the end. Found in the fight: run to the end, the SHARC
+processed commands the i960 had pushed before clearing its work area (word
+0x7c5f: written by the SHARC, cleared by the i960, read back 3,000 input words
+later; in MAME the clear comes first). Wrong turn: no catch-up on buffer writes
+alone did not change it (the SHARC had run to the end on a FIFO read).
+Parity: attract 600 frames m2native MATCH with everything native (5,631 SHARC
+output words, 597 geometrizer frames, 596 screens identical). The fight
+diverges at 136 M i960 instructions on a SHARC word off by one bit (3ed15076,
+MAME 3ed15077): the same race, MAME's exact interleaving (its scheduler's
+1/18,000 s slices) not reproduced; counted as measured over the whole fight,
+10,650 words differ and the i960 (fed MAME's) and our SHARC drift apart. Not
+fixed: a timing model of MAME's slices would be needed. Native runs are self-
+consistent: fvipers_fight 6,000 frames on the PC (a whole fight, Grace vs
+Bahn, rendered right), 91-100 fps.
+M2_SPIN_SKIP checked (fvipers_fight, ON against OFF): 291.7 M i960
+instructions, 12,852 interrupts, last screen, 60/60 dumps and the WAV
+identical; 14.9 M instructions skipped.
+Seeds: 1,213 (from 345): seed_scan.py (now also a bare ret as a handler:
+0x6d0c0, after data in a two-entry data ROM table), seeds/fvipers_inline.txt
+(0x4e6f0, bx 0x8(r14): two words of arguments after its 53 balx), 136 stubs
+(lda/shlo/mov imm,g0; b T to a shared T: 0x1eb8c 92, as VF2's script stubs),
+MAME harvests of a 9,000-frame attract and two test-mode walks
+(scripts/inputs/fvipers_test.txt, fvipers_test2.txt; built from MAME
+screenshots of each item: Service moves from EXIT and wraps, Test enters and
+leaves; the memory test outlasts the first walk's wait, the second covers what
+it skipped): 53 and 42 new targets. Sound: every address its 68000 ran in the
+walks already recompiled. games.py: fvipers' joystick as up/down/left/right
+(IN1), vita_fast fast_inaccuracy.
+--fast-inaccuracy checked on the PC: fvipers_fight 6,000 frames, both
+test walks (13,730 and 6,730 frames) and 9,000 frames of attract run through.
+SHARC recompiled in files: sharc_gen.cpp (the core, compiled once, and the
+dispatch), sharc_handlers.h (sharcops.hxx's macros and 9 inline helpers,
+compute.hxx without its two lookup tables, the templated handlers), one
+sharc_chunk_NNN.cpp per 256 instructions (17); sharc_step.h (CHANGE_PC and
+the step pieces, inline). The single file took over 20 min with the Vita's
+compiler (-O3, one core; 1 min 45 s on the PC); now 41 s on the PC, all
+cores; and 83.2 M SHARC instructions/s on the fight check (62.5 before):
+m2sharccheck_gen MATCH on the attract (instruction log) and the fight.
+Vita (user, diagnostics VPK, fast-inaccuracy; extern/result_perf_vita/
+fvipers/): no fault. 50 fps on the warning screen, 20-22 in the first
+fights, 13 in heavier scenes. Core 0 at 100 % in attract and fights: the
+vblank handler 41-43 ms a frame (4 ms on the warning screen): the SHARC,
+~102 k instructions a frame, at ~2.7 M a second (30x slower than this PC).
+Core 2 (sound) saturates only while loading (SCSP DSP 16 ms a frame: no
+recompiled DSP program for fvipers yet); 52-58 % in a fight. Core 1 4-12 %.
+Next: the SHARC on core 0: why 30x (ARM), its own core, less per-instruction
+overhead; then fvipers' DSP program (m2dsprecomp) for the loading.
+
 ## The SHARC recompiled: m2sharcrecomp, identical to MAME (2026-10-19)
 
 tools/m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops sharcops_table.inc]

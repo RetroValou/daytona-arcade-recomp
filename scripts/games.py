@@ -187,8 +187,9 @@ SETS = {
     "fvipers": {
         "game": "fightingvipers", "label": "Revision D",
         "roms": ["fvipers"], "board": "model2b", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": (), "companion": None,
-        "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04)},
+        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04),
+                   "down": (":IN1", 0x10), "up": (":IN1", 0x20), "right": (":IN1", 0x40), "left": (":IN1", 0x80)},
         "full_range": False,
     },
 }

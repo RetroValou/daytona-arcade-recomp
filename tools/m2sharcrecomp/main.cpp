@@ -2,6 +2,7 @@
 // Vipers) to C++.
 //
 //   m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops SHARCOPS_TABLE.inc] [--sharcops SHARCOPS.hxx]
+//                 [--compute COMPUTE.hxx]
 //
 // SHARC_PROGRAM.bin is m2import's cut of the upload: 16-bit little-endian words,
 // three per 48-bit instruction (DMA channel 6's 16/48 packing, MSWF clear: the
@@ -32,6 +33,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <regex>
@@ -148,6 +150,52 @@ std::string templated_handlers(const std::string &path, size_t &count) {
     return o.str();
 }
 
+std::string read_text(const std::string &path) {
+    std::ifstream f(path);
+    if (!f) throw std::runtime_error("cannot open " + path);
+    return {std::istreambuf_iterator<char>(f), {}};
+}
+
+// Every #define of a file, with its continuation lines.
+std::string defines(const std::string &path) {
+    std::istringstream in(read_text(path));
+    std::string line, out;
+    bool cont = false;
+    while (std::getline(in, line)) {
+        if (cont || line.rfind("#define", 0) == 0) {
+            out += line + "\n";
+            cont = !line.empty() && line.back() == '\\';
+        }
+    }
+    return out;
+}
+
+// sharcops.hxx's inline helpers (the PC, loop and status stacks, the
+// conditions), word for word.
+std::string inline_helpers(const std::string &path) {
+    const std::string t = read_text(path);
+    const std::regex def(R"(\ninline [^\n]*adsp21062_device::\w+\([^)]*\)\s*\n\{)");
+    std::string out;
+    size_t count = 0;
+    for (std::sregex_iterator i(t.begin(), t.end(), def), end; i != end; ++i) {
+        const size_t start = size_t(i->position(0)) + 1, open = size_t(i->position(0) + i->length(0) - 1);
+        out += t.substr(start, match_brace(t, open) - start + 1) + "\n\n";
+        ++count;
+    }
+    if (count < 9) throw std::runtime_error(path + ": fewer inline helpers than expected");
+    return out;
+}
+
+// compute.hxx without its #include lines and its two lookup tables.
+std::string compute_inline(const std::string &path) {
+    std::string t = read_text(path);
+    t = std::regex_replace(t, std::regex(R"(\n#include [^\n]*)"), "\n");
+    const std::regex table(R"(const uint32_t adsp21062_device::\w+\[128\] =\s*\{[^}]*\};)");
+    if (std::distance(std::sregex_iterator(t.begin(), t.end(), table), std::sregex_iterator()) != 2)
+        throw std::runtime_error(path + ": not the two lookup tables expected");
+    return std::regex_replace(t, table, "");
+}
+
 std::string handler(const std::vector<Op> &ops, uint64_t opcode) {
     const uint16_t op = uint16_t(((opcode >> 39) & 0x1ff) << 7);
     for (const Op &o : ops)
@@ -166,7 +214,8 @@ std::string hx(uint64_t v) {
 } // namespace
 
 int main(int argc, char **argv) {
-    std::string ops_path = "src/runtime/sharc/sharcops_table.inc", sharcops_path = "src/runtime/sharc/sharcops.hxx";
+    std::string ops_path = "src/runtime/sharc/sharcops_table.inc", sharcops_path = "src/runtime/sharc/sharcops.hxx",
+                compute_path = "src/runtime/sharc/compute.hxx";
     if (argc < 3) {
         std::fprintf(stderr, "usage: m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops SHARCOPS_TABLE.inc]\n");
         return 2;
@@ -174,6 +223,7 @@ int main(int argc, char **argv) {
     for (int i = 3; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--ops") && i + 1 < argc) ops_path = argv[++i];
         else if (!std::strcmp(argv[i], "--sharcops") && i + 1 < argc) sharcops_path = argv[++i];
+        else if (!std::strcmp(argv[i], "--compute") && i + 1 < argc) compute_path = argv[++i];
         else {
             std::fprintf(stderr, "m2sharcrecomp: unknown option %s\n", argv[i]);
             return 2;
@@ -203,28 +253,46 @@ int main(int argc, char **argv) {
 
         size_t handlers = 0;
         const std::string templates = templated_handlers(sharcops_path, handlers);
-        // The program in chunks of 256 instructions, one function each (one
-        // function for the whole program took 9 minutes to optimise); control
-        // falls through within a chunk and goes back to run_generated's
-        // dispatch between chunks.
+        // The program in chunks of 256 instructions, one function each and one
+        // file each, compiled in parallel (one function: 9 min to optimise on
+        // the PC; one file of chunks: 1 min 45 s on the PC, over 20 min with the
+        // Vita's compiler). Control falls through within a chunk and goes back
+        // to run_generated's dispatch between chunks. OUT.cpp holds the core
+        // (sharc.cpp, compiled once) and the dispatch; sharc_handlers.h, next
+        // to it, what every chunk needs inline: sharcops.hxx's macros and inline
+        // helpers, compute.hxx without its two lookup tables (the only
+        // definitions it cannot repeat) and the templated handlers.
         constexpr uint32_t chunk = 256;
         const uint32_t chunks = (n + chunk - 1) / chunk;
-        std::ostringstream o;
-        o << "// Generated by m2sharcrecomp from the SHARC program the i960 uploads (Model 2B).\n"
-             "// Derived from the game: never commit.\n"
-             "#include \"runtime/sharc/sharc.cpp\"\n\n"
-             "namespace rt::sharc {\n\n"
-             "const uint32_t sharc_program_crc32 = "
-          << hx(crc32(raw.data(), raw.size())) << "u;\nconst uint32_t sharc_program_instructions = " << n
-          << ";\n\n// sharcops.hxx's handlers, templates on the opcode.\n" << templates
-          << "namespace {\nconstexpr uint64_t kProgram[" << n << "] = {\n";
-        for (uint32_t k = 0; k < n; ++k) o << "    " << hx(prog[k]) << "ull,\n";
-        o << "};\n} // namespace\n\n"
-             "// A chunk: 0 when control leaves it (step_pre done), 1 when the SHARC waits,\n"
-             "// 2 when the budget ran out.\n";
+        const std::string out_path = argv[2];
+        const std::string dir = out_path.find('/') == std::string::npos ? "." : out_path.substr(0, out_path.rfind('/'));
+        const auto write_file = [](const std::string &path, const std::string &text) {
+            std::ofstream f(path);
+            if (!(f << text)) throw std::runtime_error("cannot write " + path);
+        };
+        for (const auto &e : std::filesystem::directory_iterator(dir))
+            if (e.path().filename().string().rfind("sharc_chunk_", 0) == 0) std::filesystem::remove(e.path());
+        write_file(dir + "/sharc_handlers.h",
+                   "// Generated by m2sharcrecomp: what the recompiled SHARC program's chunks need\n"
+                   "// inline. Derived from MAME's sources (BSD-3) and the game: never commit.\n"
+                   "#pragma once\n\n// sharcops.hxx's macros\n" + defines(sharcops_path) +
+                   "\n// sharcops.hxx's inline helpers\n" + inline_helpers(sharcops_path) +
+                   "\n// compute.hxx without its lookup tables\n" + compute_inline(compute_path) +
+                   "\n// sharcops.hxx's handlers, templates on the opcode\n" + templates);
         for (uint32_t c = 0; c < chunks; ++c) {
             const uint32_t first = c * chunk, last = std::min(n, first + chunk);
-            o << "template <>\nint adsp21062_device::run_chunk<" << c << ">(uint64_t &done, uint64_t budget)\n{\n"
+            std::ostringstream o;
+            o << "// Generated by m2sharcrecomp: the recompiled SHARC program, chunk " << c << ".\n"
+                 "// Derived from the game: never commit.\n"
+                 "#include \"runtime/sharc/sharc.h\"\n\n"
+                 "#include <algorithm>\n#include <bit>\n#include <cmath>\n#include <cstring>\n#include <iterator>\n#include <limits>\n\n"
+                 "namespace rt::sharc {\n\n"
+                 "#include \"runtime/sharc/sharcinternal.ipp\"\n"
+                 "#include \"runtime/sharc/sharc_step.h\"\n"
+                 "#include \"sharc_handlers.h\"\n\n"
+                 "// 0 when control leaves the chunk (step_pre done), 1 when the SHARC waits,\n"
+                 "// 2 when the budget ran out.\n"
+                 "template <>\nint adsp21062_device::run_chunk<" << c << ">(uint64_t &done, uint64_t budget)\n{\n"
                  "\tfor (;;) {\n"
                  "\t\tswitch (m_core->daddr) {\n";
             for (uint32_t k = first; k < last; ++k) o << "\t\tcase " << hx(base + k) << ": goto L_" << std::hex << base + k << std::dec << ";\n";
@@ -243,9 +311,25 @@ int main(int argc, char **argv) {
                 if (k + 1 < last) o << "\t\tif (m_core->daddr == " << hx(a + 1) << ") goto L_" << std::hex << a + 1 << std::dec << ";\n";
                 o << "\t\tcontinue;\n";
             }
-            o << "\t}\n}\n\n";
+            o << "\t}\n}\n\n} // namespace rt::sharc\n";
+            char name[32];
+            std::snprintf(name, sizeof name, "/sharc_chunk_%03u.cpp", c);
+            write_file(dir + name, o.str());
         }
-        o << "bool adsp21062_device::run_generated(uint64_t budget)\n{\n"
+        std::ostringstream o;
+        o << "// Generated by m2sharcrecomp from the SHARC program the i960 uploads (Model 2B):\n"
+             "// the core and the dispatch over the chunks (sharc_chunk_*.cpp).\n"
+             "// Derived from the game: never commit.\n"
+             "#include \"runtime/sharc/sharc.cpp\"\n\n"
+             "namespace rt::sharc {\n\n"
+             "const uint32_t sharc_program_crc32 = "
+          << hx(crc32(raw.data(), raw.size())) << "u;\nconst uint32_t sharc_program_instructions = " << n
+          << ";\n\nnamespace {\nconstexpr uint64_t kProgram[" << n << "] = {\n";
+        for (uint32_t k = 0; k < n; ++k) o << "    " << hx(prog[k]) << "ull,\n";
+        o << "};\n} // namespace\n\n";
+        for (uint32_t c = 0; c < chunks; ++c)
+            o << "template <> int adsp21062_device::run_chunk<" << c << ">(uint64_t &done, uint64_t budget);\n";
+        o << "\nbool adsp21062_device::run_generated(uint64_t budget)\n{\n"
              "\tif (m_halted) return true;\n"
              "\tif (!m_gen_checked) {\n"
              "\t\tfor (uint32_t i = 0; i < " << n << "; ++i)\n"
@@ -267,10 +351,9 @@ int main(int argc, char **argv) {
              "\t\tif (m_core->daddr - " << hx(base) << " >= " << n << "u)\n"
              "\t\t\tthrow SharcFatal(emu_fatalerror::fmt(\"SHARC: no recompiled code at %05x\", m_core->daddr));\n"
              "\t}\n}\n\n} // namespace rt::sharc\n";
-        std::ofstream out(argv[2]);
-        if (!(out << o.str())) throw std::runtime_error(std::string("cannot write ") + argv[2]);
-        std::printf("m2sharcrecomp: %u instructions, %zu loop ends, %zu wait loops, %zu handlers templated -> %s\n", n,
-                    loop_ends.size(), waits.size(), handlers, argv[2]);
+        write_file(out_path, o.str());
+        std::printf("m2sharcrecomp: %u instructions, %zu loop ends, %zu wait loops, %zu handlers templated -> %s and %u chunks\n", n,
+                    loop_ends.size(), waits.size(), handlers, argv[2], chunks);
         return 0;
     } catch (const std::exception &e) {
         std::fprintf(stderr, "m2sharcrecomp: %s\n", e.what());

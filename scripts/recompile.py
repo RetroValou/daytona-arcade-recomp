@@ -174,7 +174,8 @@ def main():
         os.makedirs(sharc, exist_ok=True)
         run([tool(build, args.config, "m2sharcrecomp"), sharc_program, os.path.join(sharc, "sharc_gen.cpp"),
              "--ops", os.path.join(ROOT, "src/runtime/sharc/sharcops_table.inc"),
-             "--sharcops", os.path.join(ROOT, "src/runtime/sharc/sharcops.hxx")])
+             "--sharcops", os.path.join(ROOT, "src/runtime/sharc/sharcops.hxx"),
+             "--compute", os.path.join(ROOT, "src/runtime/sharc/compute.hxx")])
 
     if args.recomp_only:
         print(f"recompile: recompiled into {games.gen_root(args.set)}/ (--recomp-only: the desktop game is not built)")

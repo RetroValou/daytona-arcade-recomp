@@ -1,3 +1,6 @@
+// Model 2B (Game::board Model2b): the same ports with an ADSP-21062 SHARC as
+// the copro (MAME model2b_state copro_*): the recompiled SHARC program
+// (m2sharcrecomp), run on demand as the TGP until it polls an empty input FIFO.
 // The i960's side of the Model 2 geometry hardware: the TGP's FIFOs and
 // control register, the geometrizer's command port, and buffer RAM, which
 // all three write (MAME model2.cpp: copro_*, geo_*, push_geo_data). The TGP
@@ -13,15 +16,20 @@
 
 #include <cstdint>
 #include <deque>
+#include <memory>
 #include <vector>
 
 namespace rt {
+
+namespace sharc { class adsp21062_device; }
+class SharcCopro;
 
 
 class TgpBoard : public TgpBus {
 public:
     // tables: copro_tgp_tables (0x40000 bytes); copro_data: 0x800000 bytes.
     TgpBoard(const std::vector<uint8_t> &tables, const std::vector<uint8_t> &copro_data);
+    ~TgpBoard();
 #ifdef M2_DC_MEMORY
     // copro_data read through pages (RomRegion::CoproData), not copied.
     TgpBoard(const std::vector<uint8_t> &tables, RomSource &rom);
@@ -49,7 +57,7 @@ public:
         return v;
     }
     bool fifo_out_empty() { // 0x00980004 (after running the TGP)
-        if (out_.empty()) run_tgp();
+        if (out_.empty()) need_output();
         return out_.empty();
     }
     void coproctl_w(uint32_t data, uint32_t mask);        // 0x00980000
@@ -67,9 +75,18 @@ public:
     uint64_t tgp_instructions() const { return tgp_.count; }
     const uint32_t *table_data() const { return tables_.data(); } // copro_tgp_tables (TGP profiling's benchmark)
     bool booted() const { return booted_; }
+    // Model 2B: the SHARC's IOP registers (0x008c0000, dword offset) and the
+    // copro status (0x00980014: -1 until the program upload has started).
+    void sharc_iop_w(uint32_t offset, uint32_t data);
+    uint32_t copro_status_r() const { return upload_count_ == 0 ? 0xffffffffu : 0; }
+    uint64_t sharc_instructions() const;
+    bool has_sharc() const { return sharc_ != nullptr; }
     // Run the TGP until it waits on an empty input FIFO. The game polls the
     // TGP's mailbox in buffer RAM for results; the TGP must have caught up.
     void sync() { run_tgp(); }
+    // The i960 reads buffer RAM: the TGP catches up (its mailbox); Model 2B's
+    // SHARC, which runs behind the i960 in MAME, only moves on a slice.
+    void sync_buffer_read();
 
     // TgpBus (the TGP's side)
     bool fifo_pop(uint32_t &v) override;
@@ -96,6 +113,13 @@ private:
     std::vector<uint32_t> upload_;
     uint32_t coproctl_ = 0, geoctl_ = 0, geo_write_start_ = 0, geo_read_start_ = 0;
     bool booted_ = false;
+    // Model 2B: the SHARC (null on the other boards) and the upload's word count.
+    friend class SharcCopro;
+    std::unique_ptr<SharcCopro> sharc_;
+    uint32_t upload_count_ = 0;
+    void run_sharc();
+    void need_output(); // the i960 needs an output word: the TGP all, the SHARC until one
+    void run_sharc_slice(uint64_t instructions);
     uint32_t buffer_[0x8000];
 };
 
@@ -112,6 +136,7 @@ namespace rt {
 // strict (must equal MAME's). Buffer RAM reads and FIFO-status polls depend
 // on how far the TGP has run relative to the i960, so they are measured.
 class TgpBoardModel : public DeviceModel {
+    // Model 2B: the SHARC's IOP port and the copro status too (TgpBoard's sharc_).
 public:
     explicit TgpBoardModel(TgpBoard &b) : b_(b) {}
     bool claims(uint32_t a) const override;

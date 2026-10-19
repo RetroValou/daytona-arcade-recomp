@@ -311,13 +311,22 @@ set(DSP_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_dsp/dsp_gen.cpp)
 # Model 2B: the recompiled SHARC program (m2sharcrecomp; it compiles the lifted
 # core in), and m2sharccheck on it.
 set(SHARC_GEN ${M2_GEN_ROOT}/${M2_ROMSET}_sharc/sharc_gen.cpp)
+# The runtime's SHARC core (TgpBoard runs it on Model 2B): the generated
+# program (sharc_gen.cpp, which includes the core, and its chunks), or the core
+# alone (sharc_nogen.cpp).
 if(EXISTS ${SHARC_GEN})
-    add_executable(m2sharccheck_gen tools/m2sharccheck/main.cpp ${SHARC_GEN})
+    file(GLOB SHARC_SOURCES CONFIGURE_DEPENDS ${M2_GEN_ROOT}/${M2_ROMSET}_sharc/*.cpp)
+else()
+    set(SHARC_SOURCES src/runtime/sharc/sharc_nogen.cpp)
+endif()
+target_sources(runtime PRIVATE ${SHARC_SOURCES})
+if(NOT MSVC)
+    set_source_files_properties(${SHARC_SOURCES} PROPERTIES COMPILE_OPTIONS -w)
+endif()
+if(EXISTS ${SHARC_GEN})
+    add_executable(m2sharccheck_gen tools/m2sharccheck/main.cpp ${SHARC_SOURCES})
     target_include_directories(m2sharccheck_gen PRIVATE src)
     target_compile_definitions(m2sharccheck_gen PRIVATE M2SHARC_GEN)
-    if(NOT MSVC)
-        set_source_files_properties(${SHARC_GEN} PROPERTIES COMPILE_OPTIONS -w)
-    endif()
 endif()
 if(EXISTS ${GEN_DIR}/gen_table.cpp AND EXISTS ${TGP_GEN} AND EXISTS ${SND_GEN})
     file(GLOB GEN_SOURCES ${GEN_DIR}/*.cpp)

@@ -269,6 +269,9 @@ private:
     void tex_write(const Page &p, uint32_t addr, uint32_t lane_data);
 
     bool crx() const { return img_.game->board != BoardType::Model2o; } // 2A-CRX or 2B-CRX
+    bool model2b() const { return img_.game->board == BoardType::Model2b; }
+    uint8_t uart_status_r() const;
+    uint8_t uart_data_r();
     uint64_t io_now() const { // i960 instructions so far, for the 315-5649's EEPROM
 #ifdef M2_FAST_GEN
         return ls_->now();
@@ -345,7 +348,8 @@ private:
     uint8_t *fast_read_base_ = nullptr, *fast_write_base_ = nullptr;
     static bool plain_ram(uint32_t addr) {
         return !((addr >= 0x01000000 && addr <= 0x011fffff) || (addr >= 0x01800000 && addr <= 0x0181bfff) ||
-                 (addr >= 0x12800000 && addr <= 0x1281ffff)); // luma RAM: Video::colour_tables_w
+                 (addr >= 0x12800000 && addr <= 0x1281ffff) || // luma RAM: Video::colour_tables_w
+                 (addr >= 0x11000000 && addr <= 0x113fffff));  // Model 2B texture RAM: its pages' generations
     }
     void fast_read(uint32_t addr, const Page &p) { fast_read_page_ = addr >> kPageBits, fast_read_base_ = p.base; }
     void fast_write(uint32_t addr, const Page &p) {

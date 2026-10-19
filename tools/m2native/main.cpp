@@ -6,8 +6,9 @@
 //
 //   m2native IMAGES_DIR TRACE.m2tr IRQ.log
 //
-// Model 2B (a SHARC copro, not native yet): M1, the copro, buffer RAM and the
-// geometrizer answered from the trace like every other device.
+// Model 2B: the same with the recompiled SHARC (TgpBoard runs it); M2NATIVE_M1
+// set: M1 instead, the copro, buffer RAM and the geometrizer answered from the
+// trace like every other device.
 
 #include "runtime/board/game.h"
 #include "runtime/cpu/i960_gen_support.h"
@@ -21,6 +22,7 @@
 #include <chrono>
 #include <cinttypes>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -50,9 +52,9 @@ int main(int argc, char **argv) {
         rt::M2ReplayBus bus(load(dir + "/program.bin"), load(dir + "/main_data.bin"), argv[2]);
         rt::Cpu core(&bus);
         bus.attach(&core);
-        // M2: the geometry ports, TGP and buffer RAM are native, not replayed
-        // (M1 on Model 2B: no native SHARC yet).
-        const bool m1 = rt::game().board == rt::BoardType::Model2b;
+        // M2: the geometry ports, the copro (TGP or SHARC) and buffer RAM are
+        // native, not replayed.
+        const bool m1 = std::getenv("M2NATIVE_M1") != nullptr;
         rt::TgpBoard board(load(dir + "/copro_tables.bin"), load(dir + "/copro_data.bin"));
         rt::TgpBoardModel geo(board);
         if (!m1) bus.set_model(&geo);
@@ -87,9 +89,11 @@ int main(int argc, char **argv) {
                     ls.count, gen::native_instructions(), bus.epochs_matched(), bus.events_matched(), ls.interrupts(), s,
                     double(ls.count) / s / 1e6);
         if (m1) {
-            std::printf("  copro (SHARC), buffer RAM and geometrizer replayed from the trace (M1)\n");
+            std::printf("  copro, buffer RAM and geometrizer replayed from the trace (M1)\n");
             return 0;
         }
+        if (board.sharc_instructions())
+            std::printf("  SHARC (recompiled, run on demand): %" PRIu64 " instructions\n", board.sharc_instructions());
         std::printf("  TGP (recompiled, run on demand): %" PRIu64 " instructions, %" PRIu64
                     " output words identical to MAME\n"
                     "  measured (depends on relative timing): buffer RAM reads %" PRIu64 " differ of %" PRIu64

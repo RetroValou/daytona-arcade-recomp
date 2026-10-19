@@ -11,6 +11,9 @@
 
 #include "runtime/tgp/tgp_board.h"
 
+#include "runtime/board/game.h"
+#include "runtime/sharc/sharc.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -35,9 +38,66 @@ std::vector<uint32_t> words(const std::vector<uint8_t> &b) {
 }
 } // namespace
 
+// Model 2B's copro: the SHARC's data space above its internal memory (MAME
+// model2b copro_sharc_map): 0x400000-0xbfffff the input FIFO (an empty FIFO
+// reads 0, as MAME's), 0xc00000-0x13fffff the output FIFO, 0x1400000-0x1bfffff
+// buffer RAM, 0x1c00000-0x1dfffff the copro data ROM. FLAG0 (input FIFO empty)
+// follows the FIFO, as MAME's callbacks set it; FLAG1 stays 0 (MAME sets it to
+// the input FIFO's fullness at 16 words, from the output FIFO's callbacks: our
+// FIFO has no limit).
+class SharcCopro : public sharc::Bus {
+public:
+    explicit SharcCopro(TgpBoard &b) : b_(b), sharc_(*this) { sharc_.set_flag_input(1, 0); }
+    uint32_t read(uint32_t address) override {
+        if (address >= 0x400000 && address < 0xc00000) {
+            if (b_.in_.empty()) return 0;
+            const uint32_t v = b_.in_.front();
+            b_.in_.pop_front();
+            if (b_.in_.empty()) sharc_.set_flag_input(0, 1);
+            return v;
+        }
+        if (address >= 0x1400000 && address < 0x1c00000) return b_.buffer_[address & 0x7fff];
+        if (address >= 0x1c00000 && address < 0x1e00000) return b_.mem_r(0x800000 | (address - 0x1c00000));
+        return 0;
+    }
+    void write(uint32_t address, uint32_t data) override {
+        if (address >= 0xc00000 && address < 0x1400000) b_.out_.push_back(data);
+        else if (address >= 0x1400000 && address < 0x1c00000) b_.buffer_[address & 0x7fff] = data;
+    }
+    sharc::adsp21062_device &core() { return sharc_; }
+
+private:
+    TgpBoard &b_;
+    sharc::adsp21062_device sharc_;
+};
+
+TgpBoard::~TgpBoard() = default;
+
+uint64_t TgpBoard::sharc_instructions() const { return sharc_ ? sharc_->core().instructions() : 0; }
+
+void TgpBoard::sharc_iop_w(uint32_t offset, uint32_t data) {
+    if (sharc_) sharc_->core().external_iop_write(offset, data);
+}
+
+// Until the SHARC polls an empty input FIFO (its wait loop, run_generated's
+// "waiting"), or idles. 50 M instructions without waiting: a fault.
+void TgpBoard::run_sharc() {
+    sharc::adsp21062_device &s = sharc_->core();
+    for (uint64_t done = 0; done < 50'000'000;) {
+        s.set_flag_input(0, in_.empty() ? 1 : 0);
+        const uint64_t at = s.instructions();
+        const bool waiting = s.run_generated(1'000'000);
+        done += s.instructions() - at;
+        if (waiting && in_.empty()) return;
+        if (waiting && s.instructions() == at) return; // idle, or polling with input left: nothing more now
+    }
+    throw TgpFatal("the SHARC ran 50 M instructions without waiting for input");
+}
+
 TgpBoard::TgpBoard(const std::vector<uint8_t> &tables, const std::vector<uint8_t> &copro_data)
     : tables_(words(tables)), copro_data_(words(copro_data)) {
     if (tables_.size() != 0x10000 || copro_data_.size() != 0x200000) throw TgpFatal("bad TGP table or copro data image");
+    if (game().board == BoardType::Model2b) sharc_ = std::make_unique<SharcCopro>(*this);
     tgp_.bus = this;
 #ifdef M2_FAST_TGP
     tgp_.in_fifo = &in_;
@@ -63,7 +123,13 @@ TgpBoard::TgpBoard(const std::vector<uint8_t> &tables, RomSource &rom) : tables_
 #endif
 
 void TgpBoard::coproctl_w(uint32_t data, uint32_t mask) {
-    if ((data ^ coproctl_) == 0x80000000) {
+    if (sharc_ && (data ^ coproctl_) == 0x80000000) {
+        // Model 2B (MAME model2b copro_halt: nothing; copro_boot: the SHARC's
+        // halt line released). The SHARC checks its program memory against the
+        // recompiled program on its first run.
+        if (data & 0x80000000) upload_count_ = 0, booted_ = false;
+        else sharc_->core().set_halted(false), booted_ = true;
+    } else if ((data ^ coproctl_) == 0x80000000) {
         if (data & 0x80000000) { // start upload: the TGP is held
             upload_.clear();
             booted_ = false;
@@ -79,12 +145,17 @@ void TgpBoard::coproctl_w(uint32_t data, uint32_t mask) {
 }
 
 void TgpBoard::upload_w(uint32_t data) {
+    if (sharc_) { // MAME model2b copro_fifo_w in boot mode
+        sharc_->core().external_dma_write(upload_count_++, data & 0xffff);
+        return;
+    }
     if (upload_.size() >= 0x1000) throw TgpFatal("TGP program upload past 4K words");
     upload_.push_back(data);
 }
 
 void TgpBoard::run_tgp() {
     if (!booted_) return;
+    if (sharc_) return run_sharc();
 #ifdef M2_TGP_PROFILE
     TgpProfile &prof = tgp_profile;
     const uint64_t count = tgp_.count, start = prof.clock ? prof.clock() : 0;
@@ -97,8 +168,39 @@ void TgpBoard::run_tgp() {
 #endif
 }
 
+// The TGP: until it waits (all its input processed). The SHARC (Model 2B) only
+// until the word the i960 waits for is there: MAME's SHARC runs behind the
+// i960, in slices, and the i960 stalled on the empty FIFO goes on once that
+// word arrives. Run to the end instead, it processed commands the i960 had
+// pushed before clearing the SHARC's work area in buffer RAM (Fighting
+// Vipers' fight, 19 Oct 2026: word 0x7c5f, written by the SHARC, cleared by
+// the i960 right after, read back by the SHARC 3,000 input words later; in
+// MAME the clear comes first).
+void TgpBoard::need_output() {
+    if (!sharc_) return run_tgp();
+    if (!booted_) return;
+    for (uint64_t done = 0; out_.empty() && done < 50'000'000; done += 16) {
+        sharc::adsp21062_device &s = sharc_->core();
+        s.set_flag_input(0, in_.empty() ? 1 : 0);
+        const uint64_t at = s.instructions();
+        if (s.run_generated(16) && (in_.empty() || s.instructions() == at)) return; // waits for input
+    }
+}
+
+void TgpBoard::run_sharc_slice(uint64_t instructions) {
+    if (!sharc_ || !booted_) return;
+    sharc::adsp21062_device &s = sharc_->core();
+    s.set_flag_input(0, in_.empty() ? 1 : 0);
+    s.run_generated(instructions);
+}
+
+void TgpBoard::sync_buffer_read() {
+    if (sharc_) run_sharc_slice(256);
+    else run_tgp();
+}
+
 void TgpBoard::refill() {
-    run_tgp();
+    need_output();
     if (out_.empty()) throw TgpFatal("the i960 read the TGP's output FIFO, but the TGP has consumed all its input and produced nothing");
 }
 
@@ -135,7 +237,8 @@ void TgpBoard::buffer_w(uint32_t byte_offset, uint32_t data, uint32_t mask) {
     // writes the TGP's next display list pointer to word 0x6000 right after
     // the command that reads the previous one (19 Oct 2026): ours, run on
     // demand, would read the new pointer twice.
-    if (!in_.empty()) run_tgp();
+    // Not the SHARC (Model 2B): it runs behind the i960 (need_output).
+    if (!sharc_ && !in_.empty()) run_tgp();
     uint32_t &w = buffer_[(byte_offset >> 2) & 0x7fff];
     w = (w & ~mask) | (data & mask);
 }
@@ -190,7 +293,8 @@ bool buffer_ram(uint32_t a) { return a >= 0x00900000 && a <= 0x0097ffff; }
 
 bool TgpBoardModel::claims(uint32_t a) const {
     return (a >= 0x00800000 && a <= 0x00807fff) || (a >= 0x00884000 && a <= 0x00887fff) ||
-           (a >= 0x00880000 && a <= 0x00883fff) || buffer_ram(a) || (a >= 0x00980000 && a <= 0x0098000b);
+           (a >= 0x00880000 && a <= 0x00883fff) || buffer_ram(a) || (a >= 0x00980000 && a <= 0x0098000b) ||
+           (b_.has_sharc() && ((a >= 0x008c0000 && a <= 0x008c0fff) || a == 0x00980014 || a == 0x00980020)); // Model 2B
 }
 
 DeviceModel::Check TgpBoardModel::read(uint32_t addr, uint32_t mask, uint32_t &value) {
@@ -210,6 +314,7 @@ DeviceModel::Check TgpBoardModel::read(uint32_t addr, uint32_t mask, uint32_t &v
     if (addr >= 0x00800000 && addr <= 0x00803fff) { value = b_.geo_r((addr - 0x00800000) >> 2); return Strict; }
     if (addr >= 0x00804000 && addr <= 0x00807fff) { value = 0xffffffffu; return Strict; } // geo_prg_r
     if (addr == 0x00980000) { value = b_.coproctl_r(); return Strict; }
+    if (addr == 0x00980014) { value = b_.copro_status_r(); return Strict; } // Model 2B
     if (addr == 0x00980004) {
         ++status_reads;
         value = b_.fifo_out_empty() ? 1 : 0;
@@ -230,6 +335,8 @@ void TgpBoardModel::write(uint32_t addr, uint32_t data, uint32_t mask) {
     else if (addr >= 0x00804000 && addr <= 0x00807fff) b_.geo_prg_w(data);
     else if (addr >= 0x00800000 && addr <= 0x00803fff) b_.geo_w((addr - 0x00800000) >> 2, data);
     else if (addr == 0x00980008) b_.geoctl_w(data);
+    else if (addr >= 0x008c0000 && addr <= 0x008c0fff) b_.sharc_iop_w((addr & 0xfff) >> 2, data); // Model 2B
+    // 0x00980020 (Model 2B's upload bank register) ignores writes, as MAME's noprw
     // 0x00980004 (read-only status) ignores writes
 }
 
