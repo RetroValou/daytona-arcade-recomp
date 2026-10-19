@@ -465,40 +465,6 @@ std::string adsp21062_device::disassemble_one(uint32_t pc, uint64_t opcode)
 	return b;
 }
 
-adsp21062_device::ProbeState adsp21062_device::probe(uint64_t opcode, const ProbeState &in)
-{
-	// The probes keep their addresses in internal RAM's first 0x200 words (the
-	// DAGs' I registers there, small modifiers): only the words such accesses
-	// reach are cleared and hashed (32-bit data at 0x20000 and its mirror, the
-	// packed 48-bit rows of program memory at +0x1000 and +0x2000).
-	static constexpr uint32_t kProbeRanges[] = {0x0000, 0x1000, 0x2000};
-	for (uint32_t n = 0; n < 2; ++n)
-		for (uint32_t r : kProbeRanges) std::fill(m_blocks[n] + r, m_blocks[n] + r + 0x300, 0);
-	for (int k = 0; k < 16; ++k) {
-		m_core->r[k].r = int32_t(in.r[k]);
-		auto &dag = k < 8 ? m_core->dag1 : m_core->dag2;
-		dag.i[k & 7] = in.i[k]; dag.m[k & 7] = in.m[k]; dag.l[k & 7] = in.l[k]; dag.b[k & 7] = in.b[k];
-	}
-	m_core->astat = in.astat; m_core->mode1 = in.mode1; m_core->stky = in.stky;
-	m_core->mrf = in.mrf; m_core->mrb = in.mrb;
-	m_core->pc = 0x20000; m_core->daddr = 0x20001; m_core->faddr = 0x20002; m_core->nfaddr = 0x20003;
-	m_core->opcode = opcode;
-	(this->*m_sharc_op[(opcode >> 39) & 0x1ff])();
-	ProbeState out = in;
-	for (int k = 0; k < 16; ++k) {
-		out.r[k] = uint32_t(m_core->r[k].r);
-		const auto &dag = k < 8 ? m_core->dag1 : m_core->dag2;
-		out.i[k] = dag.i[k & 7];
-	}
-	out.astat = m_core->astat; out.stky = m_core->stky; out.mrf = m_core->mrf; out.mrb = m_core->mrb;
-	uint64_t h = 1469598103934665603ull;
-	for (uint32_t n = 0; n < 2; ++n)
-		for (uint32_t r : kProbeRanges)
-			for (uint32_t w = r; w < r + 0x300; ++w) h = (h ^ m_blocks[n][w]) * 1099511628211ull;
-	out.ram_hash = h;
-	return out;
-}
-
 uint32_t adsp21062_device::pc() const { return m_core->pc; }
 uint32_t adsp21062_device::daddr() const { return m_core->daddr; }
 uint64_t adsp21062_device::opcode() const { return m_core->opcode; }

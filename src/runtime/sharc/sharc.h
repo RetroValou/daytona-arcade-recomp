@@ -88,14 +88,6 @@ public:
     };
     void set_direct_board(const DirectBoard &b) { m_direct = b; }
 #endif
-    // For m2sharcrecomp's flag analysis: one instruction's handler run on a given
-    // state (registers, ASTAT, MODE1, STKY, the DAGs' I/M/L/B, MRF/MRB, internal
-    // RAM), out of the pipeline; the state it leaves.
-    struct ProbeState {
-        uint32_t r[16], astat, mode1, stky, i[16], m[16], l[16], b[16];
-        uint64_t mrf, mrb, ram_hash;
-    };
-    ProbeState probe(uint64_t opcode, const ProbeState &in);
     // M2_SHARC_PROFILE builds: executions per instruction of the program (the
     // recompiled code counts into it; nullptr: none).
     void set_profile(uint32_t *counts) { m_profile = counts; }

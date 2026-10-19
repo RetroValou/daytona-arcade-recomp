@@ -28,7 +28,6 @@
 // core's other build): link it instead of the `sharc` library.
 
 #include <algorithm>
-#include "runtime/sharc/sharc.h"
 
 #include <cctype>
 #include <cinttypes>
@@ -258,64 +257,6 @@ std::string compute_inline(const std::string &path) {
     return std::regex_replace(t, std::regex(R"(\n([A-Za-z][^\n]*?adsp21062_device::\w+\([^\n]*\))[ \t]*\n\{)"), "\nSHARC_INLINE $1\n{");
 }
 
-// Flag analysis: which of the ALU, multiplier and shifter flags of ASTAT (the
-// only ones it may leave uncomputed: AF, BTF and the compare accumulation are
-// always computed) a plain instruction reads and always writes, measured by
-// running MAME's handler (the lifted core) on many states: a flag is read if
-// flipping it on entry changes anything else, written if its value on exit
-// never depends on its value on entry. Registers and floats from a pool of
-// edge values (0, +-1, the extremes, +-0.0, infinities, NaNs, denormals)
-// and random ones; MODE1's saturation, truncation and 32-bit rounding at
-// random; the DAGs inside internal RAM. A handler that throws on a probe
-// (an address it may not touch) reads all and writes none.
-constexpr uint32_t kTracked = 0x3bff; // AZ AV AN AC AS AI MN MV MU MI SV SZ SS
-struct Flags {
-    uint32_t read = kTracked, written = 0;
-};
-struct NullBus : rt::sharc::Bus {
-    uint32_t read(uint32_t) override { return 0; }
-    void write(uint32_t, uint32_t) override {}
-};
-Flags probe_flags(rt::sharc::adsp21062_device &core, uint64_t opcode, uint32_t &seed) {
-    auto rnd = [&seed] { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; return seed; };
-    static const uint32_t pool[] = {0, 1, 0xffffffff, 0x80000000, 0x7fffffff, 0x3f800000, 0xbf800000, 0x80000000,
-                                    0x7f800000, 0xff800000, 0x7fc00000, 0x7fffffff, 0x00000001, 0x007fffff,
-                                    0x7f7fffff, 0x00800000, 0x4b000000, 0xcf000000, 0x00010000, 0x0000ffff};
-    Flags f{0, kTracked};
-    try {
-        for (int trial = 0; trial < 384; ++trial) {
-            rt::sharc::adsp21062_device::ProbeState in{};
-            for (int k = 0; k < 16; ++k) {
-                const uint32_t pick = rnd();
-                in.r[k] = (pick & 3) == 0 ? rnd() : pool[(pick >> 2) % (sizeof pool / 4)];
-                in.i[k] = 0x20000 + (rnd() & 0x1ff); // inside the words probe() clears and hashes
-                in.m[k] = uint32_t(int32_t(rnd() % 9) - 4);
-            }
-            in.astat = rnd() & 0x00ffffff & ~0x780000u;
-            in.mode1 = rnd() & (0x2000 | 0x8000 | 0x10000);
-            in.stky = 0;
-            in.mrf = uint64_t(rnd()) << 32 | rnd();
-            in.mrb = uint64_t(rnd()) << 32 | rnd();
-            const auto out0 = core.probe(opcode, in);
-            for (int bit = 0; bit < 14; ++bit) {
-                const uint32_t b = 1u << bit;
-                if (!(kTracked & b)) continue;
-                auto flipped = in;
-                flipped.astat ^= b;
-                const auto out1 = core.probe(opcode, flipped);
-                if ((out1.astat ^ out0.astat) & b) f.written &= ~b;
-                bool other = ((out1.astat ^ out0.astat) & ~b) || out1.stky != out0.stky || out1.mrf != out0.mrf ||
-                             out1.mrb != out0.mrb || out1.ram_hash != out0.ram_hash;
-                for (int k = 0; k < 16 && !other; ++k) other = out1.r[k] != out0.r[k] || out1.i[k] != out0.i[k];
-                if (other) f.read |= b;
-            }
-        }
-    } catch (const std::exception &) {
-        return Flags{};
-    }
-    return f;
-}
-
 std::string handler(const std::vector<Op> &ops, uint64_t opcode) {
     const uint16_t op = uint16_t(((opcode >> 39) & 0x1ff) << 7);
     for (const Op &o : ops)
@@ -424,7 +365,10 @@ int main(int argc, char **argv) {
         // after a full step (plain_ready): the interpreter's steps run until it
         // is gone. The step_pre checks a plain run skips (a delayed IOP write,
         // DMA cycles, interrupts, idling) only change when a full step runs, or
-        // with a DMA running: run_generated refuses that.
+        // with a DMA running: run_generated refuses that. So step_pre runs
+        // only after full steps (and at run_generated's entry), not where a run
+        // ends, a pinned branch is taken or a counter loop loops back: those
+        // count (done) and test the budget. m_instructions is set on exit.
         const std::set<std::string> plain_names = {
             "sharcop_compute", "sharcop_compute_ureg_dmpm_premod", "sharcop_compute_ureg_dmpm_postmod",
             "sharcop_compute_dm_to_dreg_immmod", "sharcop_compute_dreg_to_dm_immmod", "sharcop_compute_pm_to_dreg_immmod",
@@ -511,50 +455,15 @@ int main(int argc, char **argv) {
         for (uint32_t k = 0; k < n; ++k) if (full[k]) pinned[k] = false;
         if (full_steps) full.assign(n, true), pinned.assign(n, false);
 
-        // The flag analysis (plain instructions), then the liveness within each
-        // run of them: every tracked flag is live where a run ends (a full step
-        // may read anything: conditions, loop ends, status pushes, ASTAT reads).
-        std::vector<Flags> flags(n);
-        std::vector<uint32_t> keep(n, kTracked); // the flags an instruction's writes must still compute
-        {
-            NullBus bus;
-            rt::sharc::adsp21062_device core(bus);
-            uint32_t seed = 0x2545f491;
-            std::map<uint64_t, Flags> seen;
-            for (uint32_t k = 0; k < n; ++k) {
-                if (full[k] || pinned[k]) continue;
-                auto it = seen.find(prog[k]);
-                if (it == seen.end()) it = seen.emplace(prog[k], probe_flags(core, prog[k], seed)).first;
-                flags[k] = it->second;
-            }
-            for (uint32_t k = n; k-- > 0;) {
-                if (full[k] || pinned[k]) continue;
-                const bool run_ends = k + 1 >= n || full[k + 1] || pinned[k + 1] || (k + 1) % chunk == 0;
-                const uint32_t live_after = run_ends ? kTracked : (flags[k + 1].read | (keep[k + 1] & ~flags[k + 1].written));
-                keep[k] = live_after;
-            }
-        }
-        uint64_t written_bits = 0, dead_bits = 0;
-        for (uint32_t k = 0; k < n; ++k)
-            if (!full[k] && !pinned[k]) {
-                written_bits += std::popcount(flags[k].written);
-                dead_bits += std::popcount(flags[k].written & ~keep[k]);
-            }
-        std::printf("m2sharcrecomp: flags: %llu flag writes in plain instructions, %llu dead (%.0f %%)\n",
-                    (unsigned long long)written_bits, (unsigned long long)dead_bits,
-                    written_bits ? 100.0 * double(dead_bits) / double(written_bits) : 0.0);
         if (const char *prof = std::getenv("M2SHARC_PROFILE_FILE")) { // the dynamic share, from m2sharcprof's counts
             std::ifstream pf(prof);
             uint32_t addr = 0;
-            uint64_t count = 0, w = 0, d = 0, all = 0, by[8] = {}, shifts = 0, pins = 0;
+            uint64_t count = 0, all = 0, by[8] = {}, shifts = 0, pins = 0;
             while (pf >> std::hex >> addr >> std::dec >> count) {
                 const uint32_t k = addr - base;
                 all += count;
                 if (k < n) by[full[k] ? why[k] : 0] += count, shifts += !full[k] && astat_shift[k] ? count : 0, pins += pinned[k] ? count : 0;
-                if (k < n && !full[k] && !pinned[k]) w += count * std::popcount(flags[k].written), d += count * std::popcount(flags[k].written & ~keep[k]);
             }
-            std::printf("m2sharcrecomp: flags, weighted by the profile: %.2f flag writes an executed instruction, %.2f dead\n",
-                        all ? double(w) / double(all) : 0.0, all ? double(d) / double(all) : 0.0);
             const auto pc = [&](uint64_t v) { return all ? 100.0 * double(v) / double(all) : 0.0; };
             std::printf("m2sharcrecomp: steps, weighted by the profile: %.1f %% in plain runs (%.1f %% pinned branches, %.1f %% shifting the ASTAT "
                         "history); full: %.1f %% as control flow/sysreg writes, %.1f %% only as delay slots, %.1f %% only as loop ends, "
@@ -637,9 +546,8 @@ int main(int argc, char **argv) {
                              "\t\t\tconst uint32_t top = TOP_PC();\n"
                              "\t\t\tM2SHARC_EV(loop_backs);\n"
                              "\t\t\tm_core->pc = top; m_core->daddr = top; m_core->faddr = top + 1; m_core->nfaddr = top + 2;\n"
-                             "\t\t\tm_instructions += plain; done += plain; plain = 0;\n"
-                             "\t\t\tif (done >= m_budget) return 2;\n"
-                             "\t\t\tif (!step_pre()) return 1;\n";
+                             "\t\t\tdone += plain; plain = 0;\n"
+                             "\t\t\tif (done >= m_budget) return 2;\n";
                         const auto &tops = loop_tops.at(a);
                         if (tops.size() == 1 && *tops.begin() - base >= first && *tops.begin() - base < last)
                             o << "\t\t\tif (m_core->daddr == " << hx(*tops.begin()) << ") goto L_" << std::hex << *tops.begin() << std::dec << ";\n";
@@ -651,9 +559,8 @@ int main(int argc, char **argv) {
                     // run's end (CHANGE_PC wrote the pipeline), then the target.
                     const auto taken = [&](uint32_t target, const char *event) {
                         o << "\t\t\tM2SHARC_EV(" << event << ");\n"
-                             "\t\t\tm_instructions += plain; done += plain; plain = 0;\n"
-                             "\t\t\tif (done >= m_budget) return 2;\n"
-                             "\t\t\tif (!step_pre()) return 1;\n";
+                             "\t\t\tdone += plain; plain = 0;\n"
+                             "\t\t\tif (done >= m_budget) return 2;\n";
                         if (target >= base && target - base >= first && target - base < last)
                             o << "\t\t\tif (m_core->daddr == " << hx(target) << ") goto L_" << std::hex << target << std::dec << ";\n";
                         o << "\t\t\tcontinue;\n"
@@ -678,16 +585,15 @@ int main(int argc, char **argv) {
                     o << "\t\tM2SHARC_EV(run_ends);\n"
                       << "\t\tm_core->pc = " << hx(a) << "; m_core->daddr = " << hx(a + 1) << "; m_core->faddr = " << hx(a + 2)
                       << "; m_core->nfaddr = " << hx(a + 3) << ";\n"
-                      << "\t\tm_instructions += plain; done += plain; plain = 0;\n"
-                      << "\t\tif (done >= m_budget) return 2;\n"
-                      << "\t\tif (!step_pre()) return 1;\n";
+                      << "\t\tdone += plain; plain = 0;\n"
+                      << "\t\tif (done >= m_budget) return 2;\n";
                 } else {
                     o << "\t\tM2SHARC_EV(full_steps);\n"
                       << "\t\tstep_fetch_gen(" << hx(prog[k]) << "ull);\n";
                     if (loop_ends.count(a)) o << "\t\tstep_loop_end();\n";
                     o << "\t\t" << call << "\n"
                       << "\t\tstep_after();\n";
-                    if (waits.count(a)) o << "\t\tif (m_core->daddr == " << hx(a) << ") return 1; // polling its flags\n";
+                    if (waits.count(a)) o << "\t\tif (m_core->daddr == " << hx(a) << ") { ++done; return 1; } // polling its flags\n";
                     o << "\t\t++done;\n\t\tif (done >= m_budget) return 2;\n\t\tif (!step_pre()) return 1;\n";
                 }
                 if (k + 1 < last) {
@@ -721,8 +627,8 @@ int main(int argc, char **argv) {
         for (uint32_t k = 0; k < n; ++k) o << (k % 32 ? "" : "\n    ") << (full[k] ? "SharcFull" : pinned[k] ? "SharcPinned" : "SharcPlain") << ",";
         o << "\n};\n"
              "// A run_generated exit: its size, why (waiting or the budget).\n"
-             "#define M2SHARC_EXIT(w) do { M2SHARC_SIZE(done); ++((w) ? sharc_profile.exit_wait : sharc_profile.exit_budget); return (w); } while (0)\n"
-             "#else\n#define M2SHARC_EXIT(w) return (w)\n#endif\n\n";
+             "#define M2SHARC_EXIT(w) do { m_instructions = start + done; M2SHARC_SIZE(done); ++((w) ? sharc_profile.exit_wait : sharc_profile.exit_budget); return (w); } while (0)\n"
+             "#else\n#define M2SHARC_EXIT(w) do { m_instructions = start + done; return (w); } while (0)\n#endif\n\n";
         for (uint32_t c = 0; c < chunks; ++c)
             o << "template <> int adsp21062_device::run_chunk<" << c << ">(uint64_t &done);\n";
         o << "\nbool adsp21062_device::run_generated(uint64_t budget)\n{\n"
@@ -734,6 +640,9 @@ int main(int argc, char **argv) {
              "\t\tm_gen_checked = true;\n"
              "\t\tm_gen_end = " << hx(base + n) << ";\n"
              "\t}\n"
+             "\t// done: every instruction this call runs; m_instructions is start + done on exit\n"
+             "\t// (plain runs count only in done; full steps' step_after also counts, overwritten).\n"
+             "\tconst uint64_t start = m_instructions;\n"
              "\tuint64_t done = 0;\n"
              "\tm_budget = budget; // end_run() lowers it\n"
              "\tM2SHARC_EV(gen_calls);\n"

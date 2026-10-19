@@ -231,7 +231,6 @@ endif()
 add_executable(m2sharccheck tools/m2sharccheck/main.cpp)
 target_link_libraries(m2sharccheck PRIVATE sharc)
 add_executable(m2sharcrecomp tools/m2sharcrecomp/main.cpp)
-target_link_libraries(m2sharcrecomp PRIVATE sharc) # the core, for the flag analysis's probes
 
 add_executable(m2replay tools/m2replay/main.cpp)
 target_link_libraries(m2replay PRIVATE refcore)

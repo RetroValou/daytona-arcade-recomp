@@ -21,6 +21,14 @@ input wiring, hooks) lives in `src/games/` and `scripts/games.py`; the rest
 is the Model 2 board, shared by every game. To add one, see
 [docs/adding-a-game.md](docs/adding-a-game.md).
 
+**Fighting Vipers (fvipers, Model 2B): a test, not playable on the Vita.**
+It is recompiled and runs on the PC (its SHARC geometry coprocessor
+recompiled too, identical to MAME), and a Vita package can be built, but
+**the PS Vita cannot run it at speed today**: about 26 fps in a fight
+against 57.5, the SHARC alone taking ~20 ms of a 17.4 ms frame on the
+main core. It is kept as a test of the Model 2B board, not as a game to
+play; `build_vita.py --game all` leaves it out (`scripts/games.py`).
+
 ## ROM sets
 
 You need your own ROM sets, as complete MAME sets: **full merged** archives
@@ -29,7 +37,8 @@ including the files a clone shares with its parent. A split set (a clone's
 archive with only the files that differ from its parent) is refused: the
 importer checks every file of the set by name and CRC. Put them in `roms/`
 as `daytona93.zip`, `srallyc.zip` (or MAME's merged `srallycb.zip`),
-`vf2.zip`, `vcop.zip`, `vcop2.zip` and `manxtt.zip`; on the Vita, see [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md).
+`vf2.zip`, `vcop.zip`, `vcop2.zip`, `manxtt.zip` and `fvipers.zip` (the
+Fighting Vipers test); on the Vita, see [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RELEASE.md).
 
 Manx TT Superbike is built from its **Twin** version, MAME's `manxttc`
 (Revision C, set to the Twin cabinet: the SCSP sound board only). The

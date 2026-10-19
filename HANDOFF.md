@@ -1,5 +1,41 @@
 # Handoff
 
+## SHARC on the Vita stopped: Fighting Vipers stays a test; lighter run boundaries (2026-10-19)
+
+Decision (user): no more SHARC work for the Vita; it will not reach speed
+there as it is. README: Fighting Vipers is a test of the Model 2B board,
+not playable on the Vita (~26 fps in a fight, the SHARC ~20 ms of a 17.4 ms
+frame on core 0).
+Last change, kept (generic, exact): m2sharcrecomp's plain-run boundaries (a
+run's end, a pinned branch taken, a counter loop looping back) no longer
+run step_pre nor update m_instructions: nothing step_pre tests can change
+between full steps inside a run_generated call (interrupts, idle, the IOP
+delay, DMA only move through full steps or from outside, which does not run
+during the call); they add to done and test the budget. run_generated sets
+m_instructions = start + done on exit; the polling exit counts its
+instruction (it had been lost: 613,709,678 instead of 679). ~30 ARM
+instructions fewer a boundary, ~150 boundaries per 1000 SHARC instructions.
+Checks: m2sharccheck_gen MATCH, fight 613,709,679 and attract 459,076
+instructions; m2native attract MATCH (596 of 596 screens); fvipers_fight
+6,000 frames, last screen 2fcd2223eeb056c0 as before. Not measured on the
+Vita.
+Registers as locals (the N64Recomp/ReXGlue technique), analysed and not
+done: in the hot chunk's Vita code (marked, -O3), of 3,899 loads 18 re-read
+a value stored in the same straight-line stretch and 1 a value already
+read; of 1,954 stores 177 (9 %, mostly ASTAT) are overwritten before a
+read. GCC already keeps the SHARC's registers in ARM registers within a
+run; locals would save a few per cent. A distinct type for internal memory
+(TBAA) gave byte-identical code. The direct board accesses (M2_FAST_SHARC)
+measured on the Vita: no change beyond session noise (22.5 -> 22.7 ms at
+~130 k instructions).
+Cleanup: the flag analysis (m2sharcrecomp's probe_flags, keep[], the flag
+statistics) and its probe API (adsp21062_device::probe, ProbeState) removed:
+measurement code for a transformation ruled out; m2sharcrecomp no longer
+links the sharc library. The generated code is byte-identical.
+Read for ideas: extern/N64Recomp (MIT; RSPRecomp: GPRs and the vector state
+as locals, delay slots duplicated, goto branches), extern/rexglue-sdk
+(BSD-3; *_as_local options per register family, skip_lr/skip_msr).
+
 ## Vita menu: input settings on Controls, Options by group, resume latency (2026-10-19)
 
 Controls holds every input setting (dead zone, the wheel's invert, curve and
@@ -4434,6 +4470,13 @@ Also found:
   the Vita's instruction cache: 26 % slower on the console than the
   specialised code (3.22 against 2.37 M instructions/s, same session).
 - Applying SHARC flag liveness: ~1.1 dead flag writes an executed instruction.
+- SHARC registers as locals in plain runs: GCC already forwards them (18 of
+  3,899 loads re-read a stored value in the hot chunk); a few per cent.
+- Fastmem (MMU mirroring, SIGSEGV for faults) on the Vita: no user-mode
+  fault handlers, no free placement of pages; the SHARC's range test is one
+  compare.
+- NEON for the emulated geometry (TGP/SHARC programs): per game, and the
+  A9's NEON flushes denormals (not bit-identical to MAME for the i960).
 - Bigger SHARC chunks (1024, 2048 instructions) to cut chunk calls: slower
   on the PC fight check (~10 %), minutes more to compile for the Vita.
 - -marm for the Vita's SHARC code: dropped by the user (Thumb-2 kept; ARM
