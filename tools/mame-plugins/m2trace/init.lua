@@ -65,6 +65,16 @@ local READ_TAPS = {
 	{ 0x01c80000, 0x01c80003, "uart" },
 	{ 0x10000000, 0x105fffff, "render" },
 }
+-- Model 2B-CRX (a SHARC copro, MAME's :copro_adsp): its own device ranges, added
+-- only on that board so the other boards' traces stay as they were.
+local WRITE_TAPS_2B = {
+	{ 0x00980010, 0x0098003f, "copro_ctl_2b" }, -- 0x980020: the SHARC upload's bank register
+	{ 0x008c0000, 0x008c0fff, "copro_iop" },    -- the SHARC's IOP registers (its DMA set-up)
+	{ 0x009c0000, 0x009c0007, "uart_2b" },      -- the sound UART
+}
+local READ_TAPS_2B = {
+	{ 0x009c0000, 0x009c0007, "uart_2b" },
+}
 local IRQ_ACK = 0x00e80000
 local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE", ":P1_X", ":P1_Y", ":THROTTLE", ":BANK" } -- P1_X/Y: vcop's light gun; THROTTLE/BANK: manxtt's bike
 local GEAR_BITS = { port = ":IN1", mask = 0x70 } -- computed from GEARS (when the set has them), not replayed
@@ -162,6 +172,10 @@ local function stalled()
 end
 
 local function install_taps()
+	if manager.machine.devices[":copro_adsp"] then
+		for _, t in ipairs(WRITE_TAPS_2B) do WRITE_TAPS[#WRITE_TAPS + 1] = t end
+		for _, t in ipairs(READ_TAPS_2B) do READ_TAPS[#READ_TAPS + 1] = t end
+	end
 	for _, t in ipairs(WRITE_TAPS) do
 		taps[#taps + 1] = space:install_write_tap(t[1], t[2], "m2trace_w_" .. t[3],
 			function(offset, data, mask)

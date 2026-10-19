@@ -27,8 +27,12 @@ std::vector<RomCheck> check_rom_set(const std::string &zip_path);
 // Load and lay out the images. Throws ZipError naming the first problem.
 M2Board::Images import_rom_set(const std::string &zip_path);
 
-// The TGP program the i960 uploads at boot, cut from main_data (CRC-checked).
+// The TGP program the i960 uploads at boot, cut from main_data (CRC-checked):
+// empty for a board without a TGP.
 std::vector<uint8_t> tgp_program(const M2Board::Images &img);
+// Model 2B: the SHARC program the i960 uploads at boot (Game::sharc; 16-bit
+// little-endian words, CRC-checked): empty for the other boards.
+std::vector<uint8_t> sharc_program(const M2Board::Images &img);
 // The SCSP DSP program the sound driver loads (Game::dsp), cut from the sound
 // program (CRC-checked; big-endian words): empty for a game without one.
 std::vector<uint8_t> dsp_program(const M2Board::Images &img);

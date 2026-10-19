@@ -248,6 +248,23 @@ With every enhancement off the build is the game as MAME runs it; parity checks 
 | High frame rate | Interpolate display lists between frames | High; logic stays at native rate |
 | MSAA | Standard multisample target | Low |
 
+## Model 2B (Fighting Vipers): the SHARC copro
+
+Added 19 Oct 2026, from MAME `model2.cpp` (`model2b_state`) and MAME runs; nothing here is checked on a PCB yet.
+
+**The board.** Model 2B-CRX is the 2A-CRX i960 board (the same i960KB, work RAM, 315-5649 I/O, 93C46, SCSP sound board) with an Analog Devices ADSP-21062 SHARC (32 MHz in MAME, host boot) as the copro instead of the TGP. The i960's map differs from 2A-CRX in: the SHARC's IOP registers at 0x008c0000 (written), copro status at 0x00980014, an upload bank register at 0x00980020 (MAME: `noprw`, "all games just set this to 0"), the sound UART at 0x009c0000 (not 0x01c80000), texture RAM at 0x11000000 and 0x11200000 (1 MB each, each mirrored once, plain RAM) and luma RAM at 0x11400000 (bytes, MAME `umask16 0x00ff`). The copro FIFO (0x00884000) and function port (0x00880000) are where the TGP's were. `rt::BoardType::Model2b`.
+
+**The SHARC program.** Fighting Vipers uploads it at frame 3: copro control bit 31 set, DMA channel 6 set up through the IOP port (control 0xa1: 16/48 packing, to internal address 0x20000, 0x10ff+1 instructions), then 13,053 16-bit FIFO words (4,351 48-bit instructions), then bit 31 cleared to boot. The words are in main_data at 0x100000c, after a header holding that DMA set-up (MAME Lua taps on the i960's writes, `-nodrc`). `Game::sharc` locates it; `m2import` cuts it out as `sharc_program.bin`, as the TGP program.
+
+**Oracle.** MAME runs the SHARC through its DRC by default (`enable_recompiler`): 15.6 % speed on this PC. With `-nodrc` its interpreter runs at 152 %, and the interpreter is the reference for bit-identity (rule: MAME for what the silicon computes; its DRC is MAME's own optimisation, not the silicon). MAME marks fvipers `MACHINE_NOT_WORKING`; its attract under `-nodrc` draws the warning, the fighters and the logo correctly (snapshots, 19 Oct 2026). MAME's SHARC core (`src/devices/cpu/sharc`) is BSD-3-Clause, so its semantics may be lifted, recorded in `THIRD_PARTY.md` (unlike the MiSTer core).
+
+**Plan**, in order, each step checked against MAME before the next:
+
+1. The i960 side, M1: the game record, seeds from MAME's harvest, `m2native` with every copro access replayed from the trace (it skips the TGP model on Model 2B), then the wait loops (`M2_SPIN_SKIP`).
+2. The SHARC: a static recompiler for the uploaded program (`m2sharcrecomp`, as `m2tgprecomp`), semantics from MAME's interpreter, its FIFO outputs bit-identical to MAME's (patch 0005 logs the SHARC's side, as 0002 does the TGP's). Same policy as the TGP: run on demand, caught up before the i960 reads its FIFO, status or shared memory. **Reference in place (19 Oct 2026):** MAME's interpreter lifted into `src/runtime/sharc/` (the instruction files byte-identical to upstream) and checked by `m2sharccheck` against MAME's log: a 6,000-frame fight, 613.7 M SHARC instructions, every FIFO word and buffer RAM access identical. On 2B the SHARC is never interrupted (MAME drives only its HALT line); it polls FLAG0 (input FIFO empty) in a one-instruction `do … until` loop, so "waiting for input" is visible as that loop with FLAG0 set. MAME sets FLAG1 from the *input* FIFO's fullness (from the output FIFO's callbacks): reproduced as MAME has it.
+3. The 2B video differences: texture RAM, luma RAM, anything the geometrizer does differently on 2B.
+4. The desktop and Vita builds (the board's `M2Board` side, sound, controls), then speed.
+
 ## Audio, inputs, force feedback, link play
 
 Nothing here is interpreted either. A board whose CPU runs a program gets that program statically recompiled, like the i960 and the TGP; a board whose behaviour is a fixed protocol gets native C++ for that protocol (HLE). If an HLE turns out not to be exact, the board's own program is recompiled instead; there is no fallback to an interpreter.

@@ -1,5 +1,88 @@
 # Handoff
 
+## Fighting Vipers (fvipers; Model 2B-CRX): the i960 side matches MAME (2026-10-19)
+
+First Model 2B game (the user's choice: no Virtua Fighter runs on 2B; MAME
+marks fvipers NOT_WORKING but draws its attract right under -nodrc). Plan and
+board facts: design doc, "Model 2B (Fighting Vipers): the SHARC copro".
+Done (step 1 of the plan):
+- rt::BoardType::Model2b (crx() covers 2A and 2B); src/games/fvipers.cpp,
+  scripts/games.py (game fightingvipers, Vita FVIP00099; vita_fast empty),
+  platform/vita/logo_livearea/fightingvipers/. Game::mirrors (main_data's
+  two ROM_COPY blocks above 16 MB) and Game::sharc; m2import writes
+  sharc_program.bin (13,053 16-bit words at main_data 0x100000c, CRC
+  0x92DCEC90, equal to every word MAME's FIFO took in boot mode) and an empty
+  tgp_program.bin (m2tgprecomp now accepts an empty program: every call is
+  "control outside the recompiled program"). Our program.bin and 32 MB
+  main_data are byte-identical to MAME's regions (Lua dump).
+- Trace plugin and replay bus: 2B's own ranges, only when the machine has a
+  SHARC (WRITE_TAPS_2B: 0x980010-0x98003f, the IOP port 0x8c0000, the UART
+  0x9c0000; docs/trace-format.md), its RAM (texture 0x11000000/0x11200000,
+  luma 0x11400000 as plain RAM), and no BURST on the geometrizer program port
+  and the function port (MAME maps them without it on 2B: a stq writes every
+  word at 0x804000; found as a divergence 91 M instructions into the fight).
+  m2native runs M1 on 2B (copro, buffer RAM, geometrizer replayed);
+  m2_check.sh passes -nodrc to MAME for a model2b set.
+- Seeds: seeds/fvipers.txt (345, MAME harvest of attract and
+  scripts/inputs/fvipers_fight.txt), seeds/fvipers_snd.txt (five "jmp
+  (d16,pc)" tables, 145 entries; 22 of their entries were the only seeds the
+  2,042 addresses MAME's 68000 ran needed, found by adding the lowest
+  uncovered executed address until none was left).
+- Checks: attract 600 frames m2native and m2replay MATCH (73.8 M
+  instructions, 6.95 M device events, 1,320 interrupts); fvipers_fight 6,000
+  frames m2native MATCH (641.1 M instructions, 43.7 M device events, 12,286
+  interrupts); m2sndcheck MATCH (72.0 M 68000 instructions, 206,179
+  checkpoints, 188,636 interrupts). Stream header traces/hdr_fvipers.m2in.
+- Wait loop: 0x118dc ldob 0x500000,r3 / cmpibe r3,g0 (as Daytona's 0x1394),
+  where MAME takes 1,887 of 2,992 vblank interrupts in 3,000 frames of
+  attract: Game::idle and a ByteIsReg spin entry. NOT checked with
+  M2_SPIN_SKIP OFF against ON: the board cannot run the game before the SHARC.
+  0x4c5bc-0x4c8ac (also often interrupted) are decompression loops.
+- MAME: its SHARC DRC (the default) runs fvipers at 15.6 % here, -nodrc at
+  152 %. A Lua screen:snapshot() works under -video none; video:snapshot()
+  wrote nothing. cpu.state["IP"] is not the i960's state name (use "ip"), and
+  an error in a tap callback is silent.
+The SHARC program: 4,351 instructions, 27 of the 43 opcode groups of MAME's
+table (788 compute, 473 ureg to dm indirect, 423 compute with dm/pm premod,
+353 relative jumps, 343 immediate to ureg, ... 112 rti, 73 do-until loops);
+some may be data, reachability will say. Packing: MSWF 0, an instruction is
+w0 | w1 << 16 | w2 << 32.
+Step 2, started: the SHARC's reference, checked against MAME.
+- patches/mame/0005-sharc-log.patch: $M2TRACE_SHARCLOG (IOP writes, the
+  upload, every FIFO pop/push and buffer RAM access the SHARC makes, in
+  order) and $M2TRACE_SHARCPC (PC, opcode, ASTAT, MODE1, R0-R15 before each
+  interpreter instruction; a run at one address folded into "rep N").
+- src/runtime/sharc/: MAME's SHARC interpreter lifted (BSD-3; THIRD_PARTY.md):
+  sharcops.hxx, compute.hxx, sharcdma.hxx, sharcinternal.ipp byte-identical
+  to upstream, sharcops_table.inc without its includes, sharc.h/sharc.cpp
+  without the device framework (our program/data spaces, rt::sharc::Bus for
+  the board's map, step() = one pass of the interpreter loop), sharc_shim.h.
+  CMake library `sharc` (-w: upstream's warnings).
+- tools/m2sharccheck IMAGES SHARC.log [SHARC.pc]: boots it through MAME's IOP
+  writes and the upload, then FIFO reads get MAME's next "in", buffer reads
+  MAME's value, writes must match; FLAG0 (input FIFO empty) is clear exactly
+  when MAME's next event is a read (on demand, as the board will run it).
+  Results: attract 600 frames MATCH (25,031 words in, 5,631 out, 458,942
+  instruction lines identical); fvipers_fight 6,000 frames MATCH (613.7 M
+  SHARC instructions, 50.1 M events: 21.7 M in, 5.8 M out, 9.1 M buffer
+  reads, 13.5 M writes; the first 40 M instruction lines identical too).
+  24.8 M SHARC instructions/s on this PC; the game needs ~102 k a frame
+  (5.9 M/s): fine for the PC, the Vita needs the recompiler.
+- Findings: after the boot the SHARC waits in a one-nop do-until loop at
+  0x20133 (MAME: 3.46 M passes before the first input); no interrupt reaches
+  it on 2B (MAME drives only its HALT line), so its rti's are not reached in
+  these runs; its host boot starts no DMA (external_iop_write's write to
+  0x1c sets the control word without iop_w); ASTAT's FLG0-3 bits are a copy
+  of the flag inputs taken when the program rewrites ASTAT (0x20096 clears
+  FLG2/3 through GET_UREG/SET_UREG): they depend on when the i960 fills the
+  FIFO, so m2sharccheck compares ASTAT without them; MAME sets FLAG1 from
+  the input FIFO's fullness, and only from the output FIFO's callbacks.
+Next: m2sharcrecomp (the program recompiled: per instruction, the lifted
+helpers with the opcode's fields constant; the pipeline registers kept as
+MAME's so delayed branches and loops stay exact), checked with m2sharccheck;
+then the board side (M2Board's copro on 2B), the 2B video (texture and luma
+RAM), the game on the PC, the spin check, the Vita.
+
 ## Manx TT's lean mirrored; Vita steering smoothing (2026-10-19)
 
 Lean fix: MAME declares manxtt's BANK PORT_REVERSE (a lean right reads low);

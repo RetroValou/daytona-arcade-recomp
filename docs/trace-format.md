@@ -89,6 +89,9 @@ does is covered by the RAM hashes.
 | 0x01c00000-0x01c00fff | I/O board dual-port RAM (inputs, drive board, lamps) | W, R |
 | 0x01c80000-0x01c80003 | sound UART | W, R |
 | 0x10000000-0x105fffff | renderer mode and polygon count registers | R |
+| 0x00980010-0x0098003f | Model 2B only: copro control's upper registers (0x980020, the SHARC upload's bank) | W |
+| 0x008c0000-0x008c0fff | Model 2B only: the SHARC's IOP registers (its DMA set-up for the program upload) | W |
+| 0x009c0000-0x009c0007 | Model 2B only: the sound UART (MAME's i8251 there, umask32 0x000000ff) | W, R |
 
 Every non-RAM range the i960 reads is tapped, so a harness can answer device reads from the trace (M1).
 

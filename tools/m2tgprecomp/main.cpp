@@ -323,7 +323,9 @@ int main(int argc, char **argv) {
     }
     std::ifstream f(argv[1], std::ios::binary);
     const std::vector<uint8_t> raw{std::istreambuf_iterator<char>(f), {}};
-    if (raw.empty() || raw.size() % 4 || raw.size() > 0x4000) {
+    // Empty: a board without a TGP (Model 2B's SHARC); every call is "control
+    // outside the recompiled program".
+    if (raw.size() % 4 || raw.size() > 0x4000) {
         std::fprintf(stderr, "m2tgprecomp: %s: bad program image\n", argv[1]);
         return 2;
     }
@@ -339,7 +341,8 @@ int main(int argc, char **argv) {
     // vector and every return address. Computed targets (brul/bsul through
     // registers or data RAM) are not followed; they land on a label anyway.
     std::set<uint32_t> seen;
-    std::vector<uint32_t> work{0};
+    std::vector<uint32_t> work;
+    if (n) work.push_back(0);
     for (uint32_t pc = 0; pc < n; pc++)
         if (ins[pc].known && ins[pc].pushes) work.push_back(pc + 1);
     std::vector<std::string> errors;

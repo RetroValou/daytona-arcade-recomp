@@ -136,6 +136,7 @@ add_library(runtime STATIC
     src/games/vcop.cpp
     src/games/vcop2.cpp
     src/games/manxttc.cpp
+    src/games/fvipers.cpp
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")
@@ -212,6 +213,16 @@ if(NOT MSVC)
     # Upstream MAME code: keep its own warnings out of ours.
     set_source_files_properties(src/runtime/cpu/cpu.cpp src/refcore/i960_ref.cpp src/runtime/video/geo.cpp PROPERTIES COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-unused-but-set-variable;-Wno-attributes")
 endif()
+
+# Model 2B's SHARC: MAME's interpreter lifted (src/runtime/sharc, BSD-3;
+# THIRD_PARTY.md), its warnings upstream's; and its check against MAME's log.
+add_library(sharc STATIC src/runtime/sharc/sharc.cpp)
+target_include_directories(sharc PUBLIC src)
+if(NOT MSVC)
+    target_compile_options(sharc PRIVATE -w)
+endif()
+add_executable(m2sharccheck tools/m2sharccheck/main.cpp)
+target_link_libraries(m2sharccheck PRIVATE sharc)
 
 add_executable(m2replay tools/m2replay/main.cpp)
 target_link_libraries(m2replay PRIVATE refcore)

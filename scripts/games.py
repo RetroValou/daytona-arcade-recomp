@@ -30,9 +30,10 @@ Per set (SETS):
   roms          archive names to look for under roms/ (.zip or .7z); the
                 importer checks every file's CRC, so a merged archive named
                 after a clone is fine
-  board         the i960 board: "model2o" (Model 2) or "model2a" (2A-CRX), as
-                rt::BoardType (src/runtime/board/game.h); m2recomp --board inlines
-                its bus (recompile.py --inline-bus, build_vita.py --inline-bus)
+  board         the i960 board: "model2o" (Model 2), "model2a" (2A-CRX) or
+                "model2b" (2B-CRX), as rt::BoardType (src/runtime/board/game.h);
+                m2recomp --board inlines its bus (recompile.py --inline-bus,
+                build_vita.py --inline-bus; not for model2b)
   recomp        extra m2recomp options: the i960 memory map
                 (tools/m2recomp/main.cpp)
   sndrecomp     extra m2sndrecomp options: the sound board's 68000 map
@@ -85,6 +86,10 @@ GAMES = {
     "manxtt": {
         "title": "Manx TT Superbike", "sets": ("manxttc",),
         "vita_title_id": "MANX00098", "vita_name": "Manx TT Superbike", "vita_link": False,
+    },
+    "fightingvipers": {
+        "title": "Fighting Vipers", "sets": ("fvipers",),
+        "vita_title_id": "FVIP00099", "vita_name": "Fighting Vipers", "vita_link": False,
     },
 }
 
@@ -169,6 +174,17 @@ SETS = {
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN1", 0x10), "vr2": (":IN1", 0x20),
                    "steer": (":BANK", 0xFF), "accel": (":THROTTLE", 0xFF), "brake": (":BRAKE", 0xFF)},
         "full_range": True,
+    },
+    # Model 2B-CRX: the 2A-CRX i960 board with a SHARC copro (program in ROM,
+    # --no-mirror; SCSP sound). Bring-up: the i960 side only, the SHARC
+    # replayed from MAME's trace (m2native in M1 mode); no game build yet.
+    # MAME's inputs are vf2's.
+    "fvipers": {
+        "game": "fightingvipers", "label": "Revision D",
+        "roms": ["fvipers"], "board": "model2b", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
+        "vita_fast": (), "companion": None,
+        "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04)},
+        "full_range": False,
     },
 }
 

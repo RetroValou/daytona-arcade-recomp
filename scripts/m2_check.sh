@@ -47,16 +47,20 @@ print(next(f'roms/{n}.zip' for n in games.SETS['$SET']['roms'] if os.path.exists
     fi
 fi
 export SYSTEM="$SET"
+# Model 2B: MAME's SHARC interpreter, not its DRC (the reference for bit-identity;
+# design doc, "Model 2B"), and ten times faster here.
+DRC=""
+[ "$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games; print(games.SETS['$SET']['board'])")" = model2b ] && DRC=-nodrc
 # Scenario names already prefixed by the set (srallyc_race) are not doubled.
 case "$NAME" in "${SET}_"*|"$SET") OUT="traces/check_$NAME" ;; *) OUT="traces/check_${SET}_$NAME" ;; esac
 [ "$SET" = daytona93 ] && OUT="traces/check_$NAME"
 if [ "$NAME" = attract ]; then
-    M2TRACE_FRAMES=600 M2TRACE_SNDLOG="$ROOT/$OUT.snd" M2TRACE_IRQLOG="$ROOT/$OUT.irq" M2TRACE_TGPLOG="$ROOT/$OUT.tgp" M2TRACE_GEOLOG="$ROOT/$OUT.geo" ./scripts/run_trace.sh "$OUT" >/dev/null 2>&1
+    M2TRACE_FRAMES=600 M2TRACE_SNDLOG="$ROOT/$OUT.snd" M2TRACE_IRQLOG="$ROOT/$OUT.irq" M2TRACE_TGPLOG="$ROOT/$OUT.tgp" M2TRACE_GEOLOG="$ROOT/$OUT.geo" ./scripts/run_trace.sh "$OUT" $DRC >/dev/null 2>&1
 else
     python3 scripts/make_input.py "$HDR" "scripts/inputs/$NAME.txt" "$OUT.m2in"
     FRAMES="$(awk '/^frames/{print $2}' "scripts/inputs/$NAME.txt")"
     M2TRACE_FRAMES="$FRAMES" M2TRACE_REPLAY_INPUT="$OUT.m2in" M2TRACE_SNDLOG="$ROOT/$OUT.snd" M2TRACE_IRQLOG="$ROOT/$OUT.irq" M2TRACE_TGPLOG="$ROOT/$OUT.tgp" M2TRACE_GEOLOG="$ROOT/$OUT.geo" \
-        ./scripts/run_trace.sh "$OUT" >/dev/null 2>&1
+        ./scripts/run_trace.sh "$OUT" $DRC >/dev/null 2>&1
 fi
 STATUS=0
 [ -x "$BUILD/m2native" ] && { "./$BUILD/m2native" "$IMG" "$OUT/trace.m2tr" "$OUT.irq" "$OUT.geo" || STATUS=1; }

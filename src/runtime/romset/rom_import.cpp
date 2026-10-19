@@ -88,6 +88,9 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
     }
     for (uint32_t dst = set.mirror_from + 0x100000; set.mirror_from && dst <= 0xF00000; dst += 0x100000) // ROM_COPY mirrors
         std::copy_n(img.main_data.begin() + set.mirror_from, 0x100000, img.main_data.begin() + dst);
+    for (const DataMirror &m : set.mirrors)
+        for (uint32_t dst = m.from + 0x100000; m.from && dst <= m.last; dst += 0x100000)
+            std::copy_n(img.main_data.begin() + m.from, 0x100000, img.main_data.begin() + dst);
     return img;
 }
 
@@ -104,11 +107,22 @@ std::vector<uint8_t> dsp_program(const M2Board::Images &img) {
 
 std::vector<uint8_t> tgp_program(const M2Board::Images &img) {
     const TgpProgram &tgp = game().tgp;
+    if (!tgp.words) return {}; // no TGP (Model 2B)
     const std::vector<uint8_t> &src = tgp.in_program ? img.program : img.main_data;
     if (src.size() < size_t(tgp.offset) + tgp.words * 4) throw ZipError("TGP program not where expected");
     const uint8_t *p = src.data() + tgp.offset;
     if (crc32(p, tgp.words * 4) != tgp.crc) throw ZipError("TGP program not where expected");
     return {p, p + tgp.words * 4};
+}
+
+std::vector<uint8_t> sharc_program(const M2Board::Images &img) {
+    const SharcProgram &sharc = game().sharc;
+    if (!sharc.words) return {};
+    const size_t bytes = size_t(sharc.words) * 2;
+    if (img.main_data.size() < size_t(sharc.offset) + bytes || crc32(img.main_data.data() + sharc.offset, bytes) != sharc.crc)
+        throw ZipError("SHARC program not where expected");
+    const uint8_t *p = img.main_data.data() + sharc.offset;
+    return {p, p + bytes};
 }
 
 } // namespace rt

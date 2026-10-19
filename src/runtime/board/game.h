@@ -20,6 +20,8 @@ namespace rt {
 enum class BoardType : uint8_t {
     Model2o, // original Model 2 (MAME model2o_state): Model 1 I/O board behind a dual-port RAM, Model 1 sound board
     Model2a, // Model 2A-CRX (model2a_state): 315-5649 I/O chip and 93C46 EEPROM on the bus, SCSP sound board
+    Model2b, // Model 2B-CRX (model2b_state): 2A-CRX's i960 side with an ADSP-21062 SHARC as the copro,
+             // texture RAM at 0x11000000, luma RAM at 0x11400000, the sound UART at 0x009c0000
 };
 
 enum class SoundBoardType : uint8_t {
@@ -73,7 +75,22 @@ struct RomLoad {
 // when it is cut out: rom_import.cpp tgp_program).
 struct TgpProgram {
     bool in_program; // in the i960 program ROM, else in main_data
-    uint32_t offset, words, crc;
+    uint32_t offset, words, crc; // words 0: no TGP (Model 2B)
+};
+
+// Model 2B: the SHARC program the i960 uploads at boot through the copro FIFO
+// (16-bit words, three per 48-bit instruction, DMA channel 6 in 16/48 packing),
+// as it sits in main_data: `words` consecutive little-endian 16-bit words from
+// byte `offset`, CRC-32 `crc` of those bytes. rom_import.cpp sharc_program cuts
+// it out. words 0: none.
+struct SharcProgram {
+    uint32_t offset = 0, words = 0, crc = 0;
+};
+
+// A further main_data ROM_COPY: the 1 MB at `from` copied to every 1 MB up to
+// `last` (inclusive). Unused: from 0.
+struct DataMirror {
+    uint32_t from = 0, last = 0;
 };
 
 // The Model 1 sound driver's tables in the game's 68000 program (the native
@@ -151,6 +168,9 @@ struct Game {
     std::span<const RomLoad> roms;
     uint32_t mirror_from; // main_data's ROM_COPY source, copied to every 1 MB from there up to 0xF00000; 0: none
     TgpProgram tgp;
+    // main_data's other ROM_COPY blocks (Fighting Vipers: two, above 16 MB).
+    DataMirror mirrors[2]{};
+    SharcProgram sharc{}; // Model 2B only
 
     struct Range {
         uint32_t first, last;

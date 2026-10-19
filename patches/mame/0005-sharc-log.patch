@@ -1,0 +1,118 @@
+--- a/src/devices/cpu/sharc/sharc.cpp
++++ b/src/devices/cpu/sharc/sharc.cpp
+@@ -1283,6 +1283,32 @@
+ 
+ 			m_core->opcode = m_program.read_qword(m_core->pc);
+ 
++			// daytona-arcade-recomp: $M2TRACE_SHARCPC logs each instruction the
++			// interpreter (-nodrc) is about to run, up to $M2TRACE_SHARCPC_MAX
++			// lines (default 2M): pc opcode astat mode1 r0..r15, before it runs.
++			// A run at one address (the idle loop) is one line, then "rep N"
++			// for the N times it ran again.
++			{
++				static FILE *pcl = nullptr;
++				static bool tried = false;
++				static unsigned long long n = 0, nmax = 2000000, rep = 0;
++				static uint32_t last = ~0u;
++				if (!tried) {
++					tried = true;
++					if (const char *p = getenv("M2TRACE_SHARCPC")) pcl = fopen(p, "w");
++					if (const char *m = getenv("M2TRACE_SHARCPC_MAX")) nmax = strtoull(m, nullptr, 0);
++				}
++				if (pcl && m_core->pc == last) rep++;
++				else if (pcl && n < nmax) {
++					if (rep) { fprintf(pcl, "rep %llu\n", rep); rep = 0; n++; }
++					last = m_core->pc;
++					n++;
++					fprintf(pcl, "%x %012llx %x %x", m_core->pc, (unsigned long long)m_core->opcode, m_core->astat, m_core->mode1);
++					for (int i = 0; i < 16; i++) fprintf(pcl, " %x", m_core->r[i].r);
++					fputc('\n', pcl);
++				}
++			}
++
+ 			// handle looping
+ 			if (!(m_core->stky & LSEM) && (m_core->pc == m_core->laddr.addr))
+ 			{
+--- a/src/mame/sega/model2.cpp
++++ b/src/mame/sega/model2.cpp
+@@ -686,20 +686,57 @@
+ 
+ // Coprocessor - SHARC
+ 
++// daytona-arcade-recomp: SHARC-side log for the static recompiler's oracle
++// (Model 2B). $M2TRACE_SHARCLOG gets one line per SHARC-visible event, in order:
++//   up N            the program upload ended (N 16-bit words), the SHARC boots
++//   in V            the SHARC popped V from the input FIFO
++//   ie              the SHARC read the input FIFO while it was empty (0)
++//   out V           the SHARC pushed V to the output FIFO
++//   br A V          the SHARC read buffer RAM (A = word offset & 0x7fff)
++//   bw A V          the SHARC wrote buffer RAM
++//   iop A V         the i960 wrote the SHARC's IOP register A (after boot too)
++static FILE *m2_sharc_log()
++{
++	static FILE *f = nullptr;
++	static bool tried = false;
++	if (!tried) {
++		tried = true;
++		if (const char *p = getenv("M2TRACE_SHARCLOG"))
++			f = fopen(p, "w");
++	}
++	return f;
++}
++
+ u32 model2b_state::copro_sharc_buffer_r(offs_t offset)
+ {
+-	return m_bufferram[offset & 0x7fff];
++	const u32 v = m_bufferram[offset & 0x7fff];
++	if (!machine().side_effects_disabled())
++		if (FILE *f = m2_sharc_log()) fprintf(f, "br %x %x\n", offset & 0x7fff, v);
++	return v;
+ }
+ 
+ void model2b_state::copro_sharc_buffer_w(offs_t offset, u32 data)
+ {
++	if (FILE *f = m2_sharc_log()) fprintf(f, "bw %x %x\n", offset & 0x7fff, data);
+ 	m_bufferram[offset & 0x7fff] = data;
+ }
+ 
+ void model2b_state::copro_sharc_map(address_map &map)
+ {
+-	map(0x0400000, 0x0bfffff).r(m_copro_fifo_in, FUNC(generic_fifo_u32_device::read));
+-	map(0x0c00000, 0x13fffff).w(m_copro_fifo_out, FUNC(generic_fifo_u32_device::write));
++	map(0x0400000, 0x0bfffff).lr32(NAME([this]() -> u32 {
++		const bool empty = m_copro_fifo_in->is_empty();
++		const u32 v = m_copro_fifo_in->read();
++		if (!machine().side_effects_disabled())
++			if (FILE *f = m2_sharc_log()) {
++				if (empty) fprintf(f, "ie\n");
++				else fprintf(f, "in %x\n", v);
++			}
++		return v;
++	}));
++	map(0x0c00000, 0x13fffff).lw32(NAME([this](u32 data) {
++		if (FILE *f = m2_sharc_log()) fprintf(f, "out %x\n", data);
++		m_copro_fifo_out->write(data);
++	}));
+ 	map(0x1400000, 0x1bfffff).rw(FUNC(model2b_state::copro_sharc_buffer_r), FUNC(model2b_state::copro_sharc_buffer_w));
+ 	map(0x1c00000, 0x1dfffff).rom().region("copro_data", 0);
+ }
+@@ -710,6 +747,7 @@
+ 
+ void model2b_state::copro_boot()
+ {
++	if (FILE *f = m2_sharc_log()) fprintf(f, "up %x\n", m_coprocnt);
+ 	m_copro_adsp->set_input_line(INPUT_LINE_HALT, CLEAR_LINE);
+ }
+ 
+@@ -1439,7 +1477,10 @@
+ 
+ 	map(0x00880000, 0x00883fff).w(FUNC(model2b_state::copro_function_port_w));
+ 	map(0x00884000, 0x00887fff).rw(FUNC(model2b_state::copro_fifo_r), FUNC(model2b_state::copro_fifo_w));
+-	map(0x008c0000, 0x008c0fff).w(m_copro_adsp, FUNC(adsp21062_device::external_iop_write));
++	map(0x008c0000, 0x008c0fff).lw32(NAME([this](offs_t offset, u32 data) {
++		if (FILE *f = m2_sharc_log()) fprintf(f, "iop %x %x\n", offset, data);
++		m_copro_adsp->external_iop_write(offset, data);
++	}));
+ 
+ 	map(0x00980000, 0x00980003).rw(FUNC(model2b_state::copro_ctl1_r), FUNC(model2b_state::copro_ctl1_w));
+ 	map(0x00980008, 0x0098000b).w(FUNC(model2b_state::geo_ctl1_w));

@@ -37,10 +37,19 @@ constexpr struct {
     {0x00980000, 0x0098000f}, {0x00e80000, 0x00e80007}, {0x00f00000, 0x00f0000f}, {0x01c00000, 0x01c00fff},
     {0x01c80000, 0x01c80003},
 };
+// Model 2B-CRX's own (the plugin's WRITE_TAPS_2B, READ_TAPS_2B): copro control's
+// upper registers, the SHARC's IOP registers, the sound UART at 0x009c0000.
+constexpr struct {
+    uint32_t start, end;
+} kReadTaps2b[] = {{0x009c0000, 0x009c0007}}, kWriteTaps2b[] = {
+    {0x00980010, 0x0098003f}, {0x008c0000, 0x008c0fff}, {0x009c0000, 0x009c0007}};
 
 bool write_tapped(uint32_t a) {
     for (const auto &t : kWriteTaps)
         if (a >= t.start && a <= t.end) return true;
+    if (game().board == BoardType::Model2b)
+        for (const auto &t : kWriteTaps2b)
+            if (a >= t.start && a <= t.end) return true;
     return false;
 }
 
@@ -48,16 +57,17 @@ bool write_tapped(uint32_t a) {
 
 M2ReplayBus::M2ReplayBus(std::vector<uint8_t> program, std::vector<uint8_t> main_data, const std::string &trace_path)
     : program_(std::move(program)), main_data_(std::move(main_data)),
-      ram_(game().board == BoardType::Model2a ? 0x40000 : 0x20000), work_(0x100000),
+      ram_(game().board != BoardType::Model2o ? 0x40000 : 0x20000), work_(0x100000),
       buffer_(0x20000), cpuctl_(0x1000), backup_(0x4000, 0xff), tile_(0x10000), chr_(0x80000), palette_(0x4000),
       xlat_(0xc000), tex0_(0x200000), tex1_(0x200000), luma_(0x20000), fb_a_(0x80000), fb_b_(0x80000),
       pages_(size_t(1) << (32 - kPageBits)), reader_(trace_path) {
     if (!reader_.error().empty()) throw std::runtime_error(reader_.error());
 
     // MAME model2.cpp: model2_base_mem, model2_tgp_mem, then model2o_mem or
-    // model2a_crx_mem (work RAM 0x200000-0x23ffff, no ROM mirror).
+    // model2a_crx_mem (work RAM 0x200000-0x23ffff, no ROM mirror), or
+    // model2b_crx_mem (the same RAM; texture and luma RAM moved, below).
     map(0x00000000, 0x001fffff, Rom, program_.data());
-    if (game().board == BoardType::Model2a) {
+    if (game().board != BoardType::Model2o) {
         map(0x00200000, 0x0023ffff, Ram, ram_.data());
     } else {
         map(0x00200000, 0x0021ffff, Ram, ram_.data());
@@ -78,11 +88,24 @@ M2ReplayBus::M2ReplayBus(std::vector<uint8_t> program, std::vector<uint8_t> main
     map(0x12000000, 0x121fffff, Tex, tex0_.data(), 0x200000);
     map(0x12400000, 0x125fffff, Tex, tex1_.data(), 0x200000);
     map(0x12800000, 0x1281ffff, Ram, luma_.data());
+    if (game().board == BoardType::Model2b) {
+        // 2B: plain texture RAM (no tex0_w/tex1_w), 1 MB each, mirrored once;
+        // luma RAM bytes (MAME umask16 0x00ff), here as plain RAM.
+        map(0x11000000, 0x110fffff, Ram, tex0_.data(), 0x100000);
+        map(0x11200000, 0x112fffff, Ram, tex1_.data(), 0x100000);
+        map(0x11400000, 0x1140ffff, Ram, luma_.data());
+        for (const auto &d : kReadTaps2b) map_device(d.start, d.end);
+        for (const auto &d : kWriteTaps2b) map_device(d.start, d.end); // the IOP port is write-only
+    }
     for (const auto &d : kReadTaps) map_device(d.start, d.end);
     // Device ranges MAME flags BURST: geometrizer program port, TGP function
-    // port, comm board shared RAM.
-    set_burst(0x00804000, 0x00807fff);
-    set_burst(0x00880000, 0x00883fff);
+    // port (not on Model 2B: model2b_crx_mem maps both without the flag, so a
+    // multi-word store writes every word at its first address), comm board
+    // shared RAM.
+    if (game().board != BoardType::Model2b) {
+        set_burst(0x00804000, 0x00807fff);
+        set_burst(0x00880000, 0x00883fff);
+    }
     set_burst(0x01a00000, 0x01a1ffff);
     set_burst(0x00900000, 0x0097ffff);
 

@@ -46,6 +46,8 @@ int main(int argc, char **argv) {
         if (!img.eeprom.empty()) write(out + "/eeprom.bin", img.eeprom.data(), img.eeprom.size()); // the set's default settings
         const std::vector<uint8_t> tgp = rt::tgp_program(img); // the TGP program the i960 uploads at boot
         write(out + "/tgp_program.bin", tgp.data(), tgp.size());
+        const std::vector<uint8_t> sharc = rt::sharc_program(img); // Model 2B's SHARC program (empty: none)
+        if (!sharc.empty()) write(out + "/sharc_program.bin", sharc.data(), sharc.size());
         const std::vector<uint8_t> dsp = rt::dsp_program(img); // the SCSP DSP program (empty: none)
         write(out + "/dsp_program.bin", dsp.data(), dsp.size());
         std::printf("m2import: wrote program, main_data, copro_data, copro_tables, polygons, textures, sound_program, pcm1, pcm2, samples, "

@@ -5,7 +5,11 @@
 // no recompiled code is a hard error naming it.
 //
 //   m2native IMAGES_DIR TRACE.m2tr IRQ.log
+//
+// Model 2B (a SHARC copro, not native yet): M1, the copro, buffer RAM and the
+// geometrizer answered from the trace like every other device.
 
+#include "runtime/board/game.h"
 #include "runtime/cpu/i960_gen_support.h"
 #include "runtime/cpu/lockstep.h"
 #include "runtime/cpu/replay_bus.h"
@@ -46,17 +50,19 @@ int main(int argc, char **argv) {
         rt::M2ReplayBus bus(load(dir + "/program.bin"), load(dir + "/main_data.bin"), argv[2]);
         rt::Cpu core(&bus);
         bus.attach(&core);
-        // M2: the geometry ports, TGP and buffer RAM are native, not replayed.
+        // M2: the geometry ports, TGP and buffer RAM are native, not replayed
+        // (M1 on Model 2B: no native SHARC yet).
+        const bool m1 = rt::game().board == rt::BoardType::Model2b;
         rt::TgpBoard board(load(dir + "/copro_tables.bin"), load(dir + "/copro_data.bin"));
         rt::TgpBoardModel geo(board);
-        bus.set_model(&geo);
+        if (!m1) bus.set_model(&geo);
         rt::Lockstep ls(core, argv[3]);
         core.reset();
         gen::Env env{core, ls};
         // M2: the geometrizer, checked at each vblank against MAME's GEO.log.
         std::unique_ptr<rt::Geo> geom;
         std::unique_ptr<GeoCheck> geocheck;
-        if (argc == 5) {
+        if (argc == 5 && !m1) {
             geom = std::make_unique<rt::Geo>(load(dir + "/polygons.bin"), load(dir + "/textures.bin"), board.buffer_data());
             geocheck = std::make_unique<GeoCheck>(argv[4], *geom, board, bus, ls);
         }
@@ -80,6 +86,10 @@ int main(int argc, char **argv) {
                     " epochs, %" PRIu64 " device events, %d interrupts, identical to MAME; %.2f s (%.1f M instr/s)\n",
                     ls.count, gen::native_instructions(), bus.epochs_matched(), bus.events_matched(), ls.interrupts(), s,
                     double(ls.count) / s / 1e6);
+        if (m1) {
+            std::printf("  copro (SHARC), buffer RAM and geometrizer replayed from the trace (M1)\n");
+            return 0;
+        }
         std::printf("  TGP (recompiled, run on demand): %" PRIu64 " instructions, %" PRIu64
                     " output words identical to MAME\n"
                     "  measured (depends on relative timing): buffer RAM reads %" PRIu64 " differ of %" PRIu64

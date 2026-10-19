@@ -268,7 +268,7 @@ private:
     void ram_written(uint32_t addr, uint32_t data, uint32_t mask); // video registers kept in RAM pages
     void tex_write(const Page &p, uint32_t addr, uint32_t lane_data);
 
-    bool crx() const { return img_.game->board == BoardType::Model2a; }
+    bool crx() const { return img_.game->board != BoardType::Model2o; } // 2A-CRX or 2B-CRX
     uint64_t io_now() const { // i960 instructions so far, for the 315-5649's EEPROM
 #ifdef M2_FAST_GEN
         return ls_->now();
