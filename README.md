@@ -87,4 +87,15 @@ Vita's processor cannot run them at the game's speed.
   its own limits (one player, the light gun on the touch screen, Manx TT's
   Twin cabinet only).
 
+## Goals
+
+* **More Model 2A games**: Dead or Alive (`doa`), Sky Target (`skytargt`)
+  and Pilot Kids (`pltkids`), all three on the Model 2A board that already
+  runs on the Vita.
+* **A Nintendo Switch port**, with an OpenGL renderer in place of the
+  Vita's vitaGL one. The recompiled game code and the Model 2 board are
+  portable C++ (no Vita call in `src/runtime`, already built for 64-bit
+  ARM); the frontend (input, audio, rendering, files) would be new, on the
+  model of `platform/vita`.
+
 The original README is kept in [README_fork.md](README_fork.md).

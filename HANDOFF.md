@@ -1,5 +1,13 @@
 # Handoff
 
+## README: goals (2026-10-19)
+
+A Goals section: the Model 2A games Dead or Alive (doa), Sky Target
+(skytargt) and Pilot Kids (pltkids) next; a Nintendo Switch port with an
+OpenGL renderer in place of vitaGL (the runtime has no Vita call and has
+been built for 64-bit ARM; a frontend on the model of platform/vita).
+Nothing started for either.
+
 ## README: compatible sets by game; a Limits section (2026-10-19)
 
 README.md lists each game's compatible MAME set (version, board, the
