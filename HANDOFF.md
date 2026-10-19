@@ -1,5 +1,13 @@
 # Handoff
 
+## Daytona: effects at 30 % by default, both sets (2026-10-19)
+
+The user's choice. daytona (Revision A) had music 100 / effects 20;
+daytona93 (Deluxe '93, the Daytona package's main set) had no defaults of
+its own, so 100 / 100: both now 100 / 30 (rt::FrontendDefaults, Vita
+RESET DEFAULTS). A vita.cfg already saved keeps its own volumes until
+RESET DEFAULTS.
+
 ## README: goals (2026-10-19)
 
 A Goals section: the Model 2A games Dead or Alive (doa), Sky Target

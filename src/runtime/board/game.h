@@ -138,8 +138,8 @@ inline constexpr uint16_t kDaytonaMusic = 0x83ff;
 // VitaSettings; RESET DEFAULTS goes back to them). Volumes in percent.
 struct FrontendDefaults {
     int music_volume = 100;
-    // The effects against the music: Daytona's effects cover its music on the
-    // Vita's speakers, so 20 % by default.
+    // The effects against the music (100 by default; Daytona's cover its music
+    // on the Vita's speakers: 30 % for both its sets, src/games/daytona.cpp).
     int effects_volume = 100;
     // The Vita's steering curve (0 linear, 1 soft, 2 extra soft) and smoothing
     // (0 off, 1 low, 2 high: the wheel's top speed, platform/vita/frontend/

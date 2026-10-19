@@ -105,6 +105,7 @@ extern const Game daytona93_game = {
     .idle = {{0x12b0, 0x12bb}, {0x12f0, 0x12ff}},
     .sound = SoundBoardType::Model1, .native_sound = &kDaytona93Sound,
     .io = {}, .link = false, .draw_distance = true, // hook_draw_list
+    .defaults = {.music_volume = 100, .effects_volume = 30},
     .control_list = kControls,
     .music_channels = kDaytonaMusic, // 0-9 and 15
     .update_z_depth_scale = 6.0f, // ln of w: race 99.9th percentile 348 (max 379)
@@ -117,7 +118,7 @@ extern const Game daytona_game = {
     .sound = SoundBoardType::Model1, .native_sound = &kDaytonaSound,
     .io = {}, .link = true, // the communication board (837-10537)
     .draw_distance = true,  // hook_draw_list
-    .defaults = {.music_volume = 100, .effects_volume = 20},
+    .defaults = {.music_volume = 100, .effects_volume = 30},
     .control_list = kControls,
     // The wait for the next frame, 2 instructions a pass: 0x1394 ldob 0x500000,r3;
     // 0x139c cmpibe r3,g0,0x1394. 76 % of the i960's instructions in a race on
