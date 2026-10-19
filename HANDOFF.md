@@ -1,5 +1,15 @@
 # Handoff
 
+## README: compatible sets by game; a Limits section (2026-10-19)
+
+README.md lists each game's compatible MAME set (version, board, the
+archive in roms/, the file on the Vita: from scripts/games.py and
+HOW_TO_COMPILE_RELEASE.md) and has a Limits section: only the original
+Model 2 and Model 2A boards run on the Vita; Model 2B (SHARC) and 2C
+(TGPx4, MB86235) are too heavy with the current code; Fighting Vipers is a
+2B test (~26 fps in a fight); 2C is not supported (its coprocessor is not
+recompiled; expected to hit the same wall, not measured).
+
 ## Tidy: traces in one folder per ROM set (2026-10-19)
 
 scripts/m2_check.sh writes and reads traces/<set>/: hdr.m2in (the input
