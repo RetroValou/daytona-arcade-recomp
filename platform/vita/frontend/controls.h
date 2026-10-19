@@ -18,6 +18,10 @@ struct Pad {
     bool touch = false;                   // the front touch screen, in screen pixels (960x544)
     float tx = 0.f, ty = 0.f;
 };
+// Steering smoothing, as a wheel turns rather than jumps: the share of the way
+// to the new position the wheel goes each board frame (57.52 Hz): off, low
+// (90 % of the way in 3.3 frames, 58 ms), high (14 frames, 245 ms).
+inline constexpr float kSteerSmoothing[] = {1.0f, 0.5f, 0.15f};
 struct Input {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20;
     uint8_t in0 = 0xff, in1 = 0x8f, in2 = 0xff;
@@ -164,6 +168,9 @@ public:
             if (held(Control::SteerLeft) || held(Control::SteerRight))
                 steer = float(held(Control::SteerRight)) - float(held(Control::SteerLeft));
             if (steer_invert_) steer = -steer;
+            steer_ += (steer - steer_) * kSteerSmoothing[steer_smoothing_];
+            if (std::abs(steer - steer_) < 1e-3f) steer_ = steer;
+            steer = steer_;
         }
         if (pedals_) {
             const float pedal = axis(pad.ry, deadzone_);
@@ -218,6 +225,7 @@ public:
     void set_deadzone(float value) { deadzone_ = std::clamp(value, 0.0f, 0.4f); }
     void set_steer_curve(int value) { steer_curve_ = std::clamp(value, 0, 2); }
     void set_steer_invert(bool value) { steer_invert_ = value; }
+    void set_steer_smoothing(int value) { steer_smoothing_ = std::clamp(value, 0, 2); }
     void set_bindings(const Bindings &value) { bindings_ = value; bindings_.sanitize(layout_); }
     const Bindings &bindings() const { return bindings_; }
 private:
@@ -229,8 +237,8 @@ private:
     Layout layout_;
     Bindings bindings_;
     uint32_t held_ = 0;
-    int gear_ = 1, steer_curve_ = 0;
-    float deadzone_ = 0.12f;
+    int gear_ = 1, steer_curve_ = 0, steer_smoothing_ = 0;
+    float deadzone_ = 0.12f, steer_ = 0.f; // steer_: the smoothed wheel
     bool steer_invert_ = false, coin_used_ = false, steering_ = false, pedals_ = false, joystick_ = false;
     uint16_t gun_x_min_ = 0, gun_x_max_ = 0, gun_y_min_ = 0, gun_y_max_ = 0, aim_x_ = 0, aim_y_ = 0;
 };

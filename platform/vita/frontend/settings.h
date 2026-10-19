@@ -42,7 +42,9 @@ struct VitaSettings {
     // (rt::Game::defaults: Daytona 100/20, Sega Rally 100/85, VF2 70/100).
     int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
     int deadzone = 12;
-    int draw_distance = 0, steer_curve = 0;
+    int draw_distance = 0;
+    // The wheel's curve and smoothing (the game's defaults: rt::FrontendDefaults).
+    int steer_curve = rt::game().defaults.steer_curve, steer_smoothing = rt::game().defaults.steer_smoothing;
 
     bool fourth_core = false;
     bool skip_launcher = false;

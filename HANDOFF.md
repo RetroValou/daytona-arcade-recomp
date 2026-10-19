@@ -1,5 +1,33 @@
 # Handoff
 
+## Manx TT's lean mirrored; Vita steering smoothing (2026-10-19)
+
+Lean fix: MAME declares manxtt's BANK PORT_REVERSE (a lean right reads low);
+manxttc.cpp sent rt::Inputs::steer unmirrored, so the bike leaned left on a
+right input (reported on the Vita). Channel 2 is now full_range(0x100 - steer)
+(0x80 stays the centre). The lockstep never saw it: the trace replays MAME's
+port values, not our analog(). The PC and Vita builds compile; the lean's
+direction is still to be checked on the Vita.
+Vita steering smoothing (platform/vita/frontend/controls.h, settings,
+launcher): STEERING SMOOTHING: OFF / LOW / HIGH for any game with a wheel,
+the stick and the d-pad's left/right alike, so the wheel turns rather than
+jumps (each board frame it goes 100 / 50 / 15 % of the way to the input: 90 %
+in 3.3 frames, 58 ms, at LOW; 14 frames, 245 ms, at HIGH; host test: 0x80 to
+0xe0 in 4-60 frames). New rt::FrontendDefaults steer_curve and
+steer_smoothing: LOW for every racing game by default (Daytona, Sega Rally),
+Manx TT SOFT curve and HIGH. vita.cfg key steer_smoothing. The PC frontend is
+unchanged (its own rate limit on digital steering, src/app/controls.cpp).
+Wrong turns, removed the same day at the user's request, don't re-add: a
+touch screen steering mode (the finger's distance from the centre line) and
+a tilt mode (sceMotion's acceleration along the screen's x axis, full lock at
+30 degrees, the sign taken from reVita, GPL-3, read only; its clone in
+extern/ deleted).
+Next: on the Vita, check the lean's direction and whether LOW and HIGH feel
+right in Daytona, Sega Rally and Manx TT.
+In the same commit, the user's Daytona (daytona) settings: its frontend
+defaults written out (music 100 %, effects 20 %, as FrontendDefaults' comment
+already said) and update_z_depth_local_weight 0.8 (default 0.9).
+
 ## README: which Manx TT archive loads (2026-10-19)
 
 The user's merged archive did not load on the Vita. The README now says

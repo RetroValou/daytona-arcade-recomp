@@ -58,7 +58,7 @@ bool has_steering() {
 // The Options page's rows, in display order.
 enum Option {
     OptCpu, OptGpu, OptVolume, OptMute, OptMusic, OptEffects, OptDeadzone, OptInvert, OptAudioEngine, OptRom,
-    OptDistance, OptZDepth, OptSteerCurve, OptSkipLauncher, OptSaveBackup, OptFourthCore,
+    OptDistance, OptZDepth, OptSteerCurve, OptSteerSmoothing, OptSkipLauncher, OptSaveBackup, OptFourthCore,
     OptLink, OptIp0, OptIp1, OptIp2, OptIp3, OptListenPort, OptNextPort, OptLinkSync,
     OptTestHold, OptDefaults, OptBack, kOptions
 };
@@ -90,7 +90,7 @@ bool option_available(Option o, const VitaSettings &s) {
     case OptLink: return link_play();
     case OptIp0: case OptIp1: case OptIp2: case OptIp3: case OptListenPort: case OptNextPort: case OptLinkSync:
         return link_play() && s.link_enabled;
-    case OptInvert: case OptSteerCurve: return has_steering(); // a wheel to invert or shape
+    case OptInvert: case OptSteerCurve: case OptSteerSmoothing: return has_steering(); // a wheel to invert or shape
     default: return true;
     }
 }
@@ -190,6 +190,8 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     values[OptSaveBackup]=settings.save_backup ? "SAVE RECORDS (BACKUP RAM): ON" : "SAVE RECORDS (BACKUP RAM): OFF";
     static const char* curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
     values[OptSteerCurve]=curves[settings.steer_curve];
+    static const char* smoothing[] = {"STEERING SMOOTHING: OFF", "STEERING SMOOTHING: LOW", "STEERING SMOOTHING: HIGH"};
+    values[OptSteerSmoothing]=smoothing[settings.steer_smoothing];
     Option rows[kOptions];
     const int listed = listed_options(settings, rows);
 
@@ -320,6 +322,9 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                     break;
                 case OptSteerCurve:
                     if (step) { settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3; changed = true; }
+                    break;
+                case OptSteerSmoothing:
+                    if (step) { settings.steer_smoothing = (settings.steer_smoothing + (direction < 0 ? 2 : 1)) % 3; changed = true; }
                     break;
                 case OptSkipLauncher:
                     if (step) { settings.skip_launcher = !settings.skip_launcher; changed = true; }

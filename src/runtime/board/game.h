@@ -124,6 +124,10 @@ struct FrontendDefaults {
     // The effects against the music: Daytona's effects cover its music on the
     // Vita's speakers, so 20 % by default.
     int effects_volume = 100;
+    // The Vita's steering curve (0 linear, 1 soft, 2 extra soft) and smoothing
+    // (0 off, 1 low, 2 high): a wheel turns rather than jumps, so low by default
+    // (the d-pad's left/right too); Manx TT's lean softer still.
+    int steer_curve = 0, steer_smoothing = 1;
 };
 
 // How the cabinet's controls reach a Model 2A-CRX board's 315-5649 I/O chip

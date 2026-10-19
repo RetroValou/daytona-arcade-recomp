@@ -57,7 +57,9 @@ const RomLoad kManxttcRoms[] = {
 // unused); IN1 shift up 0x10 and down 0x20 from the view buttons' bits (in0
 // 0x20, 0x40: Control::View1, View2); IN2 unused. All active low. The
 // analog inputs (315-5649 channels 0-2: THROTTLE, BRAKE, BANK, the lean)
-// rescaled from 0x20-0xe0 to the full 0x00-0xff, as Sega Rally's.
+// rescaled from 0x20-0xe0 to the full 0x00-0xff, as Sega Rally's. BANK is
+// PORT_REVERSE in MAME (a lean right reads low), so the wheel is mirrored
+// about 0x80 first: unmirrored, the bike leaned left on a right input.
 uint8_t full_range(uint8_t v) { return uint8_t(std::clamp((int(v) - 0x20) * 255 / 0xc0, 0, 255)); }
 
 uint8_t port(unsigned p, const Inputs &in) {
@@ -69,7 +71,7 @@ uint8_t port(unsigned p, const Inputs &in) {
 }
 
 uint8_t analog(unsigned ch, const Inputs &in) {
-    return ch == 0 ? full_range(in.accel) : ch == 1 ? full_range(in.brake) : ch == 2 ? full_range(in.steer) : 0xff;
+    return ch == 0 ? full_range(in.accel) : ch == 1 ? full_range(in.brake) : ch == 2 ? full_range(uint8_t(0x100 - in.steer)) : 0xff;
 }
 
 // The bike: throttle, brake, the lean (as the wheel), the shift buttons, start, coin.
@@ -112,8 +114,9 @@ extern const Game manxttc_game = {
     // dB) brings its race peaks to Daytona's.
     .output_gain = 3.4f,
     // The engine is an effect, mixed by the game with the music (the Twin's
-    // SCSP driver): effects at 100 %, not Daytona's 20 %.
-    .defaults = {.effects_volume = 100},
+    // SCSP driver): effects at 100 %, not Daytona's 20 %. The lean softer than a
+    // car's wheel on the Vita's stick: the soft curve and high smoothing.
+    .defaults = {.effects_volume = 100, .steer_curve = 1, .steer_smoothing = 2},
     .control_list = kControls,
     .dsp = {0x8f14, 74, 0xAE4FDF9Cu},
     .music_channels = 0x03ff, // 0-9

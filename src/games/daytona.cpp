@@ -117,6 +117,7 @@ extern const Game daytona_game = {
     .sound = SoundBoardType::Model1, .native_sound = &kDaytonaSound,
     .io = {}, .link = true, // the communication board (837-10537)
     .draw_distance = true,  // hook_draw_list
+    .defaults = {.music_volume = 100, .effects_volume = 20},
     .control_list = kControls,
     // The wait for the next frame, 2 instructions a pass: 0x1394 ldob 0x500000,r3;
     // 0x139c cmpibe r3,g0,0x1394. 76 % of the i960's instructions in a race on
@@ -124,6 +125,7 @@ extern const Game daytona_game = {
     // desktop at its 100 checkpoints with the skip). daytona93 has no such loop.
     .spin = {{Game::SpinWait::ByteIsReg, 0x1394, 0x00500000, 2, 16}},
     .music_channels = kDaytonaMusic, // 0-9 and 15
+    .update_z_depth_local_weight = 0.8,
     .update_z_depth_scale = 6.0f, // as daytona93 (the same tracks)
 };
 

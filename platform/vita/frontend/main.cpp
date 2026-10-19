@@ -175,6 +175,7 @@ int main(int, char **) {
         controls.set_deadzone(float(settings.deadzone) / 100.0f);
         controls.set_steer_invert(settings.steer_invert);
         controls.set_steer_curve(settings.steer_curve);
+        controls.set_steer_smoothing(settings.steer_smoothing);
         controls.set_layout(game_layout());
         controls.set_gun(rt::game().gun.x_min, rt::game().gun.x_max, rt::game().gun.y_min, rt::game().gun.y_max);
         controls.set_bindings(settings.bindings);

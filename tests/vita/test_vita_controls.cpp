@@ -1,4 +1,5 @@
 #include "../../platform/vita/frontend/controls.h"
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -120,6 +121,21 @@ int main() {
         CHECK(right <= (curve <= 0 ? 171 : curve == 1 ? 147 : 136));
         curved.set_steer_invert(true);
         CHECK(curved.sample({0, 192, 128}).steer == 256 - right);
+    }
+    // Smoothing: the wheel eases toward the input, monotonic, and settles on it.
+    for (int level = 1; level <= 2; ++level) {
+        vita::Controls smooth = driving();
+        smooth.set_steer_smoothing(level);
+        int previous = 0x80, frames = 0;
+        for (; frames < 200; ++frames) {
+            const int steer = smooth.sample({vita::Right}).steer;
+            CHECK(steer >= previous && steer <= 0xe0);
+            previous = steer;
+            if (steer == 0xe0) break;
+        }
+        CHECK(frames > 3 && frames < 60);
+        for (frames = 0; frames < 200 && smooth.sample({}).steer != 0x80; ++frames) {}
+        CHECK(frames < 60);
     }
     // Rebinding: one button per control; taking a used button swaps the two.
     {
