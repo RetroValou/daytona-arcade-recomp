@@ -2,7 +2,7 @@
 // Vipers) to C++.
 //
 //   m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops SHARCOPS_TABLE.inc] [--sharcops SHARCOPS.hxx]
-//                 [--compute COMPUTE.hxx]
+//                 [--compute COMPUTE.hxx] [--full-steps]
 //
 // SHARC_PROGRAM.bin is m2import's cut of the upload: 16-bit little-endian words,
 // three per 48-bit instruction (DMA channel 6's 16/48 packing, MSWF clear: the
@@ -142,6 +142,8 @@ std::string templated_handlers(const std::string &path, size_t &count) {
         } else {
             if (!(*i)[3].str().empty()) throw std::runtime_error(name + " takes arguments upstream");
             body = templated_compute_calls(replace_word(body, "m_core->opcode", "OPCODE", true));
+            for (const char *f : {"GET_UREG", "SET_UREG", "SHIFT_OPERATION_IMM"})
+                body = replace_word(body, f, std::string(f) + "_i", false);
             o << "template <uint64_t OPCODE>\n" << (*i)[1] << "void adsp21062_device::" << name << "_t()\n" << body << "\n\n";
         }
         ++count;
@@ -186,6 +188,23 @@ std::string inline_helpers(const std::string &path) {
     return out;
 }
 
+// GET_UREG, SET_UREG and SHIFT_OPERATION_IMM, word for word, as inline
+// GET_UREG_i, SET_UREG_i, SHIFT_OPERATION_IMM_i: called by the templated
+// handlers with constant arguments, their switches fold.
+std::string inline_accessors(const std::string &path) {
+    const std::string t = read_text(path);
+    std::string out;
+    for (const char *name : {"GET_UREG", "SET_UREG", "SHIFT_OPERATION_IMM"}) {
+        const std::regex def(std::string(R"(\n(uint32_t|void) adsp21062_device::)") + name + R"(\(([^)]*)\)\s*\n\{)");
+        std::smatch m;
+        if (!std::regex_search(t, m, def)) throw std::runtime_error(path + ": no " + name);
+        const size_t open = size_t(m.position(0) + m.length(0) - 1);
+        const std::string body = t.substr(open, match_brace(t, open) - open + 1);
+        out += "inline " + m[1].str() + " adsp21062_device::" + name + "_i(" + m[2].str() + ")\n" + body + "\n\n";
+    }
+    return out;
+}
+
 // compute.hxx without its #include lines and its two lookup tables.
 std::string compute_inline(const std::string &path) {
     std::string t = read_text(path);
@@ -216,6 +235,7 @@ std::string hx(uint64_t v) {
 int main(int argc, char **argv) {
     std::string ops_path = "src/runtime/sharc/sharcops_table.inc", sharcops_path = "src/runtime/sharc/sharcops.hxx",
                 compute_path = "src/runtime/sharc/compute.hxx";
+    bool full_steps = false; // every instruction the interpreter's full step (no plain runs)
     if (argc < 3) {
         std::fprintf(stderr, "usage: m2sharcrecomp SHARC_PROGRAM.bin OUT.cpp [--ops SHARCOPS_TABLE.inc]\n");
         return 2;
@@ -224,6 +244,7 @@ int main(int argc, char **argv) {
         if (!std::strcmp(argv[i], "--ops") && i + 1 < argc) ops_path = argv[++i];
         else if (!std::strcmp(argv[i], "--sharcops") && i + 1 < argc) sharcops_path = argv[++i];
         else if (!std::strcmp(argv[i], "--compute") && i + 1 < argc) compute_path = argv[++i];
+        else if (!std::strcmp(argv[i], "--full-steps")) full_steps = true;
         else {
             std::fprintf(stderr, "m2sharcrecomp: unknown option %s\n", argv[i]);
             return 2;
@@ -270,6 +291,51 @@ int main(int argc, char **argv) {
             std::ofstream f(path);
             if (!(f << text)) throw std::runtime_error("cannot write " + path);
         };
+        // Plain instructions: their handlers touch neither the pipeline nor the
+        // stacks, loops, interrupts or system registers (sharcops.hxx: outside
+        // control flow, the pipeline registers are only read in error messages).
+        // They run without the interpreter's per-instruction bookkeeping: the
+        // pipeline is written once when a run of them ends, as the last one
+        // leaves it (each arrival is linear: daddr, faddr, nfaddr consecutive),
+        // and their count is kept in a register. Every other instruction runs
+        // the full step, and so do the two after one (delay slots, MODE1's
+        // write latency) and the three before a loop end (the ASTAT history
+        // step_loop_end reads). The step_pre checks a plain run skips (a
+        // delayed IOP write, DMA cycles, interrupts, idling) only change when a
+        // full step runs, or with a DMA running: run_generated refuses that.
+        const std::set<std::string> plain_names = {
+            "sharcop_compute", "sharcop_compute_ureg_dmpm_premod", "sharcop_compute_ureg_dmpm_postmod",
+            "sharcop_compute_dm_to_dreg_immmod", "sharcop_compute_dreg_to_dm_immmod", "sharcop_compute_pm_to_dreg_immmod",
+            "sharcop_compute_dreg_to_pm_immmod", "sharcop_compute_ureg_to_ureg", "sharcop_compute_dreg_dm_dreg_pm",
+            "sharcop_imm_shift", "sharcop_imm_shift_dreg_dmpm", "sharcop_compute_modify", "sharcop_dm_to_ureg_direct",
+            "sharcop_dm_to_ureg_indirect", "sharcop_pm_to_ureg_direct", "sharcop_pm_to_ureg_indirect",
+            "sharcop_ureg_to_dm_direct", "sharcop_ureg_to_dm_indirect", "sharcop_ureg_to_pm_direct",
+            "sharcop_ureg_to_pm_indirect", "sharcop_imm_to_dmpm", "sharcop_imm_to_ureg", "sharcop_modify", "sharcop_nop"};
+        const auto writes_sysreg = [&](const std::string &h, uint64_t op) {
+            unsigned ureg = 0;
+            if (h == "sharcop_compute_ureg_dmpm_premod" || h == "sharcop_compute_ureg_dmpm_postmod" ||
+                h == "sharcop_compute_ureg_to_ureg") ureg = unsigned(op >> 23) & 0xff;
+            else if (h == "sharcop_imm_to_ureg" || h == "sharcop_dm_to_ureg_direct" || h == "sharcop_dm_to_ureg_indirect" ||
+                     h == "sharcop_pm_to_ureg_direct" || h == "sharcop_pm_to_ureg_indirect") ureg = unsigned(op >> 32) & 0xff;
+            else return false;
+            return (ureg >> 4) == 6 || (ureg >> 4) == 7;
+        };
+        std::vector<bool> full(n, false);
+        for (uint32_t k = 0; k < n; ++k) {
+            const std::string h = handler(ops, prog[k]);
+            if (!plain_names.count(h) || writes_sysreg(h, prog[k])) {
+                full[k] = true;
+                if (k + 1 < n) full[k + 1] = true;
+                if (k + 2 < n) full[k + 2] = true;
+            }
+        }
+        for (uint32_t k = 0; k < n; ++k)
+            if (loop_ends.count(base + k))
+                for (uint32_t j = k >= 3 ? k - 3 : 0; j <= k; ++j) full[j] = true;
+        if (full_steps) full.assign(n, true);
+        uint32_t plain_count = 0;
+        for (uint32_t k = 0; k < n; ++k) plain_count += !full[k];
+
         for (const auto &e : std::filesystem::directory_iterator(dir))
             if (e.path().filename().string().rfind("sharc_chunk_", 0) == 0) std::filesystem::remove(e.path());
         write_file(dir + "/sharc_handlers.h",
@@ -277,6 +343,7 @@ int main(int argc, char **argv) {
                    "// inline. Derived from MAME's sources (BSD-3) and the game: never commit.\n"
                    "#pragma once\n\n// sharcops.hxx's macros\n" + defines(sharcops_path) +
                    "\n// sharcops.hxx's inline helpers\n" + inline_helpers(sharcops_path) +
+                   "\n// GET_UREG, SET_UREG, SHIFT_OPERATION_IMM, inline\n" + inline_accessors(sharcops_path) +
                    "\n// compute.hxx without its lookup tables\n" + compute_inline(compute_path) +
                    "\n// sharcops.hxx's handlers, templates on the opcode\n" + templates);
         for (uint32_t c = 0; c < chunks; ++c) {
@@ -293,6 +360,7 @@ int main(int argc, char **argv) {
                  "// 0 when control leaves the chunk (step_pre done), 1 when the SHARC waits,\n"
                  "// 2 when the budget ran out.\n"
                  "template <>\nint adsp21062_device::run_chunk<" << c << ">(uint64_t &done, uint64_t budget)\n{\n"
+                 "\tuint32_t plain = 0; // plain instructions run since the last count\n"
                  "\tfor (;;) {\n"
                  "\t\tswitch (m_core->daddr) {\n";
             for (uint32_t k = first; k < last; ++k) o << "\t\tcase " << hx(base + k) << ": goto L_" << std::hex << base + k << std::dec << ";\n";
@@ -300,13 +368,24 @@ int main(int argc, char **argv) {
                  "\t\t}\n";
             for (uint32_t k = first; k < last; ++k) {
                 const uint32_t a = base + k;
-                o << "\tL_" << std::hex << a << std::dec << ":\n"
-                  << "\t\tstep_fetch(" << hx(prog[k]) << "ull);\n";
-                if (loop_ends.count(a)) o << "\t\tstep_loop_end();\n";
-                o << "\t\t" << handler(ops, prog[k]) << "_t<" << hx(prog[k]) << "ull>();\n"
-                  << "\t\tstep_after();\n";
-                if (waits.count(a)) o << "\t\tif (m_core->daddr == " << hx(a) << ") return 1; // polling its flags\n";
-                o << "\t\tif (++done >= budget) return 2;\n"
+                o << "\tL_" << std::hex << a << std::dec << ":\n";
+                if (!full[k]) {
+                    o << "\t\t" << handler(ops, prog[k]) << "_t<" << hx(prog[k]) << "ull>();\n"
+                      << "\t\t++plain;\n";
+                    if (k + 1 < last && !full[k + 1]) continue; // the run goes on
+                    // The run ends: the pipeline as this instruction leaves it, its count.
+                    o << "\t\tm_core->pc = " << hx(a) << "; m_core->daddr = " << hx(a + 1) << "; m_core->faddr = " << hx(a + 2)
+                      << "; m_core->nfaddr = " << hx(a + 3) << ";\n"
+                      << "\t\tm_instructions += plain; done += plain; plain = 0;\n";
+                } else {
+                    o << "\t\tstep_fetch(" << hx(prog[k]) << "ull);\n";
+                    if (loop_ends.count(a)) o << "\t\tstep_loop_end();\n";
+                    o << "\t\t" << handler(ops, prog[k]) << "_t<" << hx(prog[k]) << "ull>();\n"
+                      << "\t\tstep_after();\n";
+                    if (waits.count(a)) o << "\t\tif (m_core->daddr == " << hx(a) << ") return 1; // polling its flags\n";
+                    o << "\t\t++done;\n";
+                }
+                o << "\t\tif (done >= budget) return 2;\n"
                   << "\t\tif (!step_pre()) return 1;\n";
                 if (k + 1 < last) o << "\t\tif (m_core->daddr == " << hx(a + 1) << ") goto L_" << std::hex << a + 1 << std::dec << ";\n";
                 o << "\t\tcontinue;\n";
@@ -339,6 +418,9 @@ int main(int argc, char **argv) {
              "\t\tm_gen_end = " << hx(base + n) << ";\n"
              "\t}\n"
              "\tuint64_t done = 0;\n"
+             "\t// Plain runs skip step_pre and the DMA cycle: not while a DMA or a delayed IOP write is pending.\n"
+             "\tif ((m_core->dma_status & 0xc0) || m_iop_delay > 0)\n"
+             "\t\tthrow SharcFatal(\"SHARC: a DMA or delayed IOP write while the recompiled program runs\");\n"
              "\tif (!step_pre()) return true;\n"
              "\tfor (;;) {\n"
              "\t\tint r;\n"
@@ -352,8 +434,8 @@ int main(int argc, char **argv) {
              "\t\t\tthrow SharcFatal(emu_fatalerror::fmt(\"SHARC: no recompiled code at %05x\", m_core->daddr));\n"
              "\t}\n}\n\n} // namespace rt::sharc\n";
         write_file(out_path, o.str());
-        std::printf("m2sharcrecomp: %u instructions, %zu loop ends, %zu wait loops, %zu handlers templated -> %s and %u chunks\n", n,
-                    loop_ends.size(), waits.size(), handlers, argv[2], chunks);
+        std::printf("m2sharcrecomp: %u instructions (%u plain), %zu loop ends, %zu wait loops, %zu handlers templated -> %s and %u chunks\n", n,
+                    plain_count, loop_ends.size(), waits.size(), handlers, argv[2], chunks);
         return 0;
     } catch (const std::exception &e) {
         std::fprintf(stderr, "m2sharcrecomp: %s\n", e.what());

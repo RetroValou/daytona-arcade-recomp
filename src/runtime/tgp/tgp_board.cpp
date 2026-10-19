@@ -82,6 +82,12 @@ void TgpBoard::sharc_iop_w(uint32_t offset, uint32_t data) {
 // Until the SHARC polls an empty input FIFO (its wait loop, run_generated's
 // "waiting"), or idles. 50 M instructions without waiting: a fault.
 void TgpBoard::run_sharc() {
+    const uint64_t t0 = clock_ ? clock_() : 0;
+    run_sharc_to_wait();
+    if (clock_) sharc_ticks_ += clock_() - t0;
+}
+
+void TgpBoard::run_sharc_to_wait() {
     sharc::adsp21062_device &s = sharc_->core();
     for (uint64_t done = 0; done < 50'000'000;) {
         s.set_flag_input(0, in_.empty() ? 1 : 0);
@@ -179,19 +185,23 @@ void TgpBoard::run_tgp() {
 void TgpBoard::need_output() {
     if (!sharc_) return run_tgp();
     if (!booted_) return;
+    const uint64_t t0 = clock_ ? clock_() : 0;
     for (uint64_t done = 0; out_.empty() && done < 50'000'000; done += 16) {
         sharc::adsp21062_device &s = sharc_->core();
         s.set_flag_input(0, in_.empty() ? 1 : 0);
         const uint64_t at = s.instructions();
-        if (s.run_generated(16) && (in_.empty() || s.instructions() == at)) return; // waits for input
+        if (s.run_generated(16) && (in_.empty() || s.instructions() == at)) break; // waits for input
     }
+    if (clock_) sharc_ticks_ += clock_() - t0;
 }
 
 void TgpBoard::run_sharc_slice(uint64_t instructions) {
     if (!sharc_ || !booted_) return;
     sharc::adsp21062_device &s = sharc_->core();
+    const uint64_t t0 = clock_ ? clock_() : 0;
     s.set_flag_input(0, in_.empty() ? 1 : 0);
     s.run_generated(instructions);
+    if (clock_) sharc_ticks_ += clock_() - t0;
 }
 
 void TgpBoard::sync_buffer_read() {

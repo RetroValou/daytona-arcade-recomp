@@ -53,6 +53,7 @@ void Diagnostics::perf_note(const char *line, int length) {
 
 void Diagnostics::game_started(rt::GameLoop &game) {
     (void)game;
+    if constexpr (kPerfLog) game.board().tgp().set_profile_clock(ticks_us); // the SHARC's time (Model 2B)
 #ifdef M2_TGP_PROFILE
     rt::tgp_profile.clock = ticks_us;
     rt::tgp_profile.ticks_per_second = 1000000u;
@@ -96,6 +97,8 @@ Diagnostics::FrameStart Diagnostics::frame_start(rt::GameLoop &game) {
     s.skipped = game.board().spin_skipped();
 #endif
     s.tgp = game.board().tgp().tgp_instructions();
+    s.sharc = game.board().tgp().sharc_instructions();
+    s.sharc_us = game.board().tgp().sharc_ticks();
     s.geo = geometry_of(&game);
     s.geo_stats = s.geo ? s.geo->stats() : rt::Geo::Stats{};
     s.begin = diagnostic_ticks_us();
@@ -147,6 +150,8 @@ void Diagnostics::frame_done(rt::GameLoop &game, const FrameStart &s, uint64_t b
         c.i960_skipped += game.board().spin_skipped() - s.skipped;
 #endif
         c.tgp_instructions += game.board().tgp().tgp_instructions() - s.tgp;
+        c.sharc_instructions += game.board().tgp().sharc_instructions() - s.sharc;
+        c.sharc_us += game.board().tgp().sharc_ticks() - s.sharc_us;
         auto &note = core_profile_.note();
         ++note.board_frames;
         note.i960_instructions += uint32_t(game.instructions() - s.i960);

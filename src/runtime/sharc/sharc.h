@@ -284,6 +284,11 @@ private:
     // The recompiled program's handlers (m2sharcrecomp writes their definitions:
     // upstream's sharcop_* and COMPUTE, the opcode a template parameter).
     template <uint32_t OPCODE> void COMPUTE_t();
+    // Inline copies of GET_UREG, SET_UREG and SHIFT_OPERATION_IMM for the
+    // recompiled handlers (m2sharcrecomp: their register numbers are constants).
+    inline uint32_t GET_UREG_i(int ureg);
+    inline void SET_UREG_i(int ureg, uint32_t data);
+    inline void SHIFT_OPERATION_IMM_i(int shiftop, int data, int rn, int rx);
     template <int CHUNK> int run_chunk(uint64_t &done, uint64_t budget);
     template <uint64_t OPCODE> void sharcop_compute_dreg_dm_dreg_pm_t();
     template <uint64_t OPCODE> void sharcop_compute_t();

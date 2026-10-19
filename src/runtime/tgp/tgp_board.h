@@ -81,6 +81,10 @@ public:
     uint32_t copro_status_r() const { return upload_count_ == 0 ? 0xffffffffu : 0; }
     uint64_t sharc_instructions() const;
     bool has_sharc() const { return sharc_ != nullptr; }
+    // Profiling (the Vita's diagnostics builds): with a clock, the time the
+    // SHARC runs is summed in sharc_ticks (the clock's units).
+    void set_profile_clock(uint64_t (*clock)()) { clock_ = clock; }
+    uint64_t sharc_ticks() const { return sharc_ticks_; }
     // Run the TGP until it waits on an empty input FIFO. The game polls the
     // TGP's mailbox in buffer RAM for results; the TGP must have caught up.
     void sync() { run_tgp(); }
@@ -117,7 +121,10 @@ private:
     friend class SharcCopro;
     std::unique_ptr<SharcCopro> sharc_;
     uint32_t upload_count_ = 0;
+    uint64_t (*clock_)() = nullptr;
+    uint64_t sharc_ticks_ = 0;
     void run_sharc();
+    void run_sharc_to_wait();
     void need_output(); // the i960 needs an output word: the TGP all, the SHARC until one
     void run_sharc_slice(uint64_t instructions);
     uint32_t buffer_[0x8000];

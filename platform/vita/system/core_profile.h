@@ -114,6 +114,7 @@ public:
         uint64_t board_frames = 0, presents = 0;
         uint64_t i960_instructions = 0, tgp_instructions = 0;
         uint64_t i960_skipped = 0; // of i960_instructions: skipped in the game's wait loop (M2_SPIN_SKIP)
+        uint64_t sharc_instructions = 0, sharc_us = 0; // Model 2B's SHARC (inside the i960+TGP lines)
         uint64_t geo_jobs = 0, geo_polys = 0, geo_polys_max = 0, geo_blocked = 0, geo_failures = 0;
         uint64_t geo_count_reads = 0, geo_latency = 0, geo_latency_max = 0, geo_wait_max = 0;
         uint64_t geo_parse_max = 0;
@@ -332,6 +333,10 @@ public:
               double(counters.i960_instructions) / frames, double(counters.i960_skipped) / frames,
               double(counters.tgp_instructions) / frames,
               counters.geo_jobs ? double(counters.geo_polys) / double(counters.geo_jobs) : 0.0);
+        if (counters.sharc_instructions)
+            w.add("SHARC (Model 2B, recompiled; inside the i960+TGP lines): %.0f instr, %.2f ms a frame, %.2f M instr/s\n",
+                  double(counters.sharc_instructions) / frames, double(counters.sharc_us) / 1000.0 / frames,
+                  counters.sharc_us ? double(counters.sharc_instructions) / double(counters.sharc_us) : 0.0);
 
         // Ranking of the main-core sections: what to optimize first.
         std::array<int, kMainSections> order{};

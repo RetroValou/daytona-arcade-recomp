@@ -84,6 +84,7 @@ public:
     // One emulated frame, around GameLoop::run_frame_sound_packet.
     struct FrameStart {
         uint64_t i960 = 0, skipped = 0, tgp = 0, begin = 0;
+        uint64_t sharc = 0, sharc_us = 0; // Model 2B's SHARC: instructions, time (TgpBoard)
         const rt::Geo *geo = nullptr;
         rt::Geo::Stats geo_stats;
     };

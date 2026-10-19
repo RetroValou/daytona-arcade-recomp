@@ -1,5 +1,37 @@
 # Handoff
 
+## SHARC: plain runs and inline register accessors (PC x1.9; Vita unchanged) (2026-10-19)
+
+m2sharcrecomp: plain instructions (compute, the dm/pm moves, immediate loads,
+modify, nop: handlers that touch neither the pipeline, the stacks, loops,
+interrupts nor system registers; a ureg write to class 6x/7x is not plain)
+run without the interpreter's per-instruction bookkeeping: the pipeline is
+written once when the run ends (arrival is always linear), their count kept
+in a register; the full step for every other instruction, the two after one
+(delay slots, MODE1 latency) and the three before a loop end (ASTAT history).
+1,997 of 4,351 instructions. step_pre's checks are skipped inside a run:
+run_generated refuses a pending DMA or delayed IOP write (never after the boot
+in fvipers' logs). --full-steps: the old code (comparison, debugging).
+GET_UREG, SET_UREG, SHIFT_OPERATION_IMM copied inline (GET_UREG_i...) into
+sharc_handlers.h: constant register numbers fold. The SHARC builds in 15 s.
+PC, fight check, on a quiet machine (two MAME runs left over from screenshot
+probes had been taking 2.7 cores for 5 h: earlier timings were noisy): full
+steps 103 M SHARC instructions/s, plain runs 143, + inline accessors 156;
+m2sharccheck_gen MATCH (attract, fight); native fight 159 fps (91-100), the
+same last screen hash. No integer division in the SHARC's hot path (the Vita
+has no hardware divider): only the boot's external_dma_write uses %.
+Vita perf.log: a SHARC line (instructions, ms a frame, M instructions/s;
+TgpBoard::set_profile_clock, diagnostics builds). Measured (user,
+extern/result_perf_vita/fvipers/perf_plain_runs.log): fights 18-29 fps; the
+SHARC 63-77 k instructions a frame, 23-28 ms, 2.74-2.76 M instructions/s:
+unchanged by these optimisations (~160 cycles a SHARC instruction at 444 MHz).
+Analysis: not the per-instruction work; the generated SHARC is 1.26 MB of ARM
+code (~290 bytes an instruction, every instruction its own copy of MAME's
+handlers) against the Cortex-A9's 32 KB instruction cache. Next: a SHARC
+benchmark on the Vita (code variants in one package, measured on the console)
+and a per-address profile (the hot set's size), then compact code with only
+the hottest loops specialised.
+
 ## Fighting Vipers runs natively (PC 90+ fps; Vita 13-20 fps in a fight) (2026-10-19)
 
 The SHARC on the board: TgpBoard holds it on Model 2B (SharcCopro, its data
