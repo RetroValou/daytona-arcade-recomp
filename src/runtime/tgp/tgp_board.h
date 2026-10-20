@@ -76,7 +76,6 @@ public:
     uint32_t geo_read_start() const { return geo_read_start_; }
     uint64_t tgp_instructions() const { return tgp_.count; }
     const uint32_t *table_data() const { return tables_.data(); } // copro_tgp_tables (TGP profiling's benchmark)
-    bool booted() const { return booted_; }
     // Model 2B: the SHARC's IOP registers (0x008c0000, dword offset) and the
     // copro status (0x00980014: -1 until the program upload has started).
     void sharc_iop_w(uint32_t offset, uint32_t data);

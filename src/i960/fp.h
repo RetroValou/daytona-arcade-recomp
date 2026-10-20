@@ -30,7 +30,6 @@ namespace i960::fp {
 
 // AC rounding control, bits 31:30 (MAME's round_to_int uses the same order).
 enum class Round : uint8_t { Nearest = 0, Down = 1, Up = 2, Zero = 3 };
-inline Round round_from_ac(uint32_t ac) { return Round((ac >> 30) & 3); }
 
 // IEEE exception flags (SoftFloat's bit values).
 enum Flag : uint8_t { kInexact = 1, kUnderflow = 2, kOverflow = 4, kInfinite = 8, kInvalid = 16 };

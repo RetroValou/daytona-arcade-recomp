@@ -19,7 +19,7 @@ public:
     // music_channels: the driver's music channels (rt::Game::music_channels).
     NativeSoundEngine(std::vector<uint8_t> program, std::vector<uint8_t> pcm1,
                       std::vector<uint8_t> pcm2, const rt::SoundLayout &layout,
-                      uint16_t music_channels = rt::kDaytonaMusic);
+                      uint16_t music_channels);
     NativeSoundEngine(const NativeSoundEngine &) = delete;
     NativeSoundEngine &operator=(const NativeSoundEngine &) = delete;
     void send(const uint8_t *bytes, size_t count);

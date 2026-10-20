@@ -72,7 +72,8 @@ inline void wram_w8(rt::Cpu &c, uint32_t o, uint8_t v) { c.work_ram[o] = v; }
 // Every range starts and ends on a 128 KB boundary: an unaligned access
 // that does not cross one (in()) is in one range, and its bytes one by one
 // (Cpu::i960_read_dword_unaligned) are the little-endian word read here.
-// The frame-wait byte (0x00500000, ldob) still goes through read_byte.
+// A wait loop's byte or word (M2Board::spin_addr, the game's Game::spin) still
+// goes through read_byte / read_dword, where the board skips its passes.
 // GameLoop checks at start that the board is the one the code was made for.
 template <rt::BoardType K> struct BoardMem {
     static constexpr uint32_t kMainRam = K == rt::BoardType::Model2o ? 0x20000u : 0x40000u;
@@ -125,6 +126,7 @@ template <rt::BoardType K> struct BoardMem {
             return b.read_dword_unaligned(a);
         }
         uint32_t v;
+        if (b.spin_addr(a)) [[unlikely]] return b.read_dword(a);
         if (const uint8_t *p = rd(b, a)) { std::memcpy(&v, p, 4); return v; }
         if (tgp_rd(b, a, v)) return v;
         return b.read_dword_mid(a);
@@ -138,7 +140,7 @@ template <rt::BoardType K> struct BoardMem {
         return b.read_word_mid(a);
     }
     static uint8_t ld8(rt::M2Board &b, uint32_t a) {
-        if (a == 0x00500000u) return b.read_byte(a);
+        if (b.spin_addr(a)) [[unlikely]] return b.read_byte(a);
         if (const uint8_t *p = rd(b, a)) return *p;
         return b.read_byte_mid(a);
     }

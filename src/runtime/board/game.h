@@ -248,7 +248,7 @@ struct Game {
     // I/O board with the interface 837-12079 (Virtua Cop) or the 2A-CRX
     // 315-5649's serial channel 2 (Virtua Cop 2). None: no gun.
     GunRange gun{};
-    // Model 1 sound board: its driver's voice pools (nullptr: Daytona's).
+    // Model 1 sound board: its driver's voice pools (required there).
     const Model1Voices *model1_voices = nullptr;
     // Which of the sound driver's channels play the music (bit n: channel n,
     // 0-15); every other channel, and a voice no channel owns, is an effect.

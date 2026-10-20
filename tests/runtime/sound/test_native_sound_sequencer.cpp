@@ -16,7 +16,7 @@ namespace {
 // The fixtures' table layout (daytona93's addresses: src/games/daytona.cpp).
 constexpr rt::SoundLayout kLayout = {0x2bc6, 0x505a, 0x523a, 0x56ea, 0x5c1a, 0x5cce, 0x5dce, 0x645a};
 struct Sequencer : snd::NativeSoundSequencer {
-    explicit Sequencer(const std::vector<uint8_t>& p) : snd::NativeSoundSequencer(p, kLayout) {}
+    explicit Sequencer(const std::vector<uint8_t>& p) : snd::NativeSoundSequencer(p, kLayout, rt::kDaytonaMusic) {}
 };
 using Event = Sequencer::VoiceEvent;
 void put16(std::vector<uint8_t>& p, unsigned at, unsigned value) {

@@ -107,6 +107,7 @@ extern const Game daytona93_game = {
     .io = {}, .link = false, .draw_distance = true, // hook_draw_list
     .defaults = {.music_volume = 100, .effects_volume = 30},
     .control_list = kControls,
+    .model1_voices = &kDaytonaVoices,
     .music_channels = kDaytonaMusic, // 0-9 and 15
     .update_z_depth_scale = 6.0f, // ln of w: race 99.9th percentile 348 (max 379)
 };
@@ -125,6 +126,7 @@ extern const Game daytona_game = {
     // the Dreamcast (platform/dreamcast_unmaintained/HANDOFF.md; dcmemcheck matched the
     // desktop at its 100 checkpoints with the skip). daytona93 has no such loop.
     .spin = {{Game::SpinWait::ByteIsReg, 0x1394, 0x00500000, 2, 16}},
+    .model1_voices = &kDaytonaVoices,
     .music_channels = kDaytonaMusic, // 0-9 and 15
     .update_z_depth_local_weight = 0.8,
     .update_z_depth_scale = 6.0f, // as daytona93 (the same tracks)

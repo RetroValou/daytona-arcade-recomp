@@ -8,12 +8,12 @@
 namespace snd {
 
 SoundBoard::SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2,
-                       const rt::Model1Voices *voices, uint16_t music_channels)
+                       const rt::Model1Voices &voices, uint16_t music_channels)
     : program_(program), pcm1_rom_(pcm1), pcm2_rom_(pcm2),
       pcm1_(kPcmClock, pcm1_rom_.data(), uint32_t(pcm1_rom_.size())),
       pcm2_(kPcmClock, pcm2_rom_.data(), uint32_t(pcm2_rom_.size())) {
     if (program_.size() < 0x40000) throw rt::Fatal("sound program image missing or short (re-run the importer)");
-    voices_ = voices ? *voices : rt::kDaytonaVoices;
+    voices_ = voices;
     music_channels_ = music_channels;
     cpu_.rom = program_.data();
     cpu_.dev = this;

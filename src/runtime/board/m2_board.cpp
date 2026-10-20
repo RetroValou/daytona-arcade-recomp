@@ -275,8 +275,8 @@ M2Board::M2Board(Images images)
     if (img_.eeprom.size() == io_.eeprom.size()) std::copy(img_.eeprom.begin(), img_.eeprom.end(), io_.eeprom.begin());
 #ifdef M2_SPIN_SKIP
     std::copy(std::begin(img_.game->spin), std::end(img_.game->spin), std::begin(spin_));
-    for (const Game::SpinWait &w : spin_)
-        if (w.kind == Game::SpinWait::WordZeroCount) spin_word_ = w.addr;
+    for (int i = 0; i < 2; i++)
+        if (spin_[i].kind != Game::SpinWait::None) spin_addr_[i] = spin_[i].addr;
 #endif
     map(0x00500000, 0x005fffff, Ram, work_.data());
     map(0x00800000, 0x00807fff, Dev, nullptr, 0, false);
@@ -948,7 +948,7 @@ uint8_t M2Board::read_byte(uint32_t addr) {
 #endif
 #ifdef M2_FAST_BUS
 #ifdef M2_SPIN_SKIP
-    if ((addr >> kPageBits) == fast_read_page_ && addr != spin_[0].addr && addr != spin_[1].addr)
+    if ((addr >> kPageBits) == fast_read_page_ && !spin_addr(addr))
         return fast_read_base_[addr & 0xfff];
 #else
     if ((addr >> kPageBits) == fast_read_page_) return fast_read_base_[addr & 0xfff];
@@ -1034,7 +1034,7 @@ uint32_t M2Board::read_dword(uint32_t addr) {
 #endif
 #ifdef M2_FAST_BUS
 #ifdef M2_SPIN_SKIP
-    if ((addr >> kPageBits) == fast_read_page_ && addr != spin_word_) {
+    if ((addr >> kPageBits) == fast_read_page_ && !spin_addr(addr)) {
 #else
     if ((addr >> kPageBits) == fast_read_page_) {
 #endif
@@ -1052,7 +1052,7 @@ uint32_t M2Board::read_dword(uint32_t addr) {
     }
 #endif
 #ifdef M2_SPIN_SKIP
-    if (addr == spin_word_ && p.kind == Ram) // a work RAM word's wait loop (WordZeroCount)
+    if (spin_addr(addr) && p.kind == Ram) // a work RAM word's wait loop (WordZeroCount)
         for (const Game::SpinWait &w : spin_)
             if (w.kind == Game::SpinWait::WordZeroCount && addr == w.addr && cpu_->m_IP == w.ip) {
                 uint32_t v;

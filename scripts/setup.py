@@ -161,7 +161,8 @@ def cached(build, key):
     return None
 
 
-def configure_and_build(build, romset="daytona93"):
+def configure_and_build(build, romset=None):
+    romset = romset or catalogue().main_set(catalogue().DEFAULT)
     say(f"Configuring and building ({romset}, in {os.path.relpath(build, ROOT)})")
     gen_root = os.path.join(ROOT, catalogue().gen_root(romset))  # the set's recompiled code (scripts/games.py)
     game = catalogue().game_of(romset)  # the desktop executable's name

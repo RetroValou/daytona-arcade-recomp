@@ -22,8 +22,9 @@ it may run before the next lockstep event, worked out at the last full check
   ls.count + ls.pending (rt::Lockstep::now);
 - a load or store at a fixed, aligned work-RAM address (0x00500000-0x005fffff,
   plain RAM nothing watches) goes straight to it (gen::wram_*), and such an
-  instruction counts as register-only. The frame-wait byte (0x00500000, read
-  through the bus for the frame-wait skip) keeps its call.
+  instruction counts as register-only. A wait loop's byte or word (KEEP, the
+  set's scripts/games.py "wram_bus": the game's Game::spin addresses, read
+  through the bus for the wait-loop skip) keeps its call.
 
 When `left` runs out the instruction stores its IP and jumps to the chunk's
 one `recheck:` (Lockstep::check, then back in through the chunk's own
@@ -31,7 +32,9 @@ dispatch switch, `left` one more for the instruction's decrement): the slow
 path is not repeated at every instruction, so the code stays the size of the
 desktop's.
 
-    python scripts/fast_gen.py GEN_SET_DIR OUT_DIR
+    python scripts/fast_gen.py GEN_SET_DIR OUT_DIR [KEEP]
+
+KEEP: comma-separated work RAM addresses (hex) left on the bus.
 
 Files other than chunk_*.cpp are copied unchanged. A file is rewritten only
 when its output changes (make rebuilds only those). Fails on anything it
@@ -67,13 +70,13 @@ WRAM = [
 
 def direct_wram(line, stats, keep=()):
     """keep: work RAM offsets (from 0x00500000) whose accesses stay on the bus:
-    a game's wait-loop word (scripts/games.py "wram_bus"; the board's
-    M2_SPIN_SKIP sees only reads through the bus)."""
+    the game's wait-loop bytes and words (scripts/games.py "wram_bus"; the
+    board's M2_SPIN_SKIP sees only reads through the bus)."""
     for pattern, align, repl in WRAM:
         def sub(m):
             offset = int(m.group(1), 16)
-            if offset % align or (repl.startswith("gen::wram_r8") and offset == 0) or offset in keep:
-                return m.group(0)  # unaligned, the frame-wait byte or a kept word: the bus as before
+            if offset % align or offset in keep:
+                return m.group(0)  # unaligned or a wait loop's: the bus as before
             stats["wram"] += 1
             return repl.format(m.group(1))
         line = pattern.sub(sub, line)
@@ -148,7 +151,7 @@ def rewrite_table(source):
     return source.replace(TABLE_LOOP, TABLE_SEARCH)
 
 
-def rewrite(source):
+def rewrite(source, keep=()):
     lines = source.split("\n")
     out = []
     i = 0
@@ -196,7 +199,7 @@ def rewrite(source):
         if not ip or unit[2] != CHECK or COUNT not in unit:
             raise SystemExit(f"fast_gen: unexpected instruction at {line!r}")
         k = unit.index(COUNT)
-        body, tail = [direct_wram(b, stats) for b in unit[3:k]], unit[k:]
+        body, tail = [direct_wram(b, stats, keep) for b in unit[3:k]], unit[k:]
         if any("ls.count" in t for t in body + tail[1:]):
             raise SystemExit(f"fast_gen: ls.count used inside the instruction at {line!r}")
         tail = ["    ++n;"] + tail[1:]
@@ -249,15 +252,16 @@ def rewrite_tgp(source):
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
     src, dst = Path(sys.argv[1]), Path(sys.argv[2])
+    keep = {int(a, 16) - 0x00500000 for a in sys.argv[3].split(",") if a} if len(sys.argv) == 4 else set()
     dst.mkdir(parents=True, exist_ok=True)
     total = {"pure": 0, "other": 0, "wram": 0}
     for f in sorted(src.glob("*.cpp")):
         text = f.read_text()
         if f.name.startswith("chunk_"):
-            text, stats = rewrite(text)
+            text, stats = rewrite(text, keep)
             for k in total:
                 total[k] += stats[k]
         elif f.name == "tgp_gen.cpp":

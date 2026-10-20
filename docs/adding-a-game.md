@@ -60,9 +60,9 @@ Define one `extern const rt::Game <set>_game = {...};` per set
   word whose passes are counted in a register (`WordZeroCount`, Dead or
   Alive) or a device register whose passes are counted in a register
   (`WordBitsCount`, Virtua Cop). Check one with m2run's dumps against the
-  same run without it. A `WordZeroCount` word must also be listed in the
-  set's `wram_bus` (scripts/games.py), or `--fast-inaccuracy` reads it
-  directly and the board never sees the loop.
+  same run without it. Every work RAM address in `spin` must also be in
+  the set's `wram_bus` (scripts/games.py; a test checks it), or the Vita's
+  fast code reads it directly and the board never sees the loop.
 - `protection` (optional): a protection chip on the ROM board (Dead or
   Alive's 317-0229).
 

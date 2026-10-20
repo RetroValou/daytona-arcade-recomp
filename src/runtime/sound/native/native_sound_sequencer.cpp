@@ -23,7 +23,7 @@ uint8_t voice_level(uint8_t velocity, uint8_t volume) {
 }
 
 NativeSoundSequencer::NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout,
-                                           uint32_t output_rate, uint16_t music_channels)
+                                           uint16_t music_channels, uint32_t output_rate)
     : program_(program), output_rate_(output_rate), music_channels_(music_channels), t_(layout) {
     if (program.size() < 0x40000 || output_rate < 8000 || output_rate > 192000)
         throw std::invalid_argument("native sound requires a complete imported program and valid output rate");

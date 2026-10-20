@@ -231,6 +231,17 @@ public:
 #ifdef M2_SPIN_SKIP
     uint64_t spin_skipped() const { return spin_skipped_; } // instructions skipped in the game's wait loop (spin_skip)
 #endif
+    // A wait loop's byte or word (Game::spin): a read of it must take the bus's
+    // full path (read_byte, read_dword), where the board skips the loop's passes.
+    // Fast paths (the read page cache, the inlined bus) test it first.
+    bool spin_addr(uint32_t addr) const {
+#ifdef M2_SPIN_SKIP
+        return addr == spin_addr_[0] || addr == spin_addr_[1];
+#else
+        (void)addr;
+        return false;
+#endif
+    }
 
 private:
     enum Kind : uint8_t { Unmapped, Rom, Ram, Tex, Dev };
@@ -345,7 +356,7 @@ private:
 #ifdef M2_SPIN_SKIP
     void spin_skip(const Game::SpinWait &w, uint32_t value);
     Game::SpinWait spin_[2]{};
-    uint32_t spin_word_ = ~0u; // a WordZeroCount loop's word (read_dword checks it), or none
+    uint32_t spin_addr_[2] = {~0u, ~0u}; // spin_'s addresses (spin_addr); ~0: an unused entry
     uint64_t spin_skipped_ = 0;
 #endif
 #ifdef M2_FAST_BUS

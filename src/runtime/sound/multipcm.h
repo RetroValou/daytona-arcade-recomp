@@ -18,7 +18,6 @@ public:
     // 1 MiB banks at 0x100000 (set_bank).
     MultiPcm(uint32_t clock, const uint8_t *rom, uint32_t rom_size);
 
-    double sample_rate() const { return double(rate_); }
     void write(unsigned offset, uint8_t data); // 0 data, 1 slot, 2 register
     void set_bank(unsigned bank) { bank_ = bank & 3; }
     // Renders n stereo samples, each channel as MAME's put_int_clamp(v, 32768).

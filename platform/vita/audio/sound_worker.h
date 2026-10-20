@@ -44,7 +44,6 @@ public:
     // main and geometry threads); 0 keeps all application cores and follows
     // the fourth-core policy (core_policy.h, --free-core builds).
     void set_cpu_mask(int mask) { requested_mask_ = mask; }
-    int affinity_before() const { return affinity_before_; }
     int affinity_mask() const { return affinity_mask_; }
     int affinity_result() const { return affinity_result_; }
     uint64_t last_sound_ticks() const { return last_sound_ticks_; }

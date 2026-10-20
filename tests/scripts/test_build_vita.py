@@ -275,15 +275,40 @@ class FastGenInlineBusTests(unittest.TestCase):
                          "R[3] = gen::wram_r32(c, 0x12340u); gen::wram_w16(c, 0x00002u, uint16_t(R[4]));")
         self.assertEqual(stats["wram"], 2)
 
-    def test_frame_wait_byte_and_unaligned_keep_the_bus(self):
+    def test_wait_loop_addresses_and_unaligned_keep_the_bus(self):
         stats = {"wram": 0}
-        line = "R[3] = Mem::ld8(B, 0x00500000u); R[4] = Mem::ld32(B, 0x00500002u);"
-        self.assertEqual(FAST_GEN.direct_wram(line, stats), line)
+        line = "R[3] = Mem::ld8(B, 0x00500000u); R[4] = Mem::ld32(B, 0x00500002u); R[5] = Mem::ld32(B, 0x0054b150u);"
+        self.assertEqual(FAST_GEN.direct_wram(line, stats, {0x0, 0x4b150}), line)
         self.assertEqual(stats["wram"], 0)
+
+    def test_a_byte_no_wait_loop_reads_becomes_direct(self):
+        stats = {"wram": 0}
+        self.assertEqual(FAST_GEN.direct_wram("R[3] = Mem::ld8(B, 0x00500000u);", stats), "R[3] = gen::wram_r8(c, 0x00000u);")
+        self.assertEqual(stats["wram"], 1)
 
     def test_inlined_bus_access_is_not_register_only(self):
         self.assertFalse(FAST_GEN.pure(["    R[3] = Mem::ld32(B, R[4]);"]))
         self.assertTrue(FAST_GEN.pure(["    R[3] = gen::wram_r32(c, 0x00010u);"]))
+
+
+class WaitLoopAddressTests(unittest.TestCase):
+    """scripts/games.py "wram_bus" against the games' records (src/games/*.cpp
+    Game::spin): every wait loop's byte or word in work RAM, and nothing else."""
+
+    def test_wram_bus_matches_the_records(self):
+        import re
+        root = Path(__file__).resolve().parents[2]
+        spins = {}
+        for f in sorted((root / "src/games").glob("*.cpp")):
+            for record in f.read_text().split("extern const Game ")[1:]:
+                name = re.search(r'\.set = "(\w+)"', record)
+                if not name:  # games.cpp's declarations
+                    continue
+                name = name.group(1)
+                spins[name] = {int(a, 16) for a in re.findall(r"SpinWait::\w+, 0x[0-9a-f]+, (0x[0-9a-f]+)", record)
+                               if 0x00500000 <= int(a, 16) < 0x00600000}
+        for name, entry in BUILD.SETS.items():
+            self.assertEqual(set(entry["wram_bus"]), spins[name], name)
 
 
 if __name__ == "__main__":

@@ -39,8 +39,8 @@ public:
     // The immutable ROM must outlive this sequencer. All time is measured in
     // output samples, so music continues independently of graphics cadence.
     // music_channels: the driver's music channels (rt::Game::music_channels).
-    NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout, uint32_t output_rate = 48000,
-                         uint16_t music_channels = rt::kDaytonaMusic);
+    NativeSoundSequencer(const std::vector<uint8_t> &program, const rt::SoundLayout &layout, uint16_t music_channels,
+                         uint32_t output_rate = 48000);
     void set_sink(Sink sink, void *context) { sink_ = sink; context_ = context; }
     void reset();
     void send(const uint8_t *data, size_t bytes);

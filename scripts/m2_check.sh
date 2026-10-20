@@ -32,20 +32,16 @@ IMG="$(cd "$ROOT" && games_path rom_cache)"
 cd "$ROOT"
 mkdir -p "traces/$SET"
 HDR="traces/$SET/hdr.m2in"
-if [ "$SET" = daytona93 ]; then
-    [ -f "$IMG/tgp_program.bin" ] || python3 scripts/m2import.py roms/daytona93.zip "$IMG"
-else
-    [ -f "$IMG/tgp_program.bin" ] || { echo "no $IMG: run scripts/recompile.py --set $SET" >&2; exit 1; }
-    # MAME wants roms/SET.zip; when the set is in another archive
-    # (scripts/games.py: srallycb.zip holds srallyc), link it under that
-    # name in traces/roms and point MAME there.
-    if [ ! -f "roms/$SET.zip" ]; then
-        A="$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games, os
+[ -f "$IMG/tgp_program.bin" ] || { echo "no $IMG: run scripts/recompile.py --set $SET" >&2; exit 1; }
+# MAME wants roms/SET.zip; when the set is in another archive
+# (scripts/games.py: srallycb.zip holds srallyc), link it under that
+# name in traces/roms and point MAME there.
+if [ ! -f "roms/$SET.zip" ]; then
+    A="$(python3 -c "import sys; sys.path.insert(0, 'scripts'); import games, os
 print(next(f'roms/{n}.zip' for n in games.SETS['$SET']['roms'] if os.path.exists(f'roms/{n}.zip')))")"
-        mkdir -p traces/roms
-        ln -sf "$ROOT/$A" "traces/roms/$SET.zip"
-        export ROMPATH="$ROOT/traces/roms;$ROOT/roms"
-    fi
+    mkdir -p traces/roms
+    ln -sf "$ROOT/$A" "traces/roms/$SET.zip"
+    export ROMPATH="$ROOT/traces/roms;$ROOT/roms"
 fi
 export SYSTEM="$SET"
 # Model 2B: MAME's SHARC interpreter, not its DRC (the reference for bit-identity;

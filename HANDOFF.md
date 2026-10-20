@@ -1,5 +1,37 @@
 # Handoff
 
+## Cleanup: wait-loop addresses from the games' records, no hidden Daytona defaults (2026-10-20)
+
+The user's request: dead code out, no per-game branches, the same behaviour.
+- The wait-loop byte 0x00500000 was hard-coded in the fast paths (the
+  inlined bus's ld8, fast_gen.py's direct work RAM). Now M2Board::spin_addr
+  (the game's Game::spin addresses) for the board's read page cache, the
+  inlined bus's ld8 and ld32 (it would have bypassed Dead or Alive's word),
+  and scripts/games.py "wram_bus" on every set for fast_gen.py (KEEP
+  argument) and build_vita.direct_ram; tests/scripts/test_build_vita.py
+  checks wram_bus against the records' Game::spin. Sets with no loop at
+  0x00500000 (daytona93, srallyc, vcop, manxttc) now read that byte
+  directly in --fast-inaccuracy/--fast-gen code: the same value.
+- The Model 1 sound board took Daytona's voice pools and music channels
+  when a game gave none: both are now required (Game::model1_voices set in
+  both Daytona records; GameLoop stops with a message without it);
+  NativeSoundEngine/Sequencer take music_channels without a default (the
+  sequencer's argument order: music channels, then the output rate).
+- Dead: fp.h round_from_ac, TgpBoard::booted(), MultiPcm::sample_rate(),
+  vita SoundWorker::affinity_before() (their members stay: used inside);
+  scripts/m2import.py (daytona93's Python importer, only m2_check.sh's
+  daytona93 branch used it; every set now needs scripts/recompile.py's
+  images); setup.py's default set from games.DEFAULT.
+- Kept on purpose: board-type branches (Model 2/2A/2B, Model 1/SCSP sound:
+  hardware), the Dreamcast-only Video accessors (its port uses them; already
+  out of date with the sequencer's signature before this change), the
+  DAYTONA_VITA_* build names and the desktop app's "daytona:" log prefix
+  (names only).
+Checked: all eight PC builds rebuilt, ctest 23/23 each; m2run counts,
+screen hash and WAV identical before and after for doaa_fight, daytona93
+race_basic, vf2_fight, vcop_shoot, srallyc_race, vcop2_shoot, manxttc_race
+(fvipers_fight counts and hash); scripts tests 50/50.
+
 ## Dead or Alive (doaa, Model 2A Revision A), one player; the SCSP's MADRS mirror (2026-10-20)
 
 New game `deadoralive` (scripts/games.py; Vita DOAL00100, deadoralive.vpk,

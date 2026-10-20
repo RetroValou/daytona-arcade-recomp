@@ -35,10 +35,10 @@ public:
     static constexpr uint32_t kBaud = 31250;          // MIDI-rate serial line from the i960
     static constexpr uint32_t kByteBits = 10;         // start, 8 data, stop
 
-    // voices: the driver's voice pools (rt::Game::model1_voices); nullptr: Daytona's.
+    // voices: the driver's voice pools (rt::Game::model1_voices).
     // music_channels: the driver's music channels (rt::Game::music_channels).
     SoundBoard(const std::vector<uint8_t> &program, const std::vector<uint8_t> &pcm1, const std::vector<uint8_t> &pcm2,
-               const rt::Model1Voices *voices = nullptr, uint16_t music_channels = rt::kDaytonaMusic);
+               const rt::Model1Voices &voices, uint16_t music_channels);
 
     // Command bytes the i960 wrote to its UART; they arrive one line-time
     // apart from now on.

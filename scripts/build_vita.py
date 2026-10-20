@@ -99,10 +99,9 @@ def direct_ram(folder, keep=()):
     """--fast-inaccuracy: fast_gen.py's direct work-RAM accesses only, in place. A load or
     store at a fixed, aligned address in 0x00500000-0x005fffff (plain RAM: no
     device, nothing watches its writes) becomes gen::wram_* instead of a call
-    through the bus; the frame-wait byte (0x00500000) and the set's "wram_bus"
-    words (scripts/games.py: keep, offsets from 0x00500000) keep their call. The
-    lockstep code (--fast_inaccuracy's checks per block, chunk chaining) is not
-    touched."""
+    through the bus; the set's "wram_bus" addresses (scripts/games.py: keep,
+    offsets from 0x00500000) keep their call. The lockstep code
+    (--fast_inaccuracy's checks per block, chunk chaining) is not touched."""
     direct_wram = load_fast_gen().direct_wram
     stats = {"wram": 0}
     for f in sorted(folder.glob("chunk_*.cpp")):
@@ -153,9 +152,10 @@ def vita_code(host, gen, build, mode, game, tgp_profile=False, i960_profile=Fals
     run(i960, os.environ)
     i960_out = tmp / "i960"
     if mode == "fast_inaccuracy":
-        direct_ram(i960_out, {a - 0x00500000 for a in SETS[game].get("wram_bus", ())})
+        direct_ram(i960_out, {a - 0x00500000 for a in SETS[game]["wram_bus"]})
     elif mode == "fast_gen":
-        run([sys.executable, ROOT / FAST_GEN, i960_out, tmp / "i960_fast_gen"], os.environ)
+        run([sys.executable, ROOT / FAST_GEN, i960_out, tmp / "i960_fast_gen",
+             ",".join(f"{a:x}" for a in SETS[game]["wram_bus"])], os.environ)
         i960_out = tmp / "i960_fast_gen"
     run([tgp_tool, cache / "tgp_program.bin", tmp / "tgp/tgp_gen.cpp", "--fast_inaccuracy",
          *(["--profile"] if tgp_profile else [])], os.environ)

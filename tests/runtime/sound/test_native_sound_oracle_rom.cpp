@@ -111,8 +111,8 @@ int main(int argc, char **argv) {
         const std::string dir = argv[1], prefix = argv[3];
         const unsigned count = std::strtoul(argv[2], nullptr, 10);
         auto program = load(dir + "/sound_program.bin"), pcm1 = load(dir + "/pcm1.bin"), pcm2 = load(dir + "/pcm2.bin");
-        auto oracle = std::make_unique<Oracle>(program, pcm1, pcm2);
-        snd::NativeSoundSequencer sequence(program, *rt::game().native_sound);
+        auto oracle = std::make_unique<Oracle>(program, pcm1, pcm2, *rt::game().model1_voices, rt::game().music_channels);
+        snd::NativeSoundSequencer sequence(program, *rt::game().native_sound, rt::game().music_channels);
         std::vector<Note> notes;
         sequence.set_sink(event, &notes);
         snd::NativeSoundEngine engine(program, pcm1, pcm2, *rt::game().native_sound);

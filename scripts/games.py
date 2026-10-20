@@ -110,13 +110,13 @@ SETS = {
         "game": "daytona", "label": "Deluxe '93",
         "roms": ["daytona93"], "board": "model2o", "recomp": [], "sndrecomp": [],
         "vita_fast": ("fast_inaccuracy", "fast_gen"),
-        "companion": "daytona", "inputs": {}, "full_range": False,
+        "companion": "daytona", "wram_bus": (), "inputs": {}, "full_range": False,
     },
     "daytona": {
         "game": "daytona", "label": "Revision A, 1994",
         "roms": ["daytona"], "board": "model2o", "recomp": [], "sndrecomp": [],
         "vita_fast": ("fast_inaccuracy", "fast_gen"),
-        "companion": "daytona93", "inputs": {}, "full_range": False,
+        "companion": "daytona93", "wram_bus": (0x00500000,), "inputs": {}, "full_range": False,
     },
     # Model 2A-CRX: RAM at 0x200000 (no ROM mirror); the boot copies ROM
     # 0x1000-0x60fff to work RAM 0x5a0000 and runs from there. Inputs: MAME's
@@ -124,7 +124,7 @@ SETS = {
     "srallyc": {
         "game": "segarally", "label": "Revision C",
         "roms": ["srallyc", "srallycb"], "board": "model2a", "recomp": ["--no-mirror", "--alias", "5a0000:1000:60000"], "sndrecomp": ["--scsp"],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (),
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN0", 0x20), "vr2": (":IN0", 0x20),
                    "vr3": (":IN0", 0x20), "vr4": (":IN0", 0x20), "handbrake": (":IN2", 0xFF)},
         "full_range": True,
@@ -137,7 +137,7 @@ SETS = {
     "vf2": {
         "game": "virtuafighter2", "label": "Version 2.1",
         "roms": ["vf2"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (0x00500000,),
         "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04)},
         "full_range": False,
     },
@@ -150,7 +150,7 @@ SETS = {
     "vcop": {
         "game": "virtuacop", "label": "Revision B",
         "roms": ["vcop"], "board": "model2o", "recomp": [], "sndrecomp": [],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (),
         "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
         "full_range": False,
     },
@@ -163,7 +163,7 @@ SETS = {
     "vcop2": {
         "game": "virtuacop2", "label": "Virtua Cop 2",
         "roms": ["vcop2"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (0x00500000,),
         "inputs": {"trigger": (":IN1", 0x01), "gunx": (":P1_X", 0x3FF), "guny": (":P1_Y", 0x3FF)},
         "full_range": False,
     },
@@ -179,7 +179,7 @@ SETS = {
     "manxttc": {
         "game": "manxtt", "label": "Twin, Revision C",
         "roms": ["manxttc", "manxtt"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (),
         "inputs": {"start": (":IN0", 0x40), "vr1": (":IN1", 0x10), "vr2": (":IN1", 0x20),
                    "steer": (":BANK", 0xFF), "accel": (":THROTTLE", 0xFF), "brake": (":BRAKE", 0xFF)},
         "full_range": True,
@@ -191,7 +191,7 @@ SETS = {
     "fvipers": {
         "game": "fightingvipers", "label": "Revision D",
         "roms": ["fvipers"], "board": "model2b", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
-        "vita_fast": ("fast_inaccuracy",), "companion": None,
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (0x00500000,),
         "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04),
                    "down": (":IN1", 0x10), "up": (":IN1", 0x20), "right": (":IN1", 0x40), "left": (":IN1", 0x80)},
         "full_range": False,
