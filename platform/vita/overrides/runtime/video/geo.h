@@ -91,7 +91,7 @@ public:
     };
 
     // Same signature as the reference: buffer is the live buffer RAM.
-    Geo(const std::vector<uint8_t> &polygons, const std::vector<uint8_t> &textures, uint32_t *buffer);
+    Geo(std::vector<uint8_t> polygons, std::vector<uint8_t> textures, uint32_t *buffer);
     ~Geo(); // joins the parse and stops the thread
     Geo(const Geo &) = delete;
     Geo &operator=(const Geo &) = delete;

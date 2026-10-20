@@ -74,8 +74,8 @@ const float *Geo::depth_of(const std::vector<GeoPoly> &list, bool hybrid) {
     return nullptr;
 }
 
-Geo::Geo(const std::vector<uint8_t> &polygons, const std::vector<uint8_t> &textures, uint32_t *buffer)
-    : live_(buffer), snapshot_(new uint32_t[kBufferWords]), core_(polygons, textures, snapshot_.get()),
+Geo::Geo(std::vector<uint8_t> polygons, std::vector<uint8_t> textures, uint32_t *buffer)
+    : live_(buffer), snapshot_(new uint32_t[kBufferWords]), core_(std::move(polygons), std::move(textures), snapshot_.get()),
       depth_scratch_(std::make_unique<DepthScratch>()) {
     std::memcpy(snapshot_.get(), live_, kBufferWords * sizeof(uint32_t));
     registry().push_back(this);

@@ -147,8 +147,10 @@ std::unique_ptr<Archive> open_archive(const std::string &path) {
     static const unsigned char k7z[6] = {'7', 'z', 0xBC, 0xAF, 0x27, 0x1C};
     if (std::memcmp(sig, k7z, 6) == 0) {
 #ifdef M2_HAVE_7Z
+        f.seekg(0, std::ios::end);
+        std::vector<uint8_t> data(size_t(f.tellg())); // read at its size: no growing copies
         f.seekg(0);
-        std::vector<uint8_t> data{std::istreambuf_iterator<char>(f), {}};
+        f.read(reinterpret_cast<char *>(data.data()), std::streamsize(data.size()));
         return std::make_unique<SevenZipArchive>(std::move(data));
 #else
         throw ZipError("7z support was not built (run scripts/setup.py to fetch the LZMA SDK)");

@@ -346,11 +346,7 @@ M2Board::M2Board(Images images)
 #ifdef M2_DC_MEMORY
     geo_ = std::make_unique<Geo>(*img_.rom, tgp_.buffer_data());
 #else
-    geo_ = std::make_unique<Geo>(img_.polygons, img_.textures, tgp_.buffer_data());
-    // The geometrizer keeps its own copies: the images are not read again
-    // (Dead or Alive's are 32 and 16 MB).
-    img_.polygons = {};
-    img_.textures = {};
+    geo_ = std::make_unique<Geo>(std::move(img_.polygons), std::move(img_.textures), tgp_.buffer_data());
 #endif
     video_ = std::make_unique<Video>(tile_.data(), chr_.data());
     video_->enable_write_tracking();

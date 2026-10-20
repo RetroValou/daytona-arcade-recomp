@@ -15,6 +15,7 @@
 #include <bit>
 #include <cmath>
 #include <cstring>
+#include <utility>
 #include <limits>
 
 namespace rt {
@@ -38,18 +39,17 @@ struct quad_m2 {
     int32_t texlod = 0;
 };
 
-Geo::Geo(const std::vector<uint8_t> &polygons, const std::vector<uint8_t> &textures, uint32_t *buffer)
-    : polygon_rom_(polygons.size() / 4), texture_rom_(textures.size() / 2), buffer_(buffer) {
-    if (polygon_rom_.empty() || (polygon_rom_.size() & (polygon_rom_.size() - 1)) || texture_rom_.empty() ||
-        (texture_rom_.size() & (texture_rom_.size() - 1)))
+Geo::Geo(std::vector<uint8_t> polygons, std::vector<uint8_t> textures, uint32_t *buffer)
+    : polygon_rom_(std::move(polygons)), texture_rom_(std::move(textures)), buffer_(buffer) {
+    const size_t words = polygon_rom_.size() / 4, texels = texture_rom_.size() / 2;
+    if (!words || (words & (words - 1)) || !texels || (texels & (texels - 1)))
         throw GeoFatal("bad polygon or texture ROM image");
-    std::memcpy(polygon_rom_.data(), polygons.data(), polygon_rom_.size() * 4);
-    std::memcpy(texture_rom_.data(), textures.data(), texture_rom_.size() * 2);
-    raster_.texture_rom = texture_rom_.data();
-    raster_.texture_rom_mask = uint32_t(texture_rom_.size() - 1);
+    // The vectors' storage (operator new: aligned for any type) read in place.
+    raster_.texture_rom = reinterpret_cast<uint16_t *>(texture_rom_.data());
+    raster_.texture_rom_mask = uint32_t(texels - 1);
     geo_.raster = &raster_;
-    geo_.polygon_rom = polygon_rom_.data();
-    geo_.polygon_rom_mask = uint32_t(polygon_rom_.size() - 1);
+    geo_.polygon_rom = reinterpret_cast<uint32_t *>(polygon_rom_.data());
+    geo_.polygon_rom_mask = uint32_t(words - 1);
 }
 
 #ifdef M2_DC_MEMORY

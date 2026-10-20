@@ -1,5 +1,6 @@
 #include "runtime/romset/zip.h"
 
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>
@@ -162,30 +163,34 @@ void inflate(const uint8_t *in, size_t in_len, std::vector<uint8_t> &out) {
     if (o != out.size()) throw ZipError("deflate output shorter than expected");
 }
 
-Zip::Zip(const std::string &path) {
-    std::ifstream f(path, std::ios::binary);
-    if (!f) throw ZipError("cannot open " + path);
-    data_.assign(std::istreambuf_iterator<char>(f), {});
+Zip::Zip(const std::string &path) : file_(path, std::ios::binary) {
+    if (!file_) throw ZipError("cannot open " + path);
+    file_.seekg(0, std::ios::end);
+    size_ = uint64_t(file_.tellg());
+    if (size_ < 22) throw ZipError(path + " is not a zip file");
     // end of central directory: the last 0x06054b50 within 64 KiB of the end
-    const size_t n = data_.size();
-    if (n < 22) throw ZipError(path + " is not a zip file");
+    const size_t tail_len = size_t(std::min<uint64_t>(size_, 22 + 65535));
+    const std::vector<uint8_t> tail = bytes(size_ - tail_len, tail_len, path);
     size_t eocd = SIZE_MAX;
-    for (size_t i = n - 22 + 1; i-- > 0 && n - i <= 22 + 65535;)
-        if (rd32(&data_[i]) == 0x06054b50) { eocd = i; break; }
+    for (size_t i = tail_len - 22 + 1; i-- > 0;)
+        if (rd32(&tail[i]) == 0x06054b50) { eocd = i; break; }
     if (eocd == SIZE_MAX) throw ZipError(path + " is not a zip file");
-    const uint16_t count = rd16(&data_[eocd + 10]);
-    size_t p = rd32(&data_[eocd + 16]);
+    const uint16_t count = rd16(&tail[eocd + 10]);
+    const uint32_t dir_size = rd32(&tail[eocd + 12]), dir_at = rd32(&tail[eocd + 16]);
+    const std::vector<uint8_t> dir = bytes(dir_at, dir_size, path + ": bad central directory");
+    const size_t n = dir.size();
+    size_t p = 0;
     for (uint16_t k = 0; k < count; k++) {
-        if (p + 46 > n || rd32(&data_[p]) != 0x02014b50) throw ZipError(path + ": bad central directory");
+        if (p + 46 > n || rd32(&dir[p]) != 0x02014b50) throw ZipError(path + ": bad central directory");
         Entry e;
-        e.method = rd16(&data_[p + 10]);
-        e.crc = rd32(&data_[p + 16]);
-        e.csize = rd32(&data_[p + 20]);
-        e.usize = rd32(&data_[p + 24]);
-        const uint16_t nl = rd16(&data_[p + 28]), xl = rd16(&data_[p + 30]), cl = rd16(&data_[p + 32]);
-        e.local = rd32(&data_[p + 42]);
+        e.method = rd16(&dir[p + 10]);
+        e.crc = rd32(&dir[p + 16]);
+        e.csize = rd32(&dir[p + 20]);
+        e.usize = rd32(&dir[p + 24]);
+        const uint16_t nl = rd16(&dir[p + 28]), xl = rd16(&dir[p + 30]), cl = rd16(&dir[p + 32]);
+        e.local = rd32(&dir[p + 42]);
         if (p + 46 + nl > n) throw ZipError(path + ": bad central directory");
-        std::string name(reinterpret_cast<const char *>(&data_[p + 46]), nl);
+        std::string name(reinterpret_cast<const char *>(&dir[p + 46]), nl);
         const auto slash = name.find_last_of('/'); // members may sit in a folder
         if (slash != std::string::npos) name = name.substr(slash + 1);
         if (!name.empty()) entries_[name] = e;
@@ -193,19 +198,29 @@ Zip::Zip(const std::string &path) {
     }
 }
 
+std::vector<uint8_t> Zip::bytes(uint64_t at, size_t n, const std::string &what) const {
+    if (at + n > size_) throw ZipError(what);
+    std::vector<uint8_t> v(n);
+    file_.clear();
+    file_.seekg(std::streamoff(at));
+    if (n && !file_.read(reinterpret_cast<char *>(v.data()), std::streamsize(n))) throw ZipError(what);
+    return v;
+}
+
 std::vector<uint8_t> Zip::read(const std::string &name) const {
     const auto it = entries_.find(name);
     if (it == entries_.end()) throw ZipError("missing " + name);
     const Entry &e = it->second;
-    if (size_t(e.local) + 30 > data_.size() || rd32(&data_[e.local]) != 0x04034b50) throw ZipError(name + ": bad local header");
-    const size_t start = e.local + 30 + rd16(&data_[e.local + 26]) + rd16(&data_[e.local + 28]);
-    if (start + e.csize > data_.size()) throw ZipError(name + ": truncated");
+    const std::vector<uint8_t> local = bytes(e.local, 30, name + ": bad local header");
+    if (rd32(&local[0]) != 0x04034b50) throw ZipError(name + ": bad local header");
+    const uint64_t start = uint64_t(e.local) + 30 + rd16(&local[26]) + rd16(&local[28]);
+    const std::vector<uint8_t> data = bytes(start, e.csize, name + ": truncated");
     std::vector<uint8_t> out(e.usize);
     if (e.method == 0) {
         if (e.csize != e.usize) throw ZipError(name + ": bad stored size");
-        std::memcpy(out.data(), &data_[start], e.usize);
+        std::memcpy(out.data(), data.data(), e.usize);
     } else if (e.method == 8) {
-        inflate(&data_[start], e.csize, out);
+        inflate(data.data(), e.csize, out);
     } else {
         throw ZipError(name + ": unsupported compression method " + std::to_string(e.method));
     }

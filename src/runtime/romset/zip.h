@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstdint>
+#include <fstream>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -19,6 +20,9 @@ uint32_t crc32(const uint8_t *data, size_t len, uint32_t crc = 0);
 
 class Zip {
 public:
+    // Reads the central directory; members are read from the file when asked
+    // for (the archive is not held in memory: Dead or Alive's is 32 MB of the
+    // Vita's heap).
     explicit Zip(const std::string &path); // throws ZipError
     struct Entry {
         uint32_t crc = 0, csize = 0, usize = 0, local = 0;
@@ -29,7 +33,11 @@ public:
     std::vector<uint8_t> read(const std::string &name) const; // decompressed; CRC checked against the directory
 
 private:
-    std::vector<uint8_t> data_;
+    // n bytes at offset `at` of the file; ZipError (what) if past its end
+    std::vector<uint8_t> bytes(uint64_t at, size_t n, const std::string &what) const;
+
+    mutable std::ifstream file_;
+    uint64_t size_ = 0;
     std::map<std::string, Entry> entries_;
 };
 

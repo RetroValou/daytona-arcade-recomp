@@ -149,10 +149,11 @@ struct GeoPtr16 {
 
 class Geo {
 public:
-    // polygons: the model ROM (0x1000000 bytes); textures: the texture ROM
+    // polygons: the model ROM (16 or 32 MB); textures: the texture ROM
     // (0x1000000 bytes); buffer: buffer RAM (0x8000 dwords), which the
-    // display list is read from.
-    Geo(const std::vector<uint8_t> &polygons, const std::vector<uint8_t> &textures, uint32_t *buffer);
+    // display list is read from. Both ROMs are kept, not copied (pass them
+    // moved: Dead or Alive's are 48 MB of the Vita's heap).
+    Geo(std::vector<uint8_t> polygons, std::vector<uint8_t> textures, uint32_t *buffer);
 #ifdef M2_DC_MEMORY
     // Both ROMs read through pages, not copied.
     Geo(RomSource &rom, uint32_t *buffer);
@@ -231,8 +232,8 @@ public:
 
 private:
     int wide_margin_ = 0;
-    std::vector<uint32_t> polygon_rom_;
-    std::vector<uint16_t> texture_rom_;
+    std::vector<uint8_t> polygon_rom_; // little-endian dwords, read as geo_.polygon_rom
+    std::vector<uint8_t> texture_rom_; // little-endian words, read as raster_.texture_rom
     uint32_t *buffer_;
     raster_state raster_;
     geo_state geo_;

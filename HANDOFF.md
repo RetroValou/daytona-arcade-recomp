@@ -1,5 +1,25 @@
 # Handoff
 
+## Vita: Dead or Alive's bad_alloc at load; the ROM images not copied (2026-10-20)
+
+The user, on the console: Dead or Alive stops with bad_alloc when it loads.
+The Vita's heap is 192 MB (_newlib_heap_size_user). Peaks for doaa before:
+the import held the whole doa.zip (32 MB, read through istreambuf_iterator:
+a vector grown by reallocations, its old and new buffers together) with the
+images (~99 MB: main_data 32, polygons 32, textures 16, copro_data 8,
+samples 8...), then rt::Geo copied the polygon and texture ROMs (+48 MB)
+before M2Board freed its own. Now:
+- rt::Geo takes the polygon and texture images by value and keeps them
+  (moved from M2Board::Images; read in place through uint32_t/uint16_t
+  pointers, as the copies were): -48 MB at start (-32 MB for the 16 MB
+  sets); the Vita override's constructor too.
+- rt::Zip reads the central directory and each member from the file when
+  asked, not the archive into memory; the 7z path reads its file at its
+  size (no growing copies).
+Checked on the PC: m2import's 12 images byte-identical to the previous
+importer's (1.6 s, 112 MB peak RSS for doaa); doaa_fight m2run counts, hash
+and WAV identical; ctest 23/23. Not yet on the console.
+
 ## Cleanup: wait-loop addresses from the games' records, no hidden Daytona defaults (2026-10-20)
 
 The user's request: dead code out, no per-game branches, the same behaviour.
