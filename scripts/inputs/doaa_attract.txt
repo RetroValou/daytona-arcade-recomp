@@ -1,0 +1,2 @@
+# doaa: attract mode, no input (title, demo fights). Frames at 57.52 Hz.
+frames 3600

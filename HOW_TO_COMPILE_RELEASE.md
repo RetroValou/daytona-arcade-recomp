@@ -6,11 +6,12 @@
   `roms/` (`daytona93.zip` for Daytona USA, `srallyc.zip` or `srallycb.zip` for
   Sega Rally Championship, `vf2.zip` for Virtua Fighter 2, `vcop.zip` for Virtua
   Cop, `vcop2.zip` for Virtua Cop 2, MAME's merged `manxtt.zip` for Manx TT
-  Superbike: its Twin version, `manxttc`, see [README.md](README.md)), then
+  Superbike, MAME's merged `doa.zip` for Dead or Alive), then
   `python3 scripts/setup.py` (see [README.md](README.md)).
 * Complete MAME ROM sets, **full merged**: every file of the set in the archive,
   the parent's included. Split sets (a clone with only its own files) are
-  refused; every file is checked by name and CRC, on the computer and on the Vita.
+  refused; every file is checked by CRC (found by name, else by size and CRC),
+  on the computer and on the Vita.
 * [VitaSDK](https://vitasdk.org) with its default packages (SDL2 and taiHEN are used),
   and `VITASDK` set.
 * On the Vita: homebrew enabled and `libshacccg.suprx` extracted
@@ -36,7 +37,8 @@ python3 scripts/build_vita.py --game GAME --fast-inaccuracy --release
 | Virtua Fighter 2 | `virtuafighter2` | `build_virtuafighter2/vita/virtuafighter2.vpk` | VFTR00095 | `ux0:data/vf2/vf2.zip` |
 | Virtua Cop | `virtuacop` | `build_virtuacop/vita/virtuacop.vpk` | VCOP00096 | `ux0:data/vcop/vcop.zip` |
 | Virtua Cop 2 | `virtuacop2` | `build_virtuacop2/vita/virtuacop2.vpk` | VCOP00097 | `ux0:data/vcop2/vcop2.zip` |
-| Manx TT Superbike (Twin) | `manxtt` | `build_manxtt/vita/manxtt.vpk` | MANX00098 | `ux0:data/manxttc/manxttc.zip` (MAME's merged `manxtt.zip`, renamed) |
+| Manx TT Superbike (Twin) | `manxtt` | `build_manxtt/vita/manxtt.vpk` | MANX00098 | `ux0:data/manxttc/manxtt.zip` (MAME's merged archive) |
+| Dead or Alive (Model 2A) | `deadoralive` | `build_deadoralive/vita/deadoralive.vpk` | DOAL00100 | `ux0:data/doaa/doa.zip` (MAME's merged archive) |
 
 Every game at once: `python3 scripts/build_vita.py --game all --fast-inaccuracy --release`
 builds, with the same options, each game whose ROM set is in `roms/` (recompiling

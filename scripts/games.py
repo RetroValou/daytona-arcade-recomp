@@ -96,6 +96,10 @@ GAMES = {
         "vita_title_id": "FVIP00099", "vita_name": "Fighting Vipers", "vita_link": False,
         "vita": False,  # the board does not run its SHARC yet
     },
+    "deadoralive": {
+        "title": "Dead or Alive", "sets": ("doaa",),
+        "vita_title_id": "DOAL00100", "vita_name": "Dead or Alive", "vita_link": False,
+    },
 }
 
 # The game the scripts build when none is given.
@@ -189,6 +193,22 @@ SETS = {
         "roms": ["fvipers"], "board": "model2b", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
         "vita_fast": ("fast_inaccuracy",), "companion": None,
         "inputs": {"vr1": (":IN1", 0x01), "vr2": (":IN1", 0x02), "vr3": (":IN1", 0x04),
+                   "down": (":IN1", 0x10), "up": (":IN1", 0x20), "right": (":IN1", 0x40), "left": (":IN1", 0x80)},
+        "full_range": False,
+    },
+    # Dead or Alive, Revision A (Tecmo, Dec 4 1996): Model 2A-CRX like vf2
+    # (program in ROM, --no-mirror; SCSP sound) with Sega's 317-0229
+    # protection chip (Game::protection). The parent, doa, is a Model 2B set;
+    # doaa's ROMs are in MAME's merged doa.zip. One player: Hold, Punch, Kick
+    # on IN1 0x01/0x02/0x04 (vr3, vr1, vr2), the joystick as vf2's.
+    # --fast-inaccuracy checked on the PC: doaa_fight 6,000 and 8,000 frames of
+    # attract run through (no new seed; the same sound command bytes, 625 and
+    # 877, as the exact code; the wait loop still skipped: wram_bus).
+    "doaa": {
+        "game": "deadoralive", "label": "Revision A",
+        "roms": ["doaa", "doa"], "board": "model2a", "recomp": ["--no-mirror"], "sndrecomp": ["--scsp"],
+        "vita_fast": ("fast_inaccuracy",), "companion": None, "wram_bus": (0x0054b150,),
+        "inputs": {"vr1": (":IN1", 0x02), "vr2": (":IN1", 0x04), "vr3": (":IN1", 0x01),
                    "down": (":IN1", 0x10), "up": (":IN1", 0x20), "right": (":IN1", 0x40), "left": (":IN1", 0x80)},
         "full_range": False,
     },

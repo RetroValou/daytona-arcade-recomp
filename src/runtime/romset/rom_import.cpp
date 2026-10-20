@@ -16,6 +16,26 @@ std::string hex8(uint32_t v) {
     return b;
 }
 
+// The archive's file for a ROM: by name, else (another set's names for the
+// same file, as in MAME's merged archives: doa.zip names doaa's files after the
+// parent board's sockets) the one of the same size and CRC.
+std::string find_rom(const Archive &z, const RomLoad &l) {
+    if (z.entries().count(l.file)) return l.file;
+    for (const auto &[name, e] : z.entries())
+        if (e.has_crc && e.crc == l.crc && e.size == l.size) return name;
+    return l.file;
+}
+
+// The polygon ROM image: 16 MB, or the next power of two that holds every
+// Polygons file (MAME's region; the geometrizer masks addresses to it).
+size_t polygon_rom_size(const Game &g) {
+    size_t n = 0x1000000;
+    for (const RomLoad &l : g.roms)
+        if (l.region == LoadRegion::Polygons)
+            while (n < size_t(l.offset & ~3u) + size_t(l.size) * 2) n *= 2;
+    return n;
+}
+
 } // namespace
 
 std::vector<RomCheck> check_rom_set(const std::string &zip_path) {
@@ -24,7 +44,7 @@ std::vector<RomCheck> check_rom_set(const std::string &zip_path) {
     for (const RomLoad &l : game().roms) {
         RomCheck c;
         c.file = l.file;
-        const auto it = z->entries().find(l.file);
+        const auto it = z->entries().find(find_rom(*z, l));
         if (it == z->entries().end()) c.problem = "missing";
         else if (it->second.size != l.size) c.problem = "wrong size";
         else if (it->second.has_crc && it->second.crc != l.crc)
@@ -41,7 +61,7 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
     img.program.assign(0x200000, 0);
     img.main_data.assign(0x2000000, 0);
     img.copro_data.assign(0x800000, 0);
-    img.polygons.assign(0x1000000, 0);
+    img.polygons.assign(polygon_rom_size(game()), 0);
     img.textures.assign(0x1000000, 0);
     img.copro_tables.assign(0x40000, 0);
     const Game &set = game();
@@ -54,7 +74,7 @@ M2Board::Images import_rom_set(const std::string &zip_path) {
         img.samples.assign(0x800000, 0);
     } // else no sound board: the images stay empty
     for (const RomLoad &l : set.roms) {
-        const std::vector<uint8_t> data = z->read(l.file); // CRC against the archive's own
+        const std::vector<uint8_t> data = z->read(find_rom(*z, l)); // CRC against the archive's own
         if (data.size() != l.size || crc32(data.data(), data.size()) != l.crc)
             throw ZipError(std::string(l.file) + ": not the " + set.set + " ROM this build was recompiled from");
         std::vector<uint8_t> *r = nullptr;

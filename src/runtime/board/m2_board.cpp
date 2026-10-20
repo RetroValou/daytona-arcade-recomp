@@ -275,6 +275,8 @@ M2Board::M2Board(Images images)
     if (img_.eeprom.size() == io_.eeprom.size()) std::copy(img_.eeprom.begin(), img_.eeprom.end(), io_.eeprom.begin());
 #ifdef M2_SPIN_SKIP
     std::copy(std::begin(img_.game->spin), std::end(img_.game->spin), std::begin(spin_));
+    for (const Game::SpinWait &w : spin_)
+        if (w.kind == Game::SpinWait::WordZeroCount) spin_word_ = w.addr;
 #endif
     map(0x00500000, 0x005fffff, Ram, work_.data());
     map(0x00800000, 0x00807fff, Dev, nullptr, 0, false);
@@ -296,6 +298,10 @@ M2Board::M2Board(Images images)
     map(0x01c00000, 0x01c00fff, Dev, nullptr, 0, false);
     map(0x01c80000, 0x01c80fff, Dev, nullptr, 0, false);
     map(0x01d00000, 0x01d03fff, Ram, backup_.data());
+    if (img_.game->protection == Protection::Comp0229Doa) { // MAME model2_0229_mem: RAM with three registers in it
+        prot_ram_.assign(0x8000, 0);
+        map(0x01d80000, 0x01d87fff, Dev, nullptr, 0, false);
+    }
 #ifdef M2_DC_MEMORY
     map_rom(0x02000000, 0x03ffffff, RomRegion::MainData, 0);
     map_rom(0x06000000, 0x06ffffff, RomRegion::MainData, 0x1000000);
@@ -341,6 +347,10 @@ M2Board::M2Board(Images images)
     geo_ = std::make_unique<Geo>(*img_.rom, tgp_.buffer_data());
 #else
     geo_ = std::make_unique<Geo>(img_.polygons, img_.textures, tgp_.buffer_data());
+    // The geometrizer keeps its own copies: the images are not read again
+    // (Dead or Alive's are 32 and 16 MB).
+    img_.polygons = {};
+    img_.textures = {};
 #endif
     video_ = std::make_unique<Video>(tile_.data(), chr_.data());
     video_->enable_write_tracking();
@@ -656,7 +666,7 @@ uint32_t M2Board::dev_read(uint32_t addr, uint32_t mask) {
     }
     if (addr >= 0x10000000 && addr <= 0x101fffff) return uint32_t(render_unk_) << 14 | uint32_t(render_mode_) << 2 | uint32_t(render_test_);
     if (addr >= 0x10400000 && addr <= 0x105fffff) return uint32_t(geo_->polys.size()); // polygon_count_r
-    (void)mask;
+    if (addr >= 0x01d80000 && addr <= 0x01d87fff && !prot_ram_.empty()) return prot_read(addr, mask);
     return 0;
 }
 
@@ -736,6 +746,51 @@ void M2Board::dev_write(uint32_t addr, uint32_t data, uint32_t mask) {
         render_unk_ = (data >> 14) & 1;
         return;
     }
+    if (addr >= 0x01d80000 && addr <= 0x01d87fff && !prot_ram_.empty()) { prot_write(addr, data, mask); return; }
+}
+
+// --- Dead or Alive's 317-0229 (MAME model2_0229_mem, sega_315_5838_comp_device
+// in HACK_MODE_DOA) ------------------------------------------------------------
+// The chip's cipher is not known: the game only checks one string it decodes
+// at boot (MAME: PC 0x2c20 passes, 0x2c28 fails), so the chip answers that
+// string from the source offset the game sets, as MAME does. The table uploads
+// (0x01d87ff4) change nothing in that mode; the source data the game leaves in
+// the RAM window is not read.
+
+// MAME get_decompressed_byte, HACK_MODE_DOA.
+uint8_t M2Board::prot_byte() {
+    static const char kString[] = "  TECMO LTD.  DEAD OR ALIVE  1996.10.22  VER. 1.00"; // 50 bytes
+    const uint8_t v = prot_src_ < 50 ? uint8_t(kString[prot_src_]) : 0;
+    prot_src_ = (prot_src_ + 1) & 0x007fffff;
+    return v;
+}
+
+uint32_t M2Board::prot_read(uint32_t addr, uint32_t mask) {
+    if (addr == 0x01d87ff8) { // doa_prot_r: 16 bits a data_r, two bytes, high first; the upper lane first
+        uint32_t v = 0;
+        if (mask & 0xffff0000) { const uint32_t hi = prot_byte(); v |= (hi << 8 | prot_byte()) << 16; }
+        if (mask & 0x0000ffff) { const uint32_t hi = prot_byte(); v |= hi << 8 | prot_byte(); }
+        return v;
+    }
+    if (addr == 0x01d8400c) { // doa_unk_r: a busy flag that toggles at every read
+        prot_busy_ = !prot_busy_;
+        return prot_busy_ ? 0xffff : 0xfff0;
+    }
+    uint32_t v;
+    std::memcpy(&v, &prot_ram_[addr & 0x7ffc], 4);
+    return v;
+}
+
+void M2Board::prot_write(uint32_t addr, uint32_t data, uint32_t mask) {
+    if (addr == 0x01d87ff0) { // srcaddr_w (COMBINE_DATA)
+        prot_src_ = ((prot_src_ & ~mask) | (data & mask)) & 0x007fffff;
+        return;
+    }
+    if (addr == 0x01d87ff4) return; // data_w_doa: the decoder's tables, unused in this mode
+    uint32_t v;
+    std::memcpy(&v, &prot_ram_[addr & 0x7ffc], 4);
+    v = (v & ~mask) | (data & mask);
+    std::memcpy(&prot_ram_[addr & 0x7ffc], &v, 4);
 }
 
 // The i8251's status (DSR unconnected: 1, TxEMPTY, RxRDY, TxRDY: the data
@@ -845,6 +900,7 @@ void M2Board::spin_skip(const Game::SpinWait &w, uint32_t value) {
     switch (w.kind) {
     case Game::SpinWait::ByteIsReg: if (uint8_t(value) != uint8_t(cpu_->m_r[w.reg])) return; break;
     case Game::SpinWait::WordBitsCount: if ((value & w.mask) != cpu_->m_r[w.reg]) return; break;
+    case Game::SpinWait::WordZeroCount: if (value != 0) return; break;
     default: if (uint8_t(value) != 0) return; break;
     }
     const uint64_t limit = std::min(ls_->next_count, ls_->end_count), count = io_now();
@@ -876,7 +932,8 @@ void M2Board::spin_skip(const Game::SpinWait &w, uint32_t value) {
         }
     }
     const uint64_t skip = passes * w.pass;
-    if (w.kind == Game::SpinWait::WordBitsCount) cpu_->m_r[w.counter] += uint32_t(passes); // what those passes counted
+    if (w.kind == Game::SpinWait::WordBitsCount || w.kind == Game::SpinWait::WordZeroCount)
+        cpu_->m_r[w.counter] += uint32_t(passes); // what those passes counted
     ls_->count += skip;
     spin_skipped_ += skip;
 #ifdef M2_FAST_GEN
@@ -976,7 +1033,11 @@ uint32_t M2Board::read_dword(uint32_t addr) {
     }
 #endif
 #ifdef M2_FAST_BUS
+#ifdef M2_SPIN_SKIP
+    if ((addr >> kPageBits) == fast_read_page_ && addr != spin_word_) {
+#else
     if ((addr >> kPageBits) == fast_read_page_) {
+#endif
         uint32_t v;
         std::memcpy(&v, M2_AL(fast_read_base_ + (addr & 0xfff), 4), 4);
         return v;
@@ -989,6 +1050,16 @@ uint32_t M2Board::read_dword(uint32_t addr) {
         std::memcpy(&v, M2_AL(rom_page(p) + (addr & 0xfff), 4), 4);
         return v;
     }
+#endif
+#ifdef M2_SPIN_SKIP
+    if (addr == spin_word_ && p.kind == Ram) // a work RAM word's wait loop (WordZeroCount)
+        for (const Game::SpinWait &w : spin_)
+            if (w.kind == Game::SpinWait::WordZeroCount && addr == w.addr && cpu_->m_IP == w.ip) {
+                uint32_t v;
+                std::memcpy(&v, M2_AL(p.base + (addr & 0xfff), 4), 4);
+                spin_skip(w, v);
+                return v;
+            }
 #endif
     switch (p.kind) {
 #ifdef M2_FAST_BUS

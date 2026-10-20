@@ -65,12 +65,15 @@ WRAM = [
 ]
 
 
-def direct_wram(line, stats):
+def direct_wram(line, stats, keep=()):
+    """keep: work RAM offsets (from 0x00500000) whose accesses stay on the bus:
+    a game's wait-loop word (scripts/games.py "wram_bus"; the board's
+    M2_SPIN_SKIP sees only reads through the bus)."""
     for pattern, align, repl in WRAM:
         def sub(m):
             offset = int(m.group(1), 16)
-            if offset % align or (repl.startswith("gen::wram_r8") and offset == 0):
-                return m.group(0)  # unaligned, or the frame-wait byte: the bus as before
+            if offset % align or (repl.startswith("gen::wram_r8") and offset == 0) or offset in keep:
+                return m.group(0)  # unaligned, the frame-wait byte or a kept word: the bus as before
             stats["wram"] += 1
             return repl.format(m.group(1))
         line = pattern.sub(sub, line)

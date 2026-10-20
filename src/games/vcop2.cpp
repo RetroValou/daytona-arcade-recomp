@@ -88,7 +88,12 @@ extern const Game vcop2_game = {
     // scripted 9,000-frame game RMS -32.6 dBFS, peak -15.8; attract -32.5,
     // -16.5 (Daytona daytona93 race_basic -16.4, peak -1.0; attract -22.0,
     // -6.0): x5.5 (+14.8 dB) brings its game's peaks to Daytona's race.
-    .output_gain = 5.5f,
+    // x6.9 since the SCSP's MADRS mirror is no longer written (Scsp::
+    // kMadrsMirrorWrites, 20 Oct 2026): vcop2_shoot fell 2.0 dB at its peaks
+    // and 4.6 dB in its loud windows (the collapsed reverb had added a wash);
+    // +2.0 dB keeps the peaks where they were, more would clip (8,000 frames
+    // of attract peak -17.8 dBFS at the board: -0.9 here).
+    .output_gain = 6.9f,
     .control_list = kControls,
     .dsp = {0x8cc8, 84, 0xD08F9EB4u},
     // The wait loop's passes skipped (M2_SPIN_SKIP): 2 instructions a pass,

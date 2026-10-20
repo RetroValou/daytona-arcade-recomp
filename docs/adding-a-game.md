@@ -27,7 +27,10 @@ Define one `extern const rt::Game <set>_game = {...};` per set
 - `roms`: MAME's `ROM_START(<set>)` as `RomLoad` lines (file, CRC, region,
   offset, size). `ROM_LOAD32_WORD` pairs go to offsets 0 and 2. Load only the
   regions the runtime uses. `mirror_from`: main_data's `ROM_COPY` source, or
-  0 for none. A set whose MAME entry ships an `eeprom` region (the default
+  0 for none (another `ROM_COPY` can be written as its files loaded twice,
+  as Dead or Alive's). Name each file as MAME's `ROM_START` does: when a
+  merged archive names it otherwise (after the parent's sockets), the
+  importer finds it by size and CRC. A set whose MAME entry ships an `eeprom` region (the default
   settings, 128 bytes) loads it as `Eeprom`: the board starts from it, as
   MAME does (Manx TT: the Twin cabinet setting; without it the game boots as
   another cabinet). A frontend's saved EEPROM still replaces it.
@@ -53,9 +56,15 @@ Define one `extern const rt::Game <set>_game = {...};` per set
   I/O board's RAM on the original Model 2 (`IoBoard::latch_gun`, Virtua Cop),
   the 315-5649's serial channel 2 on the 2A-CRX (Virtua Cop 2).
 - `spin` (optional, `M2_SPIN_SKIP`): the game's wait loops whose passes the
-  board can skip: a work RAM byte (`ByteIsReg`, `ByteZeroTimer`) or a device
-  register whose passes are counted in a register (`WordBitsCount`, Virtua
-  Cop). Check one with m2run's dumps against the same run without it.
+  board can skip: a work RAM byte (`ByteIsReg`, `ByteZeroTimer`), a work RAM
+  word whose passes are counted in a register (`WordZeroCount`, Dead or
+  Alive) or a device register whose passes are counted in a register
+  (`WordBitsCount`, Virtua Cop). Check one with m2run's dumps against the
+  same run without it. A `WordZeroCount` word must also be listed in the
+  set's `wram_bus` (scripts/games.py), or `--fast-inaccuracy` reads it
+  directly and the board never sees the loop.
+- `protection` (optional): a protection chip on the ROM board (Dead or
+  Alive's 317-0229).
 
 Then add the record to `kGames` in `src/games/games.cpp`, and add the file to
 the runtime's sources in `CMakeLists.txt`, `platform/vita/CMakeLists.txt` (the

@@ -138,6 +138,7 @@ add_library(runtime STATIC
     src/games/vcop2.cpp
     src/games/manxttc.cpp
     src/games/fvipers.cpp
+    src/games/doaa.cpp
 )
 target_include_directories(runtime PUBLIC src)
 target_compile_definitions(runtime PUBLIC M2_ROMSET="${M2_ROMSET}")

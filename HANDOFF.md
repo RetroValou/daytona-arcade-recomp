@@ -1,5 +1,86 @@
 # Handoff
 
+## Dead or Alive (doaa, Model 2A Revision A), one player; the SCSP's MADRS mirror (2026-10-20)
+
+New game `deadoralive` (scripts/games.py; Vita DOAL00100, deadoralive.vpk,
+ux0:data/doaa/doa.zip): src/games/doaa.cpp, seeds/doaa.txt (1,148: the MAME
+harvest of 1,800/3,600/8,000 frames of attract and a 6,000-frame fight, then
+seed_scan.py), seeds/doaa_snd.txt (145: five "jmp (d16,pc)" tables found after
+their "lea (d8,pc,Dn),An; jmp (An)", the method checked on vf2's two tables),
+scripts/inputs/doaa_attract.txt, doaa_fight.txt, doaa_test.txt. The Model 2B
+sets (doa, doab) are not done. MAME runs doaa on model2a_0229: vf2's board
+plus Sega's 317-0229 protection chip.
+What it took:
+- The 317-0229 (Game::protection, M2Board::prot_*): MAME's HACK_MODE_DOA,
+  the string "  TECMO LTD.  DEAD OR ALIVE  1996.10.22  VER. 1.00" from the
+  source offset, two bytes a 16-bit read, high first (MAME's trace: 2020,
+  5445 "TE", 434d "CM"...), the busy flag at 0x01d8400c, RAM elsewhere in
+  0x01d80000-0x01d87fff. Trace plugin and replay bus: its registers only;
+  the window is not tapped (the chip reads it itself through the i960's
+  space, which a tap records as the i960's: the first lockstep diverged so).
+- movre (0x6e1, MAME's "undocumented encoding", and 0x6e9): fp0-fp3 saved
+  and restored around the vblank handler; m2recomp template, gen::
+  double_to_ext/ext_to_double (MAME's helpers, as refcore has them).
+- The polygon ROM image 32 MB (MAME's region; the importer sizes it to the
+  next power of two over the Polygons files); main_data's ROM_COPY of 4 MB
+  written as the pair loaded twice. M2Board frees its polygon and texture
+  images once Geo has copied them (48 MB less for doaa, 32 for the others).
+- The importer finds a file by size and CRC when the archive names it
+  otherwise (MAME's merged doa.zip names doaa's files after the 2B sockets);
+  Game::parent ("doa", "manxtt"): the Vita also reads ux0:data/<set>/
+  <parent>.zip, unrenamed, as MAME reads a clone from its parent's archive.
+- TGP program in the program ROM at 0x9664, 2,859 words; DSP program in the
+  sound ROM at 0x8292, 58 steps (both equal to MAME's after boot, Lua dumps).
+- Wait loop 0x2800-0x2813: ld 0x54b150,g4; cmpibne 0,g4; addo g0,1,g0; b
+  (94 % of MAME's interrupts there). New SpinWait kind WordZeroCount (a work
+  RAM word, g0 counting the passes; the caller stores g0 at 0x54fbd0 for a
+  debug display, "%8X" at 0x56014). Checked against M2_SPIN_SKIP=OFF:
+  doaa_fight 6,000 and 8,000 frames of attract, 28 dumps, WAVs, counts
+  identical; 14.8 M (8.7 %) and 19.8 M instructions skipped. games.py
+  "wram_bus": --fast-inaccuracy leaves that word on the bus (build_vita.
+  direct_ram's keep), or the board would never see the loop.
+- Music/effects: the voice table is VF2's ({0x2800, 0x10, 4}; A1 at the
+  key-on routines 0x602338 and 0x6024b8). In a 6,000-frame fight (2,807
+  key-ons) channels 0-11 are the music's sequence (owner 0; 9 the drums, a
+  note every 0.227 s), 12, 14, 15 the hits, voices and menus (owners 1-5):
+  music_channels 0x0fff. m2run --volumes 0,0 is silent, 1,0 the music
+  (-32.2 dBFS), 0,1 the effects (-35.3).
+- The reverb: MAME's (and our) output carried a DC rising to saturation
+  (ours +3,900 to +7,200 at the board with the DSP at 25 %; MAME's wav
+  15,700 to 28,000, clipping: its "corrupted sound, eventually becomes
+  silent"), present with both volumes at 0, so the DSP's. Cause: the
+  driver copies its whole DSP block to 0x700-0xbff, MADRS's 0x80 bytes with
+  zeros in the second half; MAME writes MADRS through its mirror at
+  0x7c0-0x7ff, so the zeros clear MADRS and every delay line falls on one
+  address. Yabause's hardware-tested SCSP writes MADRS at 0x780-0x79f only.
+  Now a third default departure from MAME's SCSP (Scsp::kMadrsMirrorWrites
+  false; -DM2_SCSP_MAME=ON restores MAME's), the user's choice (option 1:
+  every SCSP game, gains readjusted) after listening to VF2 before/after:
+  vf2, vcop2 and manxttc's blocks have the same zeros, their reverb was
+  collapsed too. Levels after: vf2 -2.4 dB (output_gain 1.5 -> 2.0), vcop2
+  -2.0 dB at its peaks and -4.6 in its loud windows (5.5 -> 6.9: more clips,
+  8,000 frames of attract peak -17.8 dBFS at the board), manxttc unchanged
+  (3.4). srallyc has no DSP program.
+- Level: doaa_fight RMS -30.5 dBFS, peak -13.0; attract -30.0, peak -11.0;
+  Daytona's race -14.4, peak -0.9 (at its default 100/30, -21.4):
+  output_gain 3.2, the loudest peaks at Daytona's race; a fight at -20.4.
+Checked against MAME (scripts/m2_check.sh, SET=doaa): attract 600 and
+3,600 frames, doaa_fight 6,000 (948.6 M i960 and 131.2 M TGP instructions,
+35.3 M device events, 6.72 M polygons, 4,827/4,827 3D layers and 5,996/
+5,996 screens identical, sound MATCH), doaa_test 9,000 (the test-mode walk:
+every item, a setting changed, a sound played, EXIT to attract; 1.55 G
+instructions, 8,996/8,996 screens, sound MATCH). m2run: attract, fight, test
+walk run through. --fast-inaccuracy (vita_fast) checked on the PC as for
+srallyc (m2recomp --fast_inaccuracy, direct_ram with wram_bus, M2_FAST_GEN):
+the fight and 8,000 frames of attract run through, the same sound command
+bytes (625, 877), the loop still skipped. Regression after the board,
+importer and SCSP changes: daytona93 race_basic, vcop vcop_shoot, srallyc
+srallyc_race, m2run counts, hash and WAV identical; vf2_fight, vcop2_shoot,
+manxttc_race counts and hash identical, WAVs differ by the reverb only.
+ctest 23/23 (doaa); scripts tests 48/48. Vita: deadoralive.vpk built
+(--fast-inaccuracy, not --release); not run on the console.
+Not done: the console; player 2; the Model 2B sets.
+
 ## Daytona: effects at 30 % by default, both sets (2026-10-19)
 
 The user's choice. daytona (Revision A) had music 100 / effects 20;
@@ -4528,6 +4609,14 @@ Also found:
   unconfirmed on the PCB.
 
 ## What not to re-propose
+
+- Writing SCSP MADRS through its 0x7c0-0x7ff mirror (MAME's): Sega's DSP
+  blocks end with zeros there and lose their delay lines (Dead or Alive's
+  DC, 20 Oct 2026).
+- Setting a game's output_gain from a WAV's RMS without checking its mean:
+  Dead or Alive's DSP DC read as -13.8 dBFS of "music".
+- Tapping the 317-0229's RAM window in the trace plugin: the chip's own reads
+  of it land in the tap as the i960's.
 
 - The SHARC as compact code (shared handlers, step pieces out of line) for
   the Vita's instruction cache: 26 % slower on the console than the

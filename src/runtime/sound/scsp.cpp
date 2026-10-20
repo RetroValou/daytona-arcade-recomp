@@ -756,8 +756,9 @@ void Scsp::w16(uint32_t addr, uint16_t val) {
             m_DSP.COEF[(addr - 0x700) / 2] = int16_t(val);
         else if (addr < 0x7c0)
             m_DSP.MADRS[(addr - 0x780) / 2] = val;
-        else if (addr < 0x800) // MADRS is mirrored twice
-            m_DSP.MADRS[(addr - 0x7c0) / 2] = val;
+        else if (addr < 0x800) { // MADRS is mirrored twice (MAME); a write there changes nothing by default
+            if (kMadrsMirrorWrites) m_DSP.MADRS[(addr - 0x7c0) / 2] = val;
+        }
         else if (addr < 0xC00) {
             m_DSP.MPRO[(addr - 0x800) / 2] = val;
             m_DSP.native_checked = false; // the recompiled program may no longer apply

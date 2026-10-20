@@ -44,6 +44,16 @@ constexpr struct {
 } kReadTaps2b[] = {{0x009c0000, 0x009c0007}}, kWriteTaps2b[] = {
     {0x00980010, 0x0098003f}, {0x008c0000, 0x008c0fff}, {0x009c0000, 0x009c0007}};
 
+// Dead or Alive's 317-0229 (the plugin's READ_TAPS_0229, WRITE_TAPS_0229): its
+// registers, inside its RAM window, which stays unmapped here (scratch memory,
+// as RAM); the window is not traced (the chip reads it itself in MAME).
+bool prot_read_reg(uint32_t a) {
+    return game().protection == Protection::Comp0229Doa && ((a & ~3u) == 0x01d8400c || (a & ~3u) == 0x01d87ff8);
+}
+bool prot_write_reg(uint32_t a) {
+    return game().protection == Protection::Comp0229Doa && (a & ~7u) == 0x01d87ff0;
+}
+
 bool write_tapped(uint32_t a) {
     for (const auto &t : kWriteTaps)
         if (a >= t.start && a <= t.end) return true;
@@ -306,7 +316,9 @@ uint8_t M2ReplayBus::read_byte(uint32_t addr) {
     case Ram:
     case Tex: return p.base[addr & 0xfff];
     case Device: return uint8_t(device_read(addr & ~3u, 0xffu << sh) >> sh);
-    default: return *sparse(addr);
+    default:
+        if (prot_read_reg(addr)) return uint8_t(device_read(addr & ~3u, 0xffu << sh) >> sh);
+        return *sparse(addr);
     }
 }
 
@@ -324,6 +336,7 @@ uint16_t M2ReplayBus::read_word(uint32_t addr) {
     }
     case Device: return uint16_t(device_read(addr & ~3u, 0xffffu << sh) >> sh);
     default: {
+        if (prot_read_reg(addr)) return uint16_t(device_read(addr & ~3u, 0xffffu << sh) >> sh);
         uint16_t v;
         std::memcpy(&v, sparse(addr), 2);
         return v;
@@ -344,6 +357,7 @@ uint32_t M2ReplayBus::read_dword(uint32_t addr) {
     }
     case Device: return device_read(addr, 0xffffffffu);
     default: {
+        if (prot_read_reg(addr)) return device_read(addr, 0xffffffffu);
         uint32_t v;
         std::memcpy(&v, sparse(addr), 4);
         return v;
@@ -365,6 +379,7 @@ void M2ReplayBus::write_byte(uint32_t addr, uint8_t data) {
         if (write_tapped(addr)) { device_write(addr & ~3u, uint32_t(data) << sh, 0xffu << sh); return; }
         [[fallthrough]];
     default:
+        if (prot_write_reg(addr)) { device_write(addr & ~3u, uint32_t(data) << sh, 0xffu << sh); return; }
         *sparse(addr) = data;
         if (p.hooked && on_write) on_write(addr & ~3u, uint32_t(data) << sh, 0xffu << sh);
     }
@@ -385,6 +400,7 @@ void M2ReplayBus::write_word(uint32_t addr, uint16_t data) {
         if (write_tapped(addr)) { device_write(addr & ~3u, uint32_t(data) << sh, 0xffffu << sh); return; }
         [[fallthrough]];
     default:
+        if (prot_write_reg(addr)) { device_write(addr & ~3u, uint32_t(data) << sh, 0xffffu << sh); return; }
         std::memcpy(sparse(addr), &data, 2);
         if (p.hooked && on_write) on_write(addr & ~3u, uint32_t(data) << sh, 0xffffu << sh);
     }
@@ -404,6 +420,7 @@ void M2ReplayBus::write_dword(uint32_t addr, uint32_t data) {
         if (write_tapped(addr)) { device_write(addr, data, 0xffffffffu); return; }
         [[fallthrough]];
     default:
+        if (prot_write_reg(addr)) { device_write(addr, data, 0xffffffffu); return; }
         std::memcpy(sparse(addr), &data, 4);
         if (p.hooked && on_write) on_write(addr, data, 0xffffffffu);
     }

@@ -130,13 +130,22 @@ public:
     // builds MAME's output for comparisons. kSteppedDecay: decay and release
     // advance by the hardware-tested steps of Yabause's newer SCSP (DecayStep)
     // instead of MAME's times; kDspReturnPercent: the DSP's output (the reverb)
-    // in the mix, which at MAME's level covers the rest.
+    // in the mix, which at MAME's level covers the rest; kMadrsMirrorWrites:
+    // MAME writes MADRS through its mirror at 0x7c0-0x7ff too, where Yabause's
+    // hardware-tested SCSP ignores them (only 0x780-0x79f is written there).
+    // Dead or Alive's driver copies its whole DSP block, COEF, MADRS (0x80
+    // bytes, the second half zeros) and MPRO, to 0x700-0xbff: through MAME's
+    // mirror the zeros overwrite MADRS, every delay line falls on one address
+    // and the reverb climbs to a saturated DC (MAME's "corrupted sound,
+    // eventually becomes silent"; HANDOFF.md, 20 Oct 2026).
 #ifdef M2_SCSP_MAME
     static constexpr bool kSteppedDecay = false;
     static constexpr int kDspReturnPercent = 100;
+    static constexpr bool kMadrsMirrorWrites = true;
 #else
     static constexpr bool kSteppedDecay = true;
     static constexpr int kDspReturnPercent = 25;
+    static constexpr bool kMadrsMirrorWrites = false;
 #endif
 
     Scsp(ScspHost &host, uint8_t *ram); // ram: 0x80000 bytes, the 68000's view (big-endian words)

@@ -75,6 +75,17 @@ local WRITE_TAPS_2B = {
 local READ_TAPS_2B = {
 	{ 0x009c0000, 0x009c0007, "uart_2b" },
 }
+-- Dead or Alive's 317-0229 protection chip (MAME's :317_0229, model2_0229_mem):
+-- its registers only, on that board only. Not its RAM window (0x01d80000-
+-- 0x01d87fff): the chip reads it itself, through the i960's space, while it
+-- answers 0x01d87ff8, and those reads would reach a tap as the i960's.
+local READ_TAPS_0229 = {
+	{ 0x01d8400c, 0x01d8400f, "prot_0229_busy" },
+	{ 0x01d87ff8, 0x01d87ffb, "prot_0229_data" },
+}
+local WRITE_TAPS_0229 = {
+	{ 0x01d87ff0, 0x01d87ff7, "prot_0229_ctl" },
+}
 local IRQ_ACK = 0x00e80000
 local INPUT_PORTS = { ":IN0", ":IN1", ":GEARS", ":STEER", ":ACCEL", ":BRAKE", ":P1_X", ":P1_Y", ":THROTTLE", ":BANK" } -- P1_X/Y: vcop's light gun; THROTTLE/BANK: manxtt's bike
 local GEAR_BITS = { port = ":IN1", mask = 0x70 } -- computed from GEARS (when the set has them), not replayed
@@ -175,6 +186,10 @@ local function install_taps()
 	if manager.machine.devices[":copro_adsp"] then
 		for _, t in ipairs(WRITE_TAPS_2B) do WRITE_TAPS[#WRITE_TAPS + 1] = t end
 		for _, t in ipairs(READ_TAPS_2B) do READ_TAPS[#READ_TAPS + 1] = t end
+	end
+	if manager.machine.devices[":317_0229"] then
+		for _, t in ipairs(WRITE_TAPS_0229) do WRITE_TAPS[#WRITE_TAPS + 1] = t end
+		for _, t in ipairs(READ_TAPS_0229) do READ_TAPS[#READ_TAPS + 1] = t end
 	end
 	for _, t in ipairs(WRITE_TAPS) do
 		taps[#taps + 1] = space:install_write_tap(t[1], t[2], "m2trace_w_" .. t[3],

@@ -121,6 +121,7 @@ extern const Game manxttc_game = {
     .dsp = {0x8f14, 74, 0xAE4FDF9Cu},
     .music_channels = 0x03ff, // 0-9
     .update_z_depth_scale = 10.0f, // ln of w: race 99.9th percentile 20,900 (max 23,100)
+    .parent = "manxtt", // MAME's merged manxtt.zip
 };
 
 } // namespace rt

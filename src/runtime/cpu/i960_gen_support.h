@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace gen {
 
@@ -171,6 +172,45 @@ extern const int inline_board; // generated
 inline float u2f(uint32_t u) { return std::bit_cast<float>(u); }
 inline double u2d(uint64_t u) { return std::bit_cast<double>(u); }
 inline uint64_t d2u(double d) { return std::bit_cast<uint64_t>(d); }
+
+// movre's register image of an extended real (MAME i960.cpp double_to_extended
+// and extended_to_double, as src/refcore/i960_ref.cpp has them; BSD-3-Clause,
+// Farfetch'd, R. Belmont): words 0/1 the 64-bit fraction with its integer bit in
+// bit 63, word 2 the sign in bit 15 and the biased exponent (16383) in bits 14:0.
+// MAME keeps fp0-fp3 as doubles; so does rt::Cpu.
+inline void double_to_ext(double val, uint32_t *words) {
+    const uint64_t bits = d2u(val);
+    const uint32_t sign = uint32_t(bits >> 63) << 15;
+    uint64_t frac;
+    uint32_t e;
+    if (std::isnan(val) || std::isinf(val)) {
+        frac = (1ULL << 63) | ((bits & 0x000fffffffffffffULL) << 11);
+        e = 0x7fff;
+    } else if (val == 0.0) {
+        frac = 0;
+        e = 0;
+    } else {
+        int exp2;
+        const double m = std::frexp(std::fabs(val), &exp2); // 0.5 <= m < 1, exact for denormals too
+        frac = uint64_t(std::ldexp(m, 64));                 // integer bit lands in bit 63
+        e = uint32_t(exp2 - 1 + 16383);
+    }
+    words[0] = uint32_t(frac);
+    words[1] = uint32_t(frac >> 32);
+    words[2] = sign | e;
+}
+inline double ext_to_double(const uint32_t *words) {
+    const uint64_t frac = words[0] | (uint64_t(words[1]) << 32);
+    const uint32_t e = words[2] & 0x7fff;
+    double val;
+    if (e == 0x7fff) {
+        if (!(frac << 1)) val = std::numeric_limits<double>::infinity();          // integer bit only: infinity
+        else val = u2d(0x7ff8000000000000ULL | ((frac & 0x7fffffffffffffffULL) >> 11)); // NaN, always quiet
+    } else {
+        val = std::ldexp(double(frac), int(e ? e : 1) - 16383 - 63); // e == 0: a denormal (exponent 1)
+    }
+    return (words[2] >> 15) & 1 ? -val : val;
+}
 
 // Recompiled code entry points (generated): run from c.m_IP until it leaves
 // recompiled code or the lockstep run ends.

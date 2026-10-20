@@ -13,8 +13,8 @@ is not to reproduce the hardware 100% exactly, nor to turn the game code into
 readable source.
 
 Games so far, each from its own MAME ROM set (the list below): Daytona USA,
-Sega Rally Championship, Virtua Fighter 2, Virtua Cop, Virtua Cop 2 and Manx
-TT Superbike, one player each (the Virtua Cops' light gun is the Vita's
+Sega Rally Championship, Virtua Fighter 2, Virtua Cop, Virtua Cop 2, Manx
+TT Superbike and Dead or Alive, one player each (the Virtua Cops' light gun is the Vita's
 touch screen or the PC's mouse). What is specific to a game (its ROMs,
 addresses, input wiring, hooks) lives in `src/games/` and `scripts/games.py`;
 the rest is the Model 2 board, shared by every game. To add one, see
@@ -27,7 +27,9 @@ You need your own ROM sets, as complete MAME sets: **full merged** archives
 (`.zip`, or `.7z` on the computer), each holding every file of the set,
 including the files a clone shares with its parent. A split set (a clone's
 archive with only the files that differ from its parent) is refused: the
-importer checks every file of the set by name and CRC. Other versions of a
+importer checks every file of the set by CRC, finding it by name, or, when
+the archive names it otherwise (a merged archive names a clone's files
+after its parent's), by size and CRC. Other versions of a
 game (another revision, region or cabinet) are not supported unless listed.
 
 Compatible sets, the archive to put in `roms/` on the computer and the file
@@ -47,23 +49,17 @@ the Vita package reads (details in [HOW_TO_COMPILE_RELEASE.md](HOW_TO_COMPILE_RE
 * **Virtua Cop 2**: `vcop2`, board Model 2A.
   `roms/vcop2.zip`; Vita `ux0:data/vcop2/vcop2.zip`.
 * **Manx TT Superbike**: `manxttc` (Twin cabinet, Revision C), board
-  Model 2A. MAME's merged `roms/manxtt.zip` holding the `manxttc` files
-  (below); Vita `ux0:data/manxttc/manxttc.zip` (the same archive, renamed).
+  Model 2A. MAME's merged `roms/manxtt.zip`; Vita
+  `ux0:data/manxttc/manxtt.zip`.
+* **Dead or Alive**: `doaa` (Model 2A, Revision A). MAME's merged
+  `roms/doa.zip`; Vita `ux0:data/doaa/doa.zip`. The Model 2B versions
+  (`doa`, `doab`) are not supported.
 * **Fighting Vipers** (test only, see Limits): `fvipers` (Revision D),
   board Model 2B. `roms/fvipers.zip`; Vita `ux0:data/fvipers/fvipers.zip`.
 
-Manx TT Superbike is built from its **Twin** version, MAME's `manxttc`
-(Revision C, set to the Twin cabinet: the SCSP sound board only). The
-DX version (`manxtt`, `manxttdx`) adds a Model 1 sound board for the
-engine and a moving bike, which are not emulated. The archive must hold
-**both** the parent set `manxtt` and the Twin's Revision C files, at its
-root or in a `manxttc/` folder (as MAME's merged `manxtt.zip` has them):
-the program `epr-18822c` to `epr-18825c`, the Twin's sound program
-`epr-18826.30`, its first sample ROM `mpr-18827.31` and its default
-EEPROM `manxttc_twin_nvran`. A merged `manxtt.zip` without the
-`manxttc` files does not load. If yours has them, only its name
-changes: in `roms/` it can stay `manxtt.zip`; on the Vita, rename it
-`manxttc.zip` and copy it to `ux0:data/manxttc/manxttc.zip`.
+As in MAME, a clone set (`manxttc`, `doaa`) is read from its parent's
+merged archive, unrenamed: the clone's files are found in it by CRC. An
+archive named after the clone (`manxttc.zip`, `doaa.zip`) works too.
 
 ## Limits
 
@@ -89,9 +85,8 @@ Vita's processor cannot run them at the game's speed.
 
 ## Goals
 
-* **More Model 2A games**: Dead or Alive (`doa`), Sky Target (`skytargt`)
-  and Pilot Kids (`pltkids`), all three on the Model 2A board that already
-  runs on the Vita.
+* **More Model 2A games**: Sky Target (`skytargt`) and Pilot Kids
+  (`pltkids`), both on the Model 2A board that already runs on the Vita
 * **A Nintendo Switch port**, with an OpenGL renderer in place of the
   Vita's vitaGL one. The recompiled game code and the Model 2 board are
   portable C++ (no Vita call in `src/runtime`, already built for 64-bit

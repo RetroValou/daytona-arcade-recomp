@@ -541,6 +541,21 @@ struct Emitter {
                 break;
             }
             case 0x6c9: case 0x6d9: if (!fop1("t1", code == 0x6d9)) return unsupported(in); break;  // movr, movrl
+            case 0x6e1: case 0x6e9: { // movre (MAME: 0x6e1 undocumented, Dead or Alive's fp0-fp3 save/restore)
+                // Source: three registers (a multiple of 4; the third's upper 16 bits dropped),
+                // fp0-fp3 or a literal; destination: three registers or fp0-fp3.
+                std::string src;
+                if (!in.m1) src = "v[0] = " + R(in.src1 & 0x1c) + "; v[1] = " + R((in.src1 & 0x1c) + 1) + "; v[2] = " +
+                                  R((in.src1 & 0x1c) + 2) + " & 0xffffu;";
+                else src = "gen::double_to_ext(" + std::string(in.src1 < 4 ? "c.m_fp[" + std::to_string(in.src1) + "]"
+                                                                        : in.src1 == 0x16 ? "1.0" : "0.0") + ", v);";
+                std::string dst;
+                if (!in.m3) dst = R(in.dst & 0x1c) + " = v[0]; " + R((in.dst & 0x1c) + 1) + " = v[1]; " + R((in.dst & 0x1c) + 2) + " = v[2];";
+                else if (in.dst < 4) dst = "c.m_fp[" + std::to_string(in.dst) + "] = gen::ext_to_double(v);";
+                else return unsupported(in); // MAME: "movre to literal?"
+                body = "{ uint32_t v[3]; " + src + " " + dst + " }";
+                break;
+            }
             case 0x6e2: if (!fop2("t2 >= 0.0 ? std::fabs(t1) : -std::fabs(t1)", true)) return unsupported(in); break; // cpysre
             case 0x701: two("t2 * t1"); break;                             // mulo
             case 0x708: two("t2 % t1"); break;                             // remo (MAME: undefined on 0)

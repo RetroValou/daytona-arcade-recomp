@@ -133,7 +133,8 @@ legal problem, or hours re-deriving something already established.
   and all parity and lockstep checks run that way. Logic runs at native rate;
   hardware sort order is reproduced first, z-buffering is a toggle.
   One exception, fixed by the project owner (18 Oct 2026): the SCSP's note
-  decay steps and its DSP return at 25 % are on in every default build;
+  decay steps and its DSP return at 25 % are on in every default build, and
+  (20 Oct 2026) its MADRS mirror is not written (Dead or Alive's reverb);
   `-DM2_SCSP_MAME=ON` builds MAME's SCSP output, and audio parity checks are
   run with it.
 - **One shader path.** No per-platform shader forks.

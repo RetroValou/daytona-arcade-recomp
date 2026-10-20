@@ -1,0 +1,78 @@
+# doaa: a test-mode walk (m2run dumps, 20 Oct 2026). Service moves the cursor
+# (it starts on EXIT and wraps), Test enters an item and leaves it. IC test (run
+# out), input test (each input), output test (Service cycles the outputs), monitor
+# test (both pages), sound test (the lever picks, Hold plays, Punch stops, Service
+# plays), game mode settings (VsCOM DIFFICULTY cycled through its values), coin
+# mode settings, bookkeeping, bookkeeping reset, ranking reset and all initialize
+# (left on NO), then EXIT to attract.
+frames 9000
+1200-1208 test=1
+1350-1356 service=1
+1390-1396 test=1
+2290-2296 test=1
+2490-2496 service=1
+2530-2536 test=1
+2630-2636 vr1=1
+2670-2676 vr2=1
+2710-2716 vr3=1
+2750-2756 start=1
+2790-2796 up=1
+2830-2836 down=1
+2870-2876 left=1
+2910-2916 right=1
+2950-2956 coin=1
+2990-2996 test=1
+3190-3196 service=1
+3230-3236 test=1
+3330-3336 service=1
+3370-3376 service=1
+3410-3416 service=1
+3450-3456 test=1
+3650-3656 service=1
+3690-3696 test=1
+3840-3846 test=1
+3990-3996 test=1
+4190-4196 service=1
+4230-4236 test=1
+4330-4336 down=1
+4370-4376 down=1
+4430-4436 vr3=1
+4630-4636 vr1=1
+4690-4696 service=1
+4890-4896 test=1
+5090-5096 service=1
+5130-5136 test=1
+5230-5236 service=1
+5270-5276 service=1
+5310-5316 service=1
+5350-5356 test=1
+5390-5396 test=1
+5430-5436 test=1
+5470-5476 test=1
+5510-5516 service=1
+5550-5556 service=1
+5590-5596 service=1
+5630-5636 service=1
+5670-5676 service=1
+5710-5716 service=1
+5750-5756 service=1
+5790-5796 service=1
+5830-5836 service=1
+5870-5876 test=1
+6070-6076 service=1
+6110-6116 test=1
+6260-6266 test=1
+6460-6466 service=1
+6500-6506 test=1
+6650-6656 test=1
+6850-6856 service=1
+6890-6896 test=1
+7040-7046 test=1
+7240-7246 service=1
+7280-7286 test=1
+7430-7436 test=1
+7630-7636 service=1
+7670-7676 test=1
+7820-7826 test=1
+8020-8026 service=1
+8060-8066 test=1

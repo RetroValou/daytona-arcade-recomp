@@ -113,7 +113,11 @@ extern const Game vf2_game = {
     // Its reference audio against Daytona's (m2run WAVs, 8,000 frames, after
     // the first 10 s): RMS -25.3 dBFS attract, -22.8 in a fight, peak -4.7
     // (Daytona's race -14.4, peak -0.9): x1.5 (+3.5 dB) brings its peaks there.
-    .output_gain = 1.5f,
+    // x2.0 since the SCSP's MADRS mirror is no longer written (Scsp::
+    // kMadrsMirrorWrites, 20 Oct 2026): the reverb's delay lines spread out,
+    // the mix fell 2.4 dB (vf2_fight 4,000 frames, RMS and loud windows); now
+    // fight peak -8.2 dBFS, attract -7.4 (6,000 and 8,000 frames).
+    .output_gain = 2.0f,
     // Its hits are already 13 dB below its music (a fight, m2run --volumes),
     // unlike Daytona's engine: effects at 100 %; the music at 70 % (the
     // owner's choice, 18 Oct 2026).

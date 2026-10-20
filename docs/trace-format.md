@@ -92,8 +92,13 @@ does is covered by the RAM hashes.
 | 0x00980010-0x0098003f | Model 2B only: copro control's upper registers (0x980020, the SHARC upload's bank) | W |
 | 0x008c0000-0x008c0fff | Model 2B only: the SHARC's IOP registers (its DMA set-up for the program upload) | W |
 | 0x009c0000-0x009c0007 | Model 2B only: the sound UART (MAME's i8251 there, umask32 0x000000ff) | W, R |
+| 0x01d87ff0-0x01d87ff7 | Dead or Alive only (MAME's `:317_0229`): the protection chip's source address and table upload | W |
+| 0x01d8400c-0x01d8400f, 0x01d87ff8-0x01d87ffb | Dead or Alive only: its busy flag and decoded data | R |
 
 Every non-RAM range the i960 reads is tapped, so a harness can answer device reads from the trace (M1).
+The 317-0229's RAM window (0x01d80000-0x01d87fff, around its registers) is
+not: the chip reads it itself through the i960's space while it answers
+0x01d87ff8, and a tap there would record those reads as the i960's.
 
 Reads of the TGP FIFO are what the game consumes from the TGP; they are the
 values that must be bit-identical (rules.md, standing rules).

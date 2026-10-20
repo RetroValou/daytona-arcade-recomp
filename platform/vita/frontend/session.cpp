@@ -13,6 +13,16 @@
 
 namespace vita {
 
+namespace {
+// The ROM set: ux0:data/<set>/<set>.zip, else, as MAME looks for a clone's files,
+// the parent set's archive in the same folder (doa.zip for doaa).
+std::string rom_archive() {
+    if (app_file(kRom) || !rt::game().parent) return kRom;
+    const std::string parent = std::string(kDirectory) + "/" + rt::game().parent + ".zip";
+    return app_file(parent) ? parent : kRom;
+}
+} // namespace
+
 Session::Session(Audio &audio, NativeOut &native, GpuGlRenderer &gpu, Diagnostics &diag, DiagnosticLog &log,
                  AsyncLog &perf_log)
     : audio_(audio), native_(native), gpu_(gpu), diag_(diag), log_(log), perf_log_(perf_log) {
@@ -102,7 +112,7 @@ bool Session::start(const VitaSettings &settings, rt::TestHold &test_hold) {
         if (DAYTONA_VITA_LINK && settings.link_enabled && !rt::game().link)
             throw std::runtime_error(std::string("LINK PLAY: ") + rt::game().set +
                                      " HAS NO COMMUNICATION BOARD. SELECT ANOTHER ROM OR TURN LINK OFF.");
-        auto images = rt::import_rom_set(kRom);
+        auto images = rt::import_rom_set(rom_archive());
         native_audio_ = settings.native_audio && rt::game().native_sound; // the game's driver tables known
         native_effect_warned_ = false;
         if (native_audio_) {

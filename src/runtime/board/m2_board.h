@@ -272,6 +272,11 @@ private:
     bool model2b() const { return img_.game->board == BoardType::Model2b; }
     uint8_t uart_status_r() const;
     uint8_t uart_data_r();
+    // Dead or Alive's 317-0229 at 0x01d80000-0x01d87fff (Game::protection):
+    // MAME model2_0229_mem with HACK_MODE_DOA.
+    uint32_t prot_read(uint32_t addr, uint32_t mask);
+    void prot_write(uint32_t addr, uint32_t data, uint32_t mask);
+    uint8_t prot_byte();
     uint64_t io_now() const { // i960 instructions so far, for the 315-5649's EEPROM
 #ifdef M2_FAST_GEN
         return ls_->now();
@@ -333,10 +338,14 @@ private:
     uint32_t videocontrol_ = 0, zclip_ = 0;
     bool render_mode_ = false, render_test_ = false, render_unk_ = false;
     uint8_t comm_cn_ = 0, comm_fg_ = 0;
+    std::vector<uint8_t> prot_ram_; // the 317-0229's RAM window (0x8000 bytes), Game::protection only
+    uint32_t prot_src_ = 0;         // its source offset (m_srcoffset): the decoded string's next byte
+    bool prot_busy_ = false;        // MAME doa_unk_r's toggle (m_prot_a)
     uint64_t frame_ = 0;
 #ifdef M2_SPIN_SKIP
     void spin_skip(const Game::SpinWait &w, uint32_t value);
     Game::SpinWait spin_[2]{};
+    uint32_t spin_word_ = ~0u; // a WordZeroCount loop's word (read_dword checks it), or none
     uint64_t spin_skipped_ = 0;
 #endif
 #ifdef M2_FAST_BUS

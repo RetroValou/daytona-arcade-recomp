@@ -30,6 +30,16 @@ enum class SoundBoardType : uint8_t {
     Scsp,   // Model 2A/2B/2C sound board: 68000 + SCSP (MAME model2_scsp)
 };
 
+// A protection chip on the ROM board.
+enum class Protection : uint8_t {
+    None,
+    // Sega's 317-0229 compression chip (315-5838 family) at 0x01d80000, as MAME's
+    // model2_0229_mem with HACK_MODE_DOA: Dead or Alive only reads one decoded
+    // string from it at boot; its real cipher is unknown (MAME answers the
+    // string; so does the board, M2Board::prot_read).
+    Comp0229Doa,
+};
+
 // The cabinet's controls, as every frontend fills them (a driving cabinet:
 // MAME's daytona port layout). A game on another board, or with other
 // controls, maps them to its own ports in Game::io.
@@ -206,7 +216,8 @@ struct Game {
     ScspDspProgram dsp{};
     // Wait loops of the game's whose passes the board skips (M2_SPIN_SKIP,
     // M2Board::spin_skip): each pass starts with an ldob of a work RAM byte (or,
-    // WordBitsCount, an ld of a device register) at `ip`. Between two lockstep
+    // WordBitsCount, an ld of a device register; WordZeroCount, an ld of a work
+    // RAM word) at `ip`. Between two lockstep
     // events (interrupts, board callbacks) nothing changes that value, so the
     // passes up to just before the next event (and,
     // with a timer, before the pass that would leave on it) are skipped by
@@ -222,6 +233,8 @@ struct Game {
                            // 0xfffff and above register `reg`
             WordBitsCount, // loops while the 32-bit device word ANDed with `mask` equals
                            // register `reg`, adding 1 to register `counter` each pass
+            WordZeroCount, // loops while the 32-bit work RAM word (an ld) is 0, adding 1
+                           // to register `counter` each pass (Dead or Alive)
         } kind = None;
         uint32_t ip = 0, addr = 0; // the pass's first instruction (the ldob/ld) and the byte/word
         uint8_t pass = 0;          // instructions in a pass
@@ -258,6 +271,13 @@ struct Game {
         uint8_t first = 0, last = 0;
     };
     WindowRange update_z_depth_window_groups[4]{};
+    // A protection chip on the ROM board (Dead or Alive's 317-0229), or None.
+    Protection protection = Protection::None;
+    // MAME's parent set when this set is a clone (Dead or Alive's doa, Manx TT's
+    // manxtt), or nullptr: a frontend also looks for the ROM set under the
+    // parent's archive name, as MAME does (the merged archive is named after
+    // the parent; the importer finds the clone's files in it by CRC).
+    const char *parent = nullptr;
 };
 
 // Channel `channel` of the game's sound driver plays the music (Game::music_channels).
