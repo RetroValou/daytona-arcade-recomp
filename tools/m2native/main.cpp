@@ -10,7 +10,7 @@
 // set: M1 instead, the copro, buffer RAM and the geometrizer answered from the
 // trace like every other device.
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/cpu/i960_gen_support.h"
 #include "runtime/cpu/lockstep.h"
 #include "runtime/cpu/replay_bus.h"

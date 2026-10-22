@@ -6,7 +6,7 @@
 // on the Session.
 
 #include "frontend/settings.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/board/test_hold.h"
 
 #include <cstdint>

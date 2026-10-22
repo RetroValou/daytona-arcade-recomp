@@ -14,7 +14,7 @@
 #include "frontend/storage.h"
 #include "render/imgui_backend.h"
 #include "render/renderer.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/board/game_loop.h"
 #include "runtime/board/test_hold.h"
 #include "runtime/sound/native/native_sound_engine.h"

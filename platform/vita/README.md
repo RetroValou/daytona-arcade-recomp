@@ -216,7 +216,12 @@ diagnostics build), `perf.log` and `gl.log` (diagnostics builds).
   Inside the band, each vertex's depth is the rank, weighted 0.9999 - `update_z_depth_LOCAL_WEIGHT`, plus a nearness
   from its distance w on a log scale, weighted `update_z_depth_LOCAL_WEIGHT` (1 at w 1,
   0 at e^`update_z_depth_SCALE`), so shapes that cross (a car's shadow and its wheel)
-  cut by distance while coplanar ones keep the rank order. The 2D layers keep their
+  cut by distance while coplanar ones keep the rank order. Polygons laid over another
+  are moved nearer before that, by a fraction of their distance: cut-outs
+  (`ALPHA_TEST`), checker transparency, very dark flat ones (shadows), each game's
+  (`Game::update_z_depth_cutout_boost`, `_checker_boost`, `_dark_boost`, `_dark_level`:
+  5 %, 5 %, 3 %, no channel above 0.15 by default; `priority_boost`, a constant per
+  program; only the flat program tests its colour, per vertex). The 2D layers keep their
   depths (0, `kForegroundDepth`); the result stays below the HUD. Both values are the
   game's (`Game::update_z_depth_local_weight`, `update_z_depth_scale`: 0.9 / 12.5,
   Sega Rally 0.91 / 12.5, Daytona 6.0, VF2 4.5, Virtua Cop 7.2, Virtua Cop 2 7.3, from each game's w

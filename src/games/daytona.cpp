@@ -4,7 +4,7 @@
 // seeds/daytona93_hooks.txt, seeds/daytona_hooks.txt.
 #include "games/hooks.h"
 #include "runtime/board/enhance.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -128,8 +128,9 @@ extern const Game daytona_game = {
     .spin = {{Game::SpinWait::ByteIsReg, 0x1394, 0x00500000, 2, 16}},
     .model1_voices = &kDaytonaVoices,
     .music_channels = kDaytonaMusic, // 0-9 and 15
-    .update_z_depth_local_weight = 0.8,
+    .update_z_depth_local_weight = 0.95,//0.91,
     .update_z_depth_scale = 6.0f, // as daytona93 (the same tracks)
+    .update_z_depth_dark_boost = 0.05f,
 };
 
 

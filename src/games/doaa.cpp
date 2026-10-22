@@ -3,7 +3,7 @@
 // game, Dec 4 1996. Everything the runtime needs to know about this game; the
 // board is the runtime's. Seeds: seeds/doaa.txt, seeds/doaa_snd.txt.
 // Played as one player: player 2's controls stay released.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace rt {
 

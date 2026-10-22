@@ -263,6 +263,15 @@ struct Game {
     // the farthest vertex distance w the game draws (its 99.9th percentile:
     // nearness 1 at w 1, 0 there and beyond). Each game's own, measured on the PC.
     float update_z_depth_scale = 12.5f;
+    // The same test: how much nearer the polygons laid over another one are
+    // drawn, as a log of their distance w (0.05: about 5 % nearer; 0: none), so
+    // they stay over a surface very close to them. Cut-outs (transparent
+    // texture), checker transparency, and very dark flat polygons (shadows: no
+    // colour channel above update_z_depth_dark_level, 0-1). Each game's own.
+    float update_z_depth_cutout_boost = 0.05f;
+    float update_z_depth_checker_boost = 0.05f;
+    float update_z_depth_dark_boost = 0.03f;
+    float update_z_depth_dark_level = 0.15f;
     // The same test: Model 2 windows that share one depth band (each range,
     // first to last, inclusive), so the hybrid depth mixes them as one scene;
     // every other window keeps its own band, in front of the windows before

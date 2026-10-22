@@ -1,6 +1,6 @@
 #include "runtime/sound/scsp_board.h"
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/sound/model1_board.h"
 #include "runtime/sound/sound_profile.h"
 

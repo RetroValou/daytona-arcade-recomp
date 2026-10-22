@@ -16,7 +16,7 @@
 #include "runtime/cpu/cpu.h"
 #include "runtime/video/geo.h"
 #include "runtime/cpu/lockstep.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/tgp/tgp_board.h"
 #include "runtime/board/rate_conv.h"
 #include "runtime/video/video.h"

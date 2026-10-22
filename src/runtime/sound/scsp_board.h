@@ -12,7 +12,7 @@
 // SCSP renders up to the current count before each register access.
 #pragma once
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/board/rate_conv.h"
 #include "runtime/sound/scsp.h"
 #include "runtime/sound/sound_board.h"

@@ -5,7 +5,7 @@
 // Bring-up (HANDOFF.md, 19 Oct 2026): the i960 side first, checked against
 // MAME with the copro replayed from the trace; the SHARC is not native yet.
 // Played as one player: player 2's controls stay released.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace rt {
 

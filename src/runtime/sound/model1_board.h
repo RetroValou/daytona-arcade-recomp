@@ -11,7 +11,7 @@
 // board a video frame at a time and drains the rendered audio.
 #pragma once
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/sound/multipcm.h"
 #include "runtime/sound/sound_board.h"
 #include "runtime/sound/snd_gen_support.h"

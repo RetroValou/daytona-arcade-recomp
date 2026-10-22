@@ -33,7 +33,7 @@ Per set (SETS):
                 importer checks every file's CRC, so a merged archive named
                 after a clone is fine
   board         the i960 board: "model2o" (Model 2), "model2a" (2A-CRX) or
-                "model2b" (2B-CRX), as rt::BoardType (src/runtime/board/game.h);
+                "model2b" (2B-CRX), as rt::BoardType (src/games/game.h);
                 m2recomp --board inlines its bus (recompile.py --inline-bus,
                 build_vita.py --inline-bus; not for model2b)
   recomp        extra m2recomp options: the i960 memory map

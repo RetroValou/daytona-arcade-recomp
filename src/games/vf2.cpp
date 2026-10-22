@@ -3,7 +3,7 @@
 // Everything the runtime needs to know about this game; the board is the
 // runtime's. Seeds: seeds/vf2.txt; recompiler options: scripts/games.py.
 // Played as one player: player 2's controls stay released.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace rt {
 
@@ -137,7 +137,10 @@ extern const Game vf2_game = {
     .spin = {{Game::SpinWait::ByteZeroTimer, 0x4cb7c, 0x00500000, 7, 13, 2, 2}},
     // The music on channels 0-8 and 15; 9-14 and 0xff hits, voices, effects.
     .music_channels = 0x81ff, // 0-8 and 15
+    .update_z_depth_local_weight = 0.98,
     .update_z_depth_scale = 4.5f, // ln of w: fight 99.9th percentile 71 (max 143)
+    .update_z_depth_dark_boost = 0.05f,
+
     // A fight's windows (every frame of vf2_fight, 9,000 frames, each drawn
     // alone): 1 the stage's scenery, 5 the ring's floor, 6 the shadows, 7 the
     // fighters (2: 32 polygons in a few frames); the HUD is 2D. One scene: the

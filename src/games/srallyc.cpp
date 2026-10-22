@@ -2,7 +2,7 @@
 // runtime needs to know about this game; the board is the runtime's. Seeds:
 // seeds/srallyc.txt; recompiler options (the boot copies its program to work
 // RAM): scripts/games.py.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 #include <algorithm>
 
@@ -108,8 +108,9 @@ extern const Game srallyc_game = {
     // The music on channels 0-7 and 15 (scsp_voices: 2 of ~3,700 key-ons in a
     // race elsewhere); 8 counted with it, as VF2's.
     .music_channels = 0x81ff, // 0-8 and 15
-    .update_z_depth_local_weight = 0.91,
+    .update_z_depth_local_weight = 0.95,//0.91,
     .update_z_depth_scale = 12.5f, // ln of w: race 99.9th percentile 1.9e5 (the sky)
+    .update_z_depth_dark_boost = 0.05f,
     // A race's windows (the Mountain in practice, each drawn alone): 1 the
     // world; 2 the rev counter's needle in the cockpit view (one polygon, w
     // 128), the player's car in the third-person view (~300 polygons; the

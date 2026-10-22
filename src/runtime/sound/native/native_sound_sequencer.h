@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace snd {
 

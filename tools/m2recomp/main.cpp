@@ -653,7 +653,7 @@ i960::InlineHelpers load_inline(const std::string &path) {
     return h;
 }
 
-// --board's name as rt::BoardType (src/runtime/board/game.h).
+// --board's name as rt::BoardType (src/games/game.h).
 std::string board_type(const std::string &name) { return name == "model2o" ? "rt::BoardType::Model2o" : "rt::BoardType::Model2a"; }
 
 std::vector<uint32_t> load_seeds(const std::string &path) {

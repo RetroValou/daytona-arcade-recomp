@@ -26,7 +26,7 @@
 #include "app/native_audio.h"
 #include "runtime/sound/native/native_sound_engine.h"
 #include "runtime/board/game_loop.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/romset/rom_import.h"
 
 #include "backends/imgui_impl_sdl3.h"

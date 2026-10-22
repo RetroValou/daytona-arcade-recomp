@@ -7,7 +7,7 @@
 // daytona93 reference they were checked against.
 #pragma once
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/board/m2_board.h"
 
 #include <string>

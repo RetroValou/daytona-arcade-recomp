@@ -1,7 +1,7 @@
 // Virtua Cop 2 (Model 2A-CRX), one player. Everything the runtime needs to
 // know about this game; the board is the runtime's. Seeds: seeds/vcop2.txt,
 // seeds/vcop2_snd.txt.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace rt {
 

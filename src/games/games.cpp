@@ -1,7 +1,7 @@
-// The games the runtime knows: one record per MAME set (runtime/board/game.h), each
+// The games the runtime knows: one record per MAME set (games/game.h), each
 // defined in its game's file here in src/games/. A new game adds its file and
 // one line to kGames (docs/adding-a-game.md).
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 #include <cstring>
 #include <stdexcept>

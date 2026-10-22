@@ -1,5 +1,30 @@
 # Handoff
 
+## Vita: POLYGON ORDER HYBRID raises cut-outs, checker and dark flat polygons (2026-10-22)
+
+The user: with HYBRID, cut-out polygons, checker-transparent ones and very
+dark flat ones (mostly shadows) should win over polygons very close to them.
+Shader only (render/shaders.cpp kVertexShader, inside `#ifdef
+upgrade_z_depth`): priority_boost is subtracted from log(w) before the
+nearness, i.e. the polygon is treated as nearer by a fraction of its
+distance (scale-free, any range). CHECKER (FlatChecker, ModelChecker) and
+ALPHA_TEST (ModelAlpha) 0.05 (~5 %), Flat 0.03 when max(r, g, b) of the
+vertex colour <= 0.15, else 0; Model 0 (folded by the compiler). The Layer
+program has ALPHA_TEST but depth < 1: the branch does not run. ARCADE: the
+plain programs do not contain the branch, unchanged. Cost with HYBRID: one
+subtraction per vertex, plus max/step/mul in the flat program; nothing per
+pixel. Dark kept smaller than the others: Sega Rally's shadow/wheel case
+(the reason for HYBRID) needs the wheel to still cut the shadow.
+The values are each game's, as the local weight and scale: rt::Game
+update_z_depth_cutout_boost 0.05, _checker_boost 0.05, _dark_boost 0.03,
+_dark_level 0.15 (defaults in game.h, no game overrides them yet), #defined
+by build_program (update_z_depth_CUTOUT_BOOST...; `common` grown to 640).
+game.h moved from src/runtime/board/ to src/games/ (the user: next to the
+records), included as "games/game.h" everywhere.
+Checked: the four variants' preprocessed source (cpp). Not compiled or seen
+on the console; the values are first guesses, to tune there per game.
+Not on the desktop (m2.hlsl), as the rest of HYBRID.
+
 ## Vita: Dead or Alive's bad_alloc at load; the ROM images not copied (2026-10-20)
 
 The user, on the console: Dead or Alive stops with bad_alloc when it loads.

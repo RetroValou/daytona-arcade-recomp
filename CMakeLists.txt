@@ -129,7 +129,7 @@ add_library(runtime STATIC
     src/runtime/sound/scsp.cpp
     src/runtime/sound/scsp_board.cpp
     src/runtime/io/comm_board.cpp
-    # every game's record and hooks (runtime/board/game.h)
+    # every game's record and hooks (games/game.h)
     src/games/games.cpp
     src/games/daytona.cpp
     src/games/srallyc.cpp

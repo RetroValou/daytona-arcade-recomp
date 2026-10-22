@@ -1,7 +1,7 @@
 // vitaGL renderer: the shader source and its program variants.
 
 #include "render/gl_internal.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -43,12 +43,33 @@ void main() {
     // rank gets the rest, 0.9999 - update_z_depth_LOCAL_WEIGHT. The result stays
     // inside its band, below the HUD and above the background.
     const float update_z_depth_RANK_WEIGHT = 0.9999 - update_z_depth_LOCAL_WEIGHT;
+    // Priority boost: polygons the Model 2 lays over another one (cut-outs, the
+    // checker's transparency, the very dark flat ones: shadows) are moved nearer
+    // by a fraction of their distance, as a log of w (0.05: 5 % nearer), so they
+    // stay over the surface they sit on where it is very close. The game's values
+    // (rt::Game::update_z_depth_*_boost, defined by build_program). Chosen by the
+    // program at compile time; only the flat program tests its colour per vertex.
+    // CHECKER first: ModelChecker also has ALPHA_TEST.
+#ifdef CHECKER
+    const float priority_boost = update_z_depth_CHECKER_BOOST;
+#else
+#ifdef ALPHA_TEST
+    const float priority_boost = update_z_depth_CUTOUT_BOOST;
+#else
+#ifdef TEXTURED
+    const float priority_boost = 0.0;
+#else
+    // very dark: no channel above update_z_depth_DARK_LEVEL
+    float priority_boost = step(max(max(a_color.r, a_color.g), a_color.b), update_z_depth_DARK_LEVEL) * update_z_depth_DARK_BOOST;
+#endif
+#endif
+#endif
     float hybrid_depth = a_uvpd.w;
     if (hybrid_depth >= 1.0) {
         float band = floor(hybrid_depth);
         float rank = hybrid_depth - band;
         // 1 at w 1, 0 at the game's farthest distance (update_z_depth_SCALE: its log)
-        float nearness = clamp(1.0 - log(max(w, 1.0)) * (1.0 / update_z_depth_SCALE), 0.0, 1.0);
+        float nearness = clamp(1.0 - (log(max(w, 1.0)) - priority_boost) * (1.0 / update_z_depth_SCALE), 0.0, 1.0);
         float local = clamp(rank * update_z_depth_RANK_WEIGHT + nearness * update_z_depth_LOCAL_WEIGHT, 0.001, 0.999);
         hybrid_depth = (band - 1.0 + local) * (0.9999 / update_z_depth_BANDS);
     }
@@ -142,15 +163,25 @@ GLuint build_program(const ProgramDef &def, bool upgrade_z_depth) {
     const double local_weight = std::clamp(double(rt::game().update_z_depth_local_weight), 0.0, 0.9999);
     // update_z_depth_SCALE: the game's distance scale (rt::Game::update_z_depth_scale), above 0.
     const double scale = std::max(double(rt::game().update_z_depth_scale), 0.1);
-    char common[384];
+    // update_z_depth_*_BOOST, _DARK_LEVEL: the game's priority boosts (rt::Game), not negative.
+    const double cutout_boost = std::max(double(rt::game().update_z_depth_cutout_boost), 0.0);
+    const double checker_boost = std::max(double(rt::game().update_z_depth_checker_boost), 0.0);
+    const double dark_boost = std::max(double(rt::game().update_z_depth_dark_boost), 0.0);
+    const double dark_level = std::clamp(double(rt::game().update_z_depth_dark_level), 0.0, 1.0);
+    char common[640];
     std::snprintf(common, sizeof common,
                   "#version 140\nprecision lowp int;\nprecision highp float;\n"
                   "%s" // the hybrid depth variant (the Vita option, gl_set_upgrade_z_depth)
                   "#define update_z_depth_LOCAL_WEIGHT %.4f\n"
                   "#define update_z_depth_SCALE %.4f\n"
                   "#define update_z_depth_BANDS %.1f\n" // kZDepthBands: one per Model 2 window
+                  "#define update_z_depth_CUTOUT_BOOST %.4f\n"
+                  "#define update_z_depth_CHECKER_BOOST %.4f\n"
+                  "#define update_z_depth_DARK_BOOST %.4f\n"
+                  "#define update_z_depth_DARK_LEVEL %.4f\n"
                   "#define SCREEN_W %.1f\n#define SCREEN_H %.1f\n",
-                  upgrade_z_depth ? "#define upgrade_z_depth\n" : "", local_weight, scale, double(kZDepthBands), double(kDisplayW), double(kDisplayH));
+                  upgrade_z_depth ? "#define upgrade_z_depth\n" : "", local_weight, scale, double(kZDepthBands),
+                  cutout_boost, checker_boost, dark_boost, dark_level, double(kDisplayW), double(kDisplayH));
     const GLuint vs = compile(GL_VERTEX_SHADER, common, def.defines, kVertexShader, def.name);
     const GLuint fs = vs ? compile(GL_FRAGMENT_SHADER, common, def.defines, kFragmentShader, def.name) : 0;
     GLuint program = 0;

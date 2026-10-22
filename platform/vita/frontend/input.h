@@ -4,7 +4,7 @@
 // and the controls' result as the board's inputs.
 
 #include "frontend/controls.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace vita {
 

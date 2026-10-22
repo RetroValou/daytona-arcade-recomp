@@ -1,6 +1,6 @@
 #pragma once
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/video/geo.h"
 #include <algorithm>
 #include <array>

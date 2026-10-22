@@ -1,7 +1,7 @@
 // Virtua Cop (original Model 2), Revision B (vcop), one player. Everything the
 // runtime needs to know about this game; the board is the runtime's. Seeds:
 // seeds/vcop.txt, seeds/vcop_snd.txt.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 namespace rt {
 

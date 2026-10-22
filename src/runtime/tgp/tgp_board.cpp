@@ -11,7 +11,7 @@
 
 #include "runtime/tgp/tgp_board.h"
 
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include "runtime/sharc/sharc.h"
 
 #include <cstdio>

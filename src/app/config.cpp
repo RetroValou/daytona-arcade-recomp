@@ -1,5 +1,5 @@
 #include "app/config.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 #include <algorithm>
 

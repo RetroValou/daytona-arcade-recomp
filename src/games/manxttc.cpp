@@ -1,7 +1,7 @@
 // Manx TT Superbike, Revision C, the Twin cabinet (manxttc; Model 2A-CRX).
 // Everything the runtime needs to know about this game; the board is the
 // runtime's. Seeds: seeds/manxttc.txt, seeds/manxttc_snd.txt.
-#include "runtime/board/game.h"
+#include "games/game.h"
 
 #include <algorithm>
 

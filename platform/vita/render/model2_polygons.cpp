@@ -1,7 +1,7 @@
 // vitaGL renderer: Model 2 polygons, in priority order (render/renderer.cpp).
 
 #include "render/gl_internal.h"
-#include "runtime/board/game.h"
+#include "games/game.h"
 #include <cmath>
 
 namespace vita {
