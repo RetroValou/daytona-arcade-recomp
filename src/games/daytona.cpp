@@ -130,7 +130,8 @@ extern const Game daytona_game = {
     .music_channels = kDaytonaMusic, // 0-9 and 15
     .update_z_depth_local_weight = 0.95,//0.91,
     .update_z_depth_scale = 6.0f, // as daytona93 (the same tracks)
-    .update_z_depth_dark_boost = 0.05f,
+    .update_z_depth_cutout_boost = 0.07f,
+    .update_z_depth_dark_boost = 0.11f,
 };
 
 

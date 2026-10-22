@@ -110,7 +110,8 @@ extern const Game srallyc_game = {
     .music_channels = 0x81ff, // 0-8 and 15
     .update_z_depth_local_weight = 0.95,//0.91,
     .update_z_depth_scale = 12.5f, // ln of w: race 99.9th percentile 1.9e5 (the sky)
-    .update_z_depth_dark_boost = 0.05f,
+    .update_z_depth_cutout_boost = 0.06f,
+    .update_z_depth_dark_boost = 0.04f,
     // A race's windows (the Mountain in practice, each drawn alone): 1 the
     // world; 2 the rev counter's needle in the cockpit view (one polygon, w
     // 128), the player's car in the third-person view (~300 polygons; the

@@ -124,6 +124,10 @@ extern const Game doaa_game = {
     // The wait loop's passes skipped (M2_SPIN_SKIP), g0 (r16) counting them.
     .spin = {{Game::SpinWait::WordZeroCount, 0x2800, 0x0054b150, 4, 0, 0, 0, 0, 16}},
     .music_channels = 0x0fff, // 0-11
+
+    .update_z_depth_local_weight = 0.98,
+    .update_z_depth_dark_boost = 0.05f,
+
     .protection = Protection::Comp0229Doa,
     .parent = "doa", // MAME's merged doa.zip
 };
