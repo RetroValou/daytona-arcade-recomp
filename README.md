@@ -1,3 +1,6 @@
+### AI Warning
+This project was developed with the help of **Claude Code** 
+
 # Vita Model 2 recomp
 
 The goal of this project is a standard Sega Model 2 static recompiler for the
