@@ -116,7 +116,7 @@ extern const Game manxttc_game = {
     // The engine is an effect, mixed by the game with the music (the Twin's
     // SCSP driver): effects at 100 %, not Daytona's 20 %. The lean softer than a
     // car's wheel on the Vita's stick: the soft curve and high smoothing.
-    .defaults = {.effects_volume = 100, .steer_curve = 1, .steer_smoothing = 2},
+    .defaults = {.effects_volume = 100, .steer_curve = 1, .steer_smoothing_ms = 330},
     .control_list = kControls,
     .dsp = {0x8f14, 74, 0xAE4FDF9Cu},
     .music_channels = 0x03ff, // 0-9

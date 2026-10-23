@@ -35,7 +35,7 @@ void VitaSettings::sanitize() {
     effects_volume = std::clamp(effects_volume, 0, 100);
     deadzone = std::clamp(deadzone, 0, 40);
     steer_curve = std::clamp(steer_curve, 0, 2);
-    steer_smoothing = std::clamp(steer_smoothing, 0, 2);
+    steer_smoothing_ms = std::clamp(steer_smoothing_ms, 0, 500);
     draw_distance = std::clamp(draw_distance, -2, 2);
     bindings.sanitize(game_layout());
 }
@@ -58,7 +58,7 @@ void VitaSettings::load(const char *path) {
         else if (!std::strcmp(key, "skip_launcher")) skip_launcher = value != 0;
         else if (!std::strcmp(key, "save_backup")) save_backup = value != 0;
         else if (!std::strcmp(key, "steer_curve")) steer_curve = value;
-        else if (!std::strcmp(key, "steer_smoothing")) steer_smoothing = value;
+        else if (!std::strcmp(key, "steer_smoothing_ms")) steer_smoothing_ms = value;
         else if (!std::strcmp(key, "draw_distance")) draw_distance = value;
         else if (!std::strcmp(key, "cpu_clock")) cpu_clock = value;
         else if (!std::strcmp(key, "gpu_clock")) gpu_clock = value;
@@ -88,7 +88,7 @@ bool VitaSettings::save(const char *path) const {
     std::fprintf(f, "link_enabled=%d\nlink_sync=%d\nlink_port=%d\nnext_port=%d\n",
         int(link_enabled), int(link_sync), link_port, next_port);
     for (int i = 0; i < 4; ++i) std::fprintf(f, "next_ip%d=%d\n", i, next_ip[i]);
-    std::fprintf(f, "steer_curve=%d\nsteer_smoothing=%d\n", steer_curve, steer_smoothing);
+    std::fprintf(f, "steer_curve=%d\nsteer_smoothing_ms=%d\n", steer_curve, steer_smoothing_ms);
     std::fprintf(f, "upgrade_z_depth=%d\n", int(upgrade_z_depth));
     std::fprintf(f, "draw_distance=%d\n", draw_distance);
     for (int a = 0; a < ControlCount; ++a)

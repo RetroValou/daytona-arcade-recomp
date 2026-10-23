@@ -152,10 +152,11 @@ struct FrontendDefaults {
     // on the Vita's speakers: 30 % for both its sets, src/games/daytona.cpp).
     int effects_volume = 100;
     // The Vita's steering curve (0 linear, 1 soft, 2 extra soft) and smoothing
-    // (0 off, 1 low, 2 high: the wheel's top speed, platform/vita/frontend/
-    // controls.h kSteerRate): a wheel turns rather than jumps, so low by default
-    // (the d-pad's left/right too); Manx TT's lean softer still.
-    int steer_curve = 0, steer_smoothing = 1;
+    // (milliseconds for the wheel to go from the centre to 90 % of full lock,
+    // 0 off; platform/vita/frontend/controls.h): a wheel turns rather than
+    // jumps, so 110 ms by default (the d-pad's left/right too); Manx TT's
+    // lean softer still (330 ms, what HIGH was).
+    int steer_curve = 0, steer_smoothing_ms = 110;
 };
 
 // How the cabinet's controls reach a Model 2A-CRX board's 315-5649 I/O chip

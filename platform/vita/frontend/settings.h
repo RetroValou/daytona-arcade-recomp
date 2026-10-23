@@ -43,8 +43,9 @@ struct VitaSettings {
     int music_volume = rt::game().defaults.music_volume, effects_volume = rt::game().defaults.effects_volume;
     int deadzone = 12;
     int draw_distance = 0;
-    // The wheel's curve and smoothing (the game's defaults: rt::FrontendDefaults).
-    int steer_curve = rt::game().defaults.steer_curve, steer_smoothing = rt::game().defaults.steer_smoothing;
+    // The wheel's curve and smoothing (the game's defaults: rt::FrontendDefaults);
+    // the smoothing in ms, centre to 90 % of full lock (0 off; controls.h).
+    int steer_curve = rt::game().defaults.steer_curve, steer_smoothing_ms = rt::game().defaults.steer_smoothing_ms;
 
     bool fourth_core = false;
     bool skip_launcher = false;

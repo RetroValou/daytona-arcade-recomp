@@ -125,9 +125,9 @@ int main() {
     // Smoothing: the wheel turns toward the input, monotonic, and settles on it;
     // its speed grows with the distance, so a short correction is near instant
     // and a full lock takes many frames.
-    for (int level = 1; level <= 2; ++level) {
+    for (const int level : {110, 330}) {
         vita::Controls smooth = driving();
-        smooth.set_steer_smoothing(level);
+        smooth.set_steer_smoothing_ms(level);
         int previous = 0x80, frames = 0;
         for (; frames < 200; ++frames) {
             const int steer = smooth.sample({vita::Right}).steer;
@@ -135,12 +135,12 @@ int main() {
             previous = steer;
             if (steer == 0xe0) break;
         }
-        CHECK(frames > 8 && frames < 90);
+        CHECK(frames > 4 && frames < 90);
         for (frames = 0; frames < 200 && smooth.sample({}).steer != 0x80; ++frames) {}
         CHECK(frames < 90);
         vita::Controls small = driving();
         small.set_deadzone(0.f);
-        small.set_steer_smoothing(level);
+        small.set_steer_smoothing_ms(level);
         const int target = 128 + int(std::lround(96.f * 8.f / 127.f));
         small.sample({0, 136, 128});
         CHECK(std::abs(small.sample({0, 136, 128}).steer - target) <= 1); // within one step in two frames

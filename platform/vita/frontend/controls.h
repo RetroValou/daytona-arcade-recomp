@@ -23,13 +23,40 @@ struct Pad {
 // of the distance d to the input: a short correction almost all at once
 // (what is left is about d * d / r), a long one at up to r a frame; and r
 // shrinks toward the ends of the wheel's travel (half of it at full lock), so
-// the wheel is slower there. r at the centre: off (none), low, high.
-inline constexpr float kSteerRate[] = {0.0f, 0.15f, 0.07f};
-inline float steer_step(float wheel, float input, int level) {
+// the wheel is slower there.
+//
+// The user sets it in milliseconds: the time the wheel takes to reach 90 % of
+// full lock from the centre, the stick pushed fully and at once (0 = off, no
+// smoothing). steer_rate_for_ms turns it into r (by bisection on the very
+// recurrence steer_step runs, so the setting means what it says).
+inline constexpr int kSteerMsMax = 500, kSteerMsStep = 10;
+inline constexpr float kBoardFrameMs = 1000.f / 57.52f;
+inline float steer_step(float wheel, float input, float r_centre) {
     const float d = input - wheel;
-    if (kSteerRate[level] <= 0.f) return input;
-    const float r = kSteerRate[level] * (1.f - 0.5f * std::min(std::abs(wheel), 1.f));
+    if (r_centre <= 0.f) return input;
+    const float r = r_centre * (1.f - 0.5f * std::min(std::abs(wheel), 1.f));
     return wheel + d / (1.f + std::abs(d) / r);
+}
+// Board frames (fractional, interpolated) for a wheel at the centre to reach
+// 90 % of full lock when the input jumps to full lock, at rate r_centre.
+inline float steer_frames_to_90(float r_centre) {
+    float wheel = 0.f;
+    for (int n = 1; n <= 2000; ++n) {
+        const float next = steer_step(wheel, 1.f, r_centre);
+        if (next >= 0.9f) return float(n - 1) + (0.9f - wheel) / (next - wheel);
+        wheel = next;
+    }
+    return 2000.f;
+}
+inline float steer_rate_for_ms(int ms) {
+    if (ms <= 0) return 0.f;
+    const float frames = float(std::min(ms, kSteerMsMax)) / kBoardFrameMs;
+    float lo = 0.002f, hi = 20.f; // a small r is slow: more frames
+    for (int i = 0; i < 40; ++i) {
+        const float mid = 0.5f * (lo + hi);
+        if (steer_frames_to_90(mid) > frames) lo = mid; else hi = mid;
+    }
+    return 0.5f * (lo + hi);
 }
 struct Input {
     uint8_t steer = 0x80, accel = 0x20, brake = 0x20;
@@ -177,7 +204,7 @@ public:
             if (held(Control::SteerLeft) || held(Control::SteerRight))
                 steer = float(held(Control::SteerRight)) - float(held(Control::SteerLeft));
             if (steer_invert_) steer = -steer;
-            steer_ = steer_step(steer_, steer, steer_smoothing_);
+            steer_ = steer_step(steer_, steer, steer_rate_);
             steer = steer_;
         }
         if (pedals_) {
@@ -233,7 +260,8 @@ public:
     void set_deadzone(float value) { deadzone_ = std::clamp(value, 0.0f, 0.4f); }
     void set_steer_curve(int value) { steer_curve_ = std::clamp(value, 0, 2); }
     void set_steer_invert(bool value) { steer_invert_ = value; }
-    void set_steer_smoothing(int value) { steer_smoothing_ = std::clamp(value, 0, 2); }
+    // Milliseconds, centre to 90 % of full lock (0 off).
+    void set_steer_smoothing_ms(int value) { steer_rate_ = steer_rate_for_ms(std::clamp(value, 0, kSteerMsMax)); }
     void set_bindings(const Bindings &value) { bindings_ = value; bindings_.sanitize(layout_); }
     const Bindings &bindings() const { return bindings_; }
 private:
@@ -245,7 +273,8 @@ private:
     Layout layout_;
     Bindings bindings_;
     uint32_t held_ = 0;
-    int gear_ = 1, steer_curve_ = 0, steer_smoothing_ = 0;
+    int gear_ = 1, steer_curve_ = 0;
+    float steer_rate_ = 0.f; // steer_rate_for_ms: r at the wheel's centre (0 off)
     float deadzone_ = 0.12f, steer_ = 0.f; // steer_: the smoothed wheel
     bool steer_invert_ = false, coin_used_ = false, steering_ = false, pedals_ = false, joystick_ = false;
     uint16_t gun_x_min_ = 0, gun_x_max_ = 0, gun_y_min_ = 0, gun_y_max_ = 0, aim_x_ = 0, aim_y_ = 0;

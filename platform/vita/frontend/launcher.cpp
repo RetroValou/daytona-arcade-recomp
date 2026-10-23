@@ -154,7 +154,6 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
     if (ImGui::BeginChild("settings", {0, -100}, ImGuiChildFlags_None)) {
         if (binds_) {
             static const char *const curves[] = {"STEERING CURVE: LINEAR", "STEERING CURVE: SOFT", "STEERING CURVE: EXTRA SOFT"};
-            static const char *const smoothing[] = {"STEERING SMOOTHING: OFF", "STEERING SMOOTHING: LOW", "STEERING SMOOTHING: HIGH"};
             char rows[kMaxBindRows][64];
             int actions[kMaxBindRows];
             const int bound = bind_rows(actions);
@@ -166,7 +165,10 @@ void Launcher::draw(bool have_game, const VitaSettings &settings, const std::str
                 case RowDeadzone: std::snprintf(rows[i], sizeof rows[i], "DEAD ZONE: %d%%", settings.deadzone); break;
                 case RowInvert: label = settings.steer_invert ? "INVERT STEERING: ON" : "INVERT STEERING: OFF"; break;
                 case RowSteerCurve: label = curves[settings.steer_curve]; break;
-                case RowSteerSmoothing: label = smoothing[settings.steer_smoothing]; break;
+                case RowSteerSmoothing:
+                    if (settings.steer_smoothing_ms <= 0) label = "STEERING SMOOTHING: OFF";
+                    else std::snprintf(rows[i], sizeof rows[i], "STEERING SMOOTHING: %d MS", settings.steer_smoothing_ms);
+                    break;
                 case RowTestHold: label = test_hold_.armed() ? "HOLD TEST BUTTON: ARMED (START / RESUME)" : "HOLD TEST BUTTON: OFF"; break;
                 case RowReset: label = "RESET CONTROLS TO DEFAULTS"; break;
                 case RowBack: label = "BACK"; break;
@@ -296,7 +298,8 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                 settings.steer_curve = (settings.steer_curve + (direction < 0 ? 2 : 1)) % 3;
                 commit(false);
             } else if (action == RowSteerSmoothing && step) {
-                settings.steer_smoothing = (settings.steer_smoothing + (direction < 0 ? 2 : 1)) % 3;
+                settings.steer_smoothing_ms = std::clamp(settings.steer_smoothing_ms + (direction < 0 ? -vita::kSteerMsStep : vita::kSteerMsStep),
+                                                         0, vita::kSteerMsMax);
                 commit(false);
             } else if (action == RowTestHold && step) {
                 if (test_hold_.armed()) test_hold_.cancel(); else test_hold_.arm();
@@ -307,7 +310,7 @@ MenuAction Launcher::handle(uint32_t pressed, bool have_game, VitaSettings &sett
                 settings.deadzone = fresh.deadzone;
                 settings.steer_invert = fresh.steer_invert;
                 settings.steer_curve = fresh.steer_curve;
-                settings.steer_smoothing = fresh.steer_smoothing;
+                settings.steer_smoothing_ms = fresh.steer_smoothing_ms;
                 test_hold_.cancel();
                 commit(false);
                 status = "CONTROLS RESET TO DEFAULTS. " + status;
